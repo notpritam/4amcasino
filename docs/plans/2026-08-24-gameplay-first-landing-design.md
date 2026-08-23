@@ -23,7 +23,7 @@ The page uses an editorial split hero. The left side carries the promise and two
 ## Visual system
 
 - Canvas: tinted near-black, not pure black, with subtle fixed grain and soft indigo light.
-- Type: Space Grotesk for display and numeric UI; the existing body stack remains for compatibility.
+- Type: Bricolage Grotesque for display and numeric UI; Onest keeps longer copy clear and compact.
 - Accent: indigo only for primary action and active state. Emerald, amber, and rose remain semantic gameplay colors.
 - Shapes: large stage radius, tighter nested controls, and physical inset surfaces. Avoid a grid of equal marketing cards.
 - Icons: the app's existing Phosphor set at a consistent weight. No emoji as interface icons.

@@ -5,8 +5,8 @@
 - **Accent:** indigo-600 (actions, pots, brand). Emerald = winning/positive,
   rose = losing/negative/fold, amber = committed chips, bounties, and the
   chip-leader crown. Never purple-to-blue gradients.
-- **Type:** Space Grotesk for display and every number (NumberFlow animates
-  chips); Inter for sentences. Amounts always use the display face.
+- **Type:** Bricolage Grotesque for display and every number (NumberFlow
+  animates chips); Onest for sentences. Amounts always use the display face.
 - **Cards:** the real `PlayingCard` component everywhere, including marketing
   visuals; card backs are the user-picked colorway; face-down "encrypted" cards
   use indigo hatching.

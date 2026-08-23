@@ -106,7 +106,12 @@ class TestClient {
       const { out, proof } = proveUnmask(this.handKey!, pointFromHex(point));
       return { deckIndex, out: pointHex(out), proof };
     });
-    this.send({ t: 'show_cards', handId: this.handId, shares, sig: this.signed('show_cards', { shares }) });
+    this.send({
+      t: 'show_cards',
+      handId: this.handId,
+      shares,
+      sig: this.signed('show_cards', { shares }),
+    });
   }
 
   acceptPeek(offerId: string): void {
@@ -143,21 +148,36 @@ class TestClient {
           this.lastRespondedActionSeq = -1;
         }
         const commit = pointHex(handKeyCommit(this.handKey!));
-        this.send({ t: 'key_commit', handId: this.handId, commit, sig: this.signed('key_commit', { commit }) });
+        this.send({
+          t: 'key_commit',
+          handId: this.handId,
+          commit,
+          sig: this.signed('key_commit', { commit }),
+        });
         break;
       }
       case 'shuffle_turn': {
         if (msg.seat !== this.seat) break;
         const deck = msg.deck.map(pointFromHex);
         const out = maskAndShuffle(deck, this.handKey!, randomPerm(52)).map(pointHex);
-        this.send({ t: 'shuffle_deck', handId: this.handId, deck: out, sig: this.signed('shuffle_deck', { deck: out }) });
+        this.send({
+          t: 'shuffle_deck',
+          handId: this.handId,
+          deck: out,
+          sig: this.signed('shuffle_deck', { deck: out }),
+        });
         break;
       }
       case 'need_share': {
         if (!this.respondShares) break;
         const { out, proof } = proveUnmask(this.handKey!, pointFromHex(msg.point));
         const body = { deckIndex: msg.deckIndex, out: pointHex(out), proof };
-        this.send({ t: 'unmask_share', handId: this.handId, ...body, sig: this.signed('unmask_share', body) });
+        this.send({
+          t: 'unmask_share',
+          handId: this.handId,
+          ...body,
+          sig: this.signed('unmask_share', body),
+        });
         break;
       }
       case 'your_card': {
@@ -179,7 +199,11 @@ class TestClient {
         break;
       }
       case 'peek_offer': {
-        this.peekOffers.push({ offerId: msg.offerId, fromUserId: msg.fromUserId, amount: msg.amount });
+        this.peekOffers.push({
+          offerId: msg.offerId,
+          fromUserId: msg.fromUserId,
+          amount: msg.amount,
+        });
         break;
       }
       case 'peek_result': {
@@ -188,7 +212,12 @@ class TestClient {
       }
       case 'betting_state': {
         const st = msg.state;
-        if (st.toAct !== this.seat || msg.actionSeq === this.lastRespondedActionSeq) break;
+        if (
+          this.seat === null ||
+          st.toAct !== this.seat ||
+          msg.actionSeq === this.lastRespondedActionSeq
+        )
+          break;
         this.lastRespondedActionSeq = msg.actionSeq;
         const me = st.seats.find((s) => s.seat === this.seat)!;
         if (this.strategy === 'fold-first') this.act({ type: 'fold' });
@@ -210,7 +239,12 @@ class TestClient {
       }
       case 'need_keys': {
         const key = this.handKey!.toString(16);
-        this.send({ t: 'reveal_key', handId: this.handId, key, sig: this.signed('reveal_key', { key }) });
+        this.send({
+          t: 'reveal_key',
+          handId: this.handId,
+          key,
+          sig: this.signed('reveal_key', { key }),
+        });
         break;
       }
       default:
@@ -296,12 +330,12 @@ describe('full hand integration', () => {
 
     // DB: stacks persisted, ledger has verifiable settlement entries, transcript stored
     const state = await host.api(`/api/rooms/${room.id}`);
-    expect(
-      state.players.reduce((s: number, p: { stack: number }) => s + p.stack, 0),
-    ).toBe(3000);
+    expect(state.players.reduce((s: number, p: { stack: number }) => s + p.stack, 0)).toBe(3000);
     const ledger = await host.api(`/api/rooms/${room.id}/ledger`);
     expect(ledger.verified.ok).toBe(true);
-    const settlements = ledger.entries.filter((e: { kind: string }) => e.kind === 'hand-settlement');
+    const settlements = ledger.entries.filter(
+      (e: { kind: string }) => e.kind === 'hand-settlement',
+    );
     expect(settlements.length).toBeGreaterThan(0);
     expect(settlements[0].ref).toBe(players[0]!.handEnd!.head);
     const row = ctx.db
@@ -413,7 +447,9 @@ describe('full hand integration', () => {
     const firstHandId = players[0]!.handEnd!.handId;
     // nobody clicks anything: the server deals again on its own
     await Promise.all(
-      players.map((p) => p.waitFor(() => p.handEnd !== null && p.handEnd.handId !== firstHandId, 15000)),
+      players.map((p) =>
+        p.waitFor(() => p.handEnd !== null && p.handEnd.handId !== firstHandId, 15000),
+      ),
     );
     expect(players[0]!.handEnd!.handId).not.toBe(firstHandId);
   }, 20000);

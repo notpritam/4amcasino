@@ -13,6 +13,7 @@
 ### Task 1: Establish the landing page structure
 
 **Files:**
+
 - Modify: `apps/web/src/pages/landing/LandingPage.tsx`
 
 1. Replace the current repeated section array with semantic header, main, and footer landmarks.
@@ -23,6 +24,7 @@
 ### Task 2: Build the real-product hero stage
 
 **Files:**
+
 - Modify: `apps/web/src/pages/landing/LandingPage.tsx`
 - Reuse: `apps/web/src/entities/card/PlayingCard.tsx`
 
@@ -34,6 +36,7 @@
 ### Task 3: Add the product story
 
 **Files:**
+
 - Modify: `apps/web/src/pages/landing/LandingPage.tsx`
 
 1. Add the trust strip without invented statistics.
@@ -44,6 +47,7 @@
 ### Task 4: Add landing-specific visual polish
 
 **Files:**
+
 - Modify: `apps/web/src/app/index.css`
 - Modify: `apps/web/index.html`
 
@@ -55,6 +59,7 @@
 ### Task 5: Verify and repair
 
 **Files:**
+
 - Modify: files implicated by failures only.
 
 1. Run `npx prettier --write apps/web/src/pages/landing/LandingPage.tsx apps/web/src/app/index.css apps/web/index.html`.

@@ -1,306 +1,628 @@
 import { Link } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
-import { GithubLogo } from '@phosphor-icons/react';
+import {
+  ArrowDown,
+  ArrowUpRight,
+  CheckCircle,
+  GithubLogo,
+  LockKey,
+  Play,
+  Receipt,
+  Robot,
+  ShieldCheck,
+  SpeakerHigh,
+  UsersThree,
+  Waveform,
+} from '@phosphor-icons/react';
 import { cardFromName } from '@4am/shared';
-import { useStore } from '../../shared/store.ts';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
+import { useStore } from '../../shared/store.ts';
 
-/** Public landing page: one line per section, the visuals do the talking.
- *  Deliberately always night mode. It is called 4AM. */
+const ease = [0.22, 1, 0.36, 1] as const;
 
-const CIPHER =
-  'a3f29c 07d1be 5b88e4 c94a02 e17f6d 3c50a9 f8b217 640dce 9e2b73 b06f18 2ad594 8c31f7';
+const players = [
+  { name: 'Meera', initials: 'M', stack: '2,840', tone: 'bg-amber-300 text-amber-950' },
+  { name: 'Ishaan', initials: 'I', stack: '1,920', tone: 'bg-sky-300 text-sky-950' },
+  { name: 'Zoya', initials: 'Z', stack: '3,160', tone: 'bg-rose-300 text-rose-950' },
+] as const;
 
-function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
-  const reduce = useReducedMotion();
-  if (reduce) return <>{children}</>;
+const board = ['2h', '5s', '8d'].map(cardFromName);
+const myHand = ['Jc', 'Jh'].map(cardFromName);
+
+function Reveal({
+  children,
+  delay = 0,
+  className,
+}: {
+  children: React.ReactNode;
+  delay?: number;
+  className?: string;
+}) {
+  const reduceMotion = useReducedMotion();
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 24 }}
+      className={className}
+      initial={reduceMotion ? false : { opacity: 0, y: 28 }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '-80px' }}
-      transition={{ duration: 0.5, delay, ease: 'easeOut' }}
+      viewport={{ once: true, margin: '-72px' }}
+      transition={{ duration: 0.72, delay, ease }}
     >
       {children}
     </motion.div>
   );
 }
 
-/** The product's whole argument in one picture: the table sees ciphertext, you see aces. */
-function DealDemo() {
-  const reduce = useReducedMotion();
-  const mine = [cardFromName('As'), cardFromName('Kh')];
+function Brand() {
   return (
-    <div className="relative mx-auto w-fit">
-      <div className="flex items-end justify-center gap-2 sm:gap-3">
-        {[0, 1, 2].map((i) => (
-          <motion.div
-            key={i}
-            initial={reduce ? false : { y: -24, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.2 + i * 0.12, type: 'spring', stiffness: 260, damping: 20 }}
-            className={i === 0 ? '-rotate-6' : i === 1 ? '-rotate-2' : 'rotate-1'}
-          >
-            <PlayingCard faceDown size="lg" />
-          </motion.div>
-        ))}
-        {mine.map((c, i) => (
-          <motion.div
-            key={c}
-            initial={reduce ? false : { rotateY: 180, y: -18, opacity: 0 }}
-            animate={{ rotateY: 0, y: -10, opacity: 1 }}
-            transition={{ delay: 0.85 + i * 0.25, type: 'spring', stiffness: 190, damping: 16 }}
-            className={i === 0 ? 'rotate-2 drop-shadow-2xl' : 'rotate-6 drop-shadow-2xl'}
-            style={{ transformStyle: 'preserve-3d' }}
-          >
-            <PlayingCard card={c} size="lg" />
-          </motion.div>
-        ))}
-      </div>
-      <motion.div
-        initial={reduce ? false : { opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1.7 }}
-        className="mt-6 text-center"
-      >
-        <p className="mx-auto max-w-md truncate font-mono text-[0.65rem] tracking-wider text-slate-600">{CIPHER}</p>
-        <p className="mt-1.5 text-sm text-slate-500">
-          What the table sees of your hand: ciphertext. What you see: aces.
-        </p>
-      </motion.div>
-    </div>
+    <span className="flex items-center gap-2.5 font-display font-semibold tracking-[-0.03em] text-white">
+      <span className="flex h-9 w-9 items-center justify-center rounded-[0.7rem] bg-indigo-500 text-lg text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.24)]">
+        ♠
+      </span>
+      <span>4AM Casino</span>
+    </span>
   );
 }
 
-/** A miniature of the real session report: receipts, not vibes. */
-function LedgerDemo() {
-  const rows = [
-    { name: 'Meera', net: 1240, w: 100 },
-    { name: 'Ishaan', net: 380, w: 31 },
-    { name: 'Zoya', net: -95, w: 8 },
-    { name: 'Arjun', net: -1525, w: 100 },
-  ];
+function PrimaryLink({ to, children }: { to: string; children: React.ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-lg rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-      <div className="mb-4 flex items-baseline justify-between">
-        <span className="font-display font-semibold">Session report</span>
-        <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-400">
-          chain verified
-        </span>
-      </div>
-      <div className="mb-5 grid grid-cols-3 gap-3 text-center">
-        {[
-          ['2h 14m', 'time played'],
-          ['47', 'hands dealt'],
-          ['1,900', 'biggest pot'],
-        ].map(([v, l]) => (
-          <div key={l} className="rounded-xl bg-white/[0.04] py-3">
-            <div className="font-display text-lg font-bold">{v}</div>
-            <div className="text-[0.65rem] uppercase tracking-wide text-slate-500">{l}</div>
-          </div>
-        ))}
-      </div>
-      <div className="space-y-2.5">
-        {rows.map((r) => (
-          <div key={r.name} className="grid grid-cols-[4.5rem_1fr_4rem] items-center gap-3 text-sm">
-            <span className="truncate text-slate-300">{r.name}</span>
-            <div className="relative h-2.5">
-              <span className="absolute inset-y-0 left-1/2 w-px bg-white/15" />
-              <span
-                className={
-                  r.net > 0
-                    ? 'absolute inset-y-0 left-1/2 rounded-r-full bg-emerald-500'
-                    : 'absolute inset-y-0 right-1/2 rounded-l-full bg-rose-500'
-                }
-                style={{ width: `${r.w / 2}%` }}
-              />
-            </div>
-            <span
-              className={`text-right font-display font-semibold ${r.net > 0 ? 'text-emerald-400' : 'text-rose-400'}`}
-            >
-              {r.net > 0 ? '+' : '−'}
-              {Math.abs(r.net).toLocaleString()}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** The social layer, sketched with the real chat vocabulary. */
-function TableTalkDemo() {
-  return (
-    <div className="mx-auto w-full max-w-lg space-y-3">
-      <div className="flex flex-wrap justify-center gap-2">
-        {['nice hand 👏', 'bluff! 🤨', 'run it again 🔁', 'ouch 💀', 'so lucky 🍀'].map((p) => (
-          <span key={p} className="rounded-full bg-white/10 px-3.5 py-1.5 text-sm">
-            {p}
-          </span>
-        ))}
-      </div>
-      <div className="mx-auto flex w-fit items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-3.5 text-sm">
-        <span className="relative flex h-2.5 w-2.5">
-          <span className="absolute h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-        </span>
-        voice is live · 4 at the table
-      </div>
-      <div className="mx-auto flex w-fit items-center gap-2 rounded-2xl border border-amber-400/30 bg-amber-400/10 px-5 py-3 text-sm text-amber-200">
-        7-2 offsuit! Meera collects 200 in bounties.
-      </div>
-    </div>
-  );
-}
-
-function McpDemo() {
-  return (
-    <pre className="mx-auto w-full max-w-lg overflow-x-auto rounded-2xl bg-slate-900 p-6 text-left font-mono text-xs leading-relaxed text-slate-300 ring-1 ring-white/10">
-      {`"4am-casino": {
-  "command": "npx",
-  "args": ["tsx", "apps/mcp/src/index.ts"],
-  "env": {
-    "FOURAM_USERNAME": "my_bot",
-    "FOURAM_PASSWORD": "..."
-  }
-}
-
-> casino_state
-  Your cards: As Kh
-  IT IS YOUR TURN. Options: fold | call 60
-  | raise between 120 and 1,980`}
-    </pre>
-  );
-}
-
-function Cta({ label, to }: { label: string; to: string }) {
-  return (
-    <Link
-      to={to}
-      className="inline-block rounded-full bg-indigo-600 px-8 py-3.5 font-display font-semibold text-white transition-colors hover:bg-indigo-500"
-    >
-      {label}
+    <Link to={to} className="landing-primary group">
+      <span>{children}</span>
+      <span className="landing-primary-icon" aria-hidden="true">
+        <ArrowUpRight size={17} weight="bold" />
+      </span>
     </Link>
   );
 }
 
-export function LandingPage() {
-  const token = useStore((s) => s.auth.token);
-  const playHref = token ? '/lobby' : '/login';
-  const playLabel = token ? 'Back to your lobby' : 'Play now';
-
-  const sections: { line: string; sub: string; demo: React.ReactNode }[] = [
-    {
-      line: 'Nobody sees your cards. Not even the house.',
-      sub: 'Every player encrypts and shuffles the deck. Cryptographic proofs open your two cards for your eyes only.',
-      demo: <DealDemo />,
-    },
-    {
-      line: 'Every chip has a receipt.',
-      sub: 'Buy-ins, pots, and bounties live on a tamper-evident ledger. Settling up after the game is one screen.',
-      demo: <LedgerDemo />,
-    },
-    {
-      line: 'The table still talks.',
-      sub: 'Always-on voice, stickers, house rules like the 7-2 bounty, and a shareable card for every bad beat.',
-      demo: <TableTalkDemo />,
-    },
-    {
-      line: 'Deal in an AI.',
-      sub: 'One config block gives any agent a real seat, playing under the same cryptography as everyone else.',
-      demo: <McpDemo />,
-    },
-  ];
+function Player({
+  player,
+  active = false,
+  delay,
+}: {
+  player: (typeof players)[number];
+  active?: boolean;
+  delay: number;
+}) {
+  const reduceMotion = useReducedMotion();
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      {/* minimal nav: wordmark and the one action */}
-      <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
-        <span className="flex items-center gap-2 font-display text-lg font-bold">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">♠</span>
-          4AM Casino
+    <motion.div
+      initial={reduceMotion ? false : { opacity: 0, y: -12, scale: 0.94 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.55, delay, ease }}
+      className={`landing-player ${active ? 'landing-player-active' : ''}`}
+    >
+      <span className={`landing-avatar ${player.tone}`}>{player.initials}</span>
+      <span className="min-w-0">
+        <span className="block truncate text-xs font-medium text-slate-200">{player.name}</span>
+        <span className="block font-display text-[0.68rem] tabular-nums text-slate-500">
+          {player.stack}
         </span>
-        <Link
-          to={playHref}
-          className="rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
-        >
-          {playLabel}
-        </Link>
+      </span>
+      {active && <span className="landing-turn-dot" aria-label="taking their turn" />}
+    </motion.div>
+  );
+}
+
+function LiveTablePreview() {
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <motion.div
+      id="gameplay"
+      initial={reduceMotion ? false : { opacity: 0, y: 32, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.9, delay: 0.18, ease }}
+      className="landing-stage-shell"
+      aria-label="Example of a hand in progress"
+    >
+      <div className="landing-stage">
+        <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-3 sm:px-5">
+          <div className="flex items-center gap-2 text-[0.68rem] font-medium text-slate-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.7)]" />
+            Product preview
+          </div>
+          <div className="flex items-center gap-1.5 font-display text-[0.68rem] tabular-nums text-slate-500">
+            <LockKey size={13} weight="duotone" /> encrypted hand 07d1
+          </div>
+        </div>
+
+        <div className="landing-table">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            {players.map((player, index) => (
+              <Player
+                key={player.name}
+                player={player}
+                active={index === 1}
+                delay={0.48 + index * 0.09}
+              />
+            ))}
+          </div>
+
+          <div className="flex flex-1 flex-col items-center justify-center py-7 sm:py-9">
+            <motion.div
+              initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.82, ease }}
+              className="mb-4 rounded-full bg-white/[0.07] px-3 py-1 font-display text-[0.68rem] tabular-nums text-slate-300 ring-1 ring-white/10"
+            >
+              POT&nbsp; 340
+            </motion.div>
+
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2">
+              {board.map((card, index) => (
+                <PlayingCard
+                  key={card}
+                  card={card}
+                  size="sm"
+                  deal
+                  className={`landing-board-card-${index}`}
+                />
+              ))}
+              <div
+                className="card-hatch h-14 w-10 rounded-lg opacity-35 ring-1 ring-white/10"
+                aria-label="turn card"
+              />
+              <div
+                className="card-hatch h-14 w-10 rounded-lg opacity-20 ring-1 ring-white/10"
+                aria-label="river card"
+              />
+            </div>
+          </div>
+
+          <div className="landing-hand-panel">
+            <div className="flex items-end gap-3">
+              <div className="flex -space-x-2.5" aria-label="Your hand: pair of jacks">
+                {myHand.map((card, index) => (
+                  <motion.div
+                    key={card}
+                    initial={reduceMotion ? false : { opacity: 0, y: 18, rotate: index ? 4 : -4 }}
+                    animate={{ opacity: 1, y: 0, rotate: index ? 2 : -2 }}
+                    transition={{ duration: 0.58, delay: 1.02 + index * 0.1, ease }}
+                    className="drop-shadow-[0_12px_20px_rgba(0,0,0,0.28)]"
+                  >
+                    <PlayingCard card={card} size="sm" />
+                  </motion.div>
+                ))}
+              </div>
+              <div className="pb-1">
+                <span className="block text-[0.64rem] text-slate-500">Your hand</span>
+                <span className="block text-xs font-medium text-slate-200">Pair of jacks</span>
+              </div>
+            </div>
+
+            <div className="landing-actions" aria-label="Example betting controls">
+              <span className="landing-action-secondary">Fold</span>
+              <span className="landing-action-secondary">Call 40</span>
+              <span className="landing-action-primary">Raise 120</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function ProofItem({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
+  return (
+    <div className="flex gap-3.5 py-5 sm:py-6">
+      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/[0.06] text-indigo-300 ring-1 ring-white/[0.08]">
+        {icon}
+      </span>
+      <span>
+        <span className="block text-sm font-medium text-slate-100">{title}</span>
+        <span className="mt-1 block max-w-[17rem] text-xs leading-5 text-slate-500">{text}</span>
+      </span>
+    </div>
+  );
+}
+
+function InviteVisual() {
+  return (
+    <div
+      className="landing-visual landing-invite-visual"
+      aria-label="Example private table invitation"
+    >
+      <div className="relative z-10 w-full max-w-sm rounded-[1.4rem] bg-[#111722] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.28)] ring-1 ring-white/10">
+        <div className="mb-6 flex items-center justify-between">
+          <span className="text-xs text-slate-500">Friday game</span>
+          <span className="flex items-center gap-1.5 text-[0.68rem] text-emerald-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> private
+          </span>
+        </div>
+        <div className="mb-6 flex -space-x-2">
+          {players.map((player) => (
+            <span
+              key={player.name}
+              className={`landing-avatar h-10 w-10 ring-4 ring-[#111722] ${player.tone}`}
+            >
+              {player.initials}
+            </span>
+          ))}
+          <span className="landing-avatar h-10 w-10 bg-indigo-500 text-white ring-4 ring-[#111722]">
+            +2
+          </span>
+        </div>
+        <div className="rounded-xl bg-black/25 p-3.5 ring-1 ring-white/[0.07]">
+          <span className="block text-[0.62rem] uppercase tracking-[0.16em] text-slate-600">
+            Table code
+          </span>
+          <span className="mt-1.5 block font-display text-xl tracking-[0.24em] text-white">
+            NIGHT6
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReplayVisual() {
+  return (
+    <div className="landing-visual landing-replay-visual" aria-label="Example hand replay timeline">
+      <div className="w-full max-w-md">
+        <div className="mb-8 flex items-center justify-between">
+          <span className="flex items-center gap-2 text-xs text-slate-400">
+            <Play size={14} weight="fill" className="text-indigo-300" /> Hand replay
+          </span>
+          <span className="font-display text-xs tabular-nums text-slate-500">00:18 / 00:31</span>
+        </div>
+        <div className="relative mb-7 h-1 rounded-full bg-white/10">
+          <div className="absolute inset-y-0 left-0 w-[58%] rounded-full bg-indigo-400" />
+          <span className="absolute left-[58%] top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_0_5px_rgba(129,140,248,0.18)]" />
+          {[18, 39, 78].map((position) => (
+            <span
+              key={position}
+              className="absolute top-1/2 h-2 w-px -translate-y-1/2 bg-white/40"
+              style={{ left: `${position}%` }}
+            />
+          ))}
+        </div>
+        <div className="space-y-3">
+          {[
+            ['00:06', 'Meera raised to 120'],
+            ['00:18', 'You called 120'],
+            ['00:24', 'River dealt'],
+          ].map(([time, action], index) => (
+            <div
+              key={time}
+              className={`flex items-center gap-4 rounded-xl px-3.5 py-3 ${index === 1 ? 'bg-indigo-400/10 ring-1 ring-indigo-300/20' : 'bg-white/[0.025]'}`}
+            >
+              <span className="font-display text-[0.68rem] tabular-nums text-slate-500">
+                {time}
+              </span>
+              <span className="text-xs text-slate-300">{action}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LedgerVisual() {
+  const rows = [
+    { name: 'Meera', amount: '+1,240', width: 'w-[82%]', color: 'bg-emerald-400' },
+    { name: 'Ishaan', amount: '+380', width: 'w-[38%]', color: 'bg-emerald-400' },
+    { name: 'Zoya', amount: '−95', width: 'w-[19%]', color: 'bg-rose-400' },
+  ] as const;
+
+  return (
+    <div
+      className="landing-visual landing-ledger-visual"
+      aria-label="Example verified session report"
+    >
+      <div className="w-full max-w-md">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <span className="block text-xs text-slate-500">Session report</span>
+            <span className="mt-1 block font-display text-xl text-white">Friday game</span>
+          </div>
+          <span className="flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2.5 py-1 text-[0.65rem] text-emerald-300 ring-1 ring-emerald-300/20">
+            <CheckCircle size={13} weight="fill" /> verified
+          </span>
+        </div>
+        <div className="space-y-4">
+          {rows.map((row) => (
+            <div key={row.name} className="grid grid-cols-[4rem_1fr_3.6rem] items-center gap-3">
+              <span className="text-xs text-slate-400">{row.name}</span>
+              <span className="h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
+                <span className={`block h-full rounded-full ${row.width} ${row.color}`} />
+              </span>
+              <span
+                className={`text-right font-display text-xs tabular-nums ${row.amount.startsWith('+') ? 'text-emerald-300' : 'text-rose-300'}`}
+              >
+                {row.amount}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-7 flex items-center gap-2 border-t border-white/[0.07] pt-4 text-[0.66rem] text-slate-500">
+          <Receipt size={14} /> every buy-in and pot is hash-chained
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function LandingPage() {
+  const token = useStore((state) => state.auth.token);
+  const playHref = token ? '/lobby' : '/login';
+  const playLabel = token ? 'Open your lobby' : 'Start a table';
+
+  return (
+    <div className="landing-root min-h-screen bg-[#070a10] text-slate-100">
+      <a href="#main-content" className="landing-skip-link">
+        Skip to content
+      </a>
+      <div className="landing-grain" aria-hidden="true" />
+
+      <header className="relative z-20 mx-auto max-w-[82rem] px-4 pt-4 sm:px-6 sm:pt-6 lg:px-8">
+        <nav className="landing-nav" aria-label="Primary navigation">
+          <Link to="/" aria-label="4AM Casino home">
+            <Brand />
+          </Link>
+          <div className="hidden items-center gap-1 md:flex">
+            <a href="#sessions" className="landing-nav-link">
+              Sessions
+            </a>
+            <a href="#trust" className="landing-nav-link">
+              How it works
+            </a>
+            <Link to="/fair" className="landing-nav-link">
+              Fairness
+            </Link>
+            <a
+              href="https://github.com/notpritam/4amcasino"
+              target="_blank"
+              rel="noreferrer"
+              className="landing-nav-link flex items-center gap-1.5"
+            >
+              <GithubLogo size={15} /> GitHub
+            </a>
+          </div>
+          <Link to={playHref} className="landing-nav-cta">
+            {token ? 'Lobby' : 'Play now'}
+            <ArrowUpRight size={15} weight="bold" />
+          </Link>
+        </nav>
       </header>
 
-      {/* hero: one line */}
-      <section className="mx-auto max-w-5xl px-6 pb-24 pt-16 text-center sm:pt-24">
-        <Reveal>
-          <h1 className="mx-auto max-w-3xl font-display text-5xl font-bold leading-[1.05] tracking-tight sm:text-6xl md:text-7xl">
-            Poker night, provably&nbsp;fair.
-          </h1>
-        </Reveal>
-        <Reveal delay={0.1}>
-          <p className="mx-auto mt-6 max-w-xl text-lg text-slate-400">
-            Texas Hold&apos;em with your friends, running on cryptography instead of trust. Free,
-            open source, play money.
-          </p>
-        </Reveal>
-        <Reveal delay={0.2}>
-          <div className="mt-9 flex flex-wrap items-center justify-center gap-4">
-            <Cta label={playLabel} to={playHref} />
-            <Link to="/fair" className="font-semibold text-slate-300 underline-offset-4 hover:underline">
-              Watch the 60-second proof
-            </Link>
-          </div>
-        </Reveal>
-      </section>
-
-      {/* one benefit per section, the visual carries it */}
-      {sections.map((s, i) => (
-        <section key={s.line} className={i % 2 ? '' : 'border-y border-white/5 bg-white/[0.02]'}>
-          <div className="mx-auto max-w-5xl px-6 py-24 text-center">
+      <main id="main-content">
+        <section className="relative mx-auto grid min-h-[calc(100dvh-5.5rem)] max-w-[82rem] items-center gap-14 px-4 pb-20 pt-16 sm:px-6 sm:pt-20 lg:grid-cols-[0.88fr_1.12fr] lg:gap-16 lg:px-8 lg:pb-28 lg:pt-24">
+          <div className="relative z-10 max-w-xl">
             <Reveal>
-              <h2 className="mx-auto max-w-2xl font-display text-3xl font-bold leading-tight sm:text-4xl">
-                {s.line}
-              </h2>
+              <span className="landing-eyebrow">
+                <span className="h-1.5 w-1.5 rounded-full bg-indigo-300" />
+                Free, private Texas Hold&apos;em
+              </span>
             </Reveal>
-            <Reveal delay={0.08}>
-              <p className="mx-auto mt-4 max-w-xl text-slate-400">{s.sub}</p>
+            <Reveal delay={0.06}>
+              <h1 className="mt-6 max-w-[11ch] font-display text-[clamp(3.6rem,8vw,7.2rem)] font-semibold leading-[0.9] tracking-[-0.07em] text-white text-balance">
+                Poker night without the house.
+              </h1>
             </Reveal>
-            <Reveal delay={0.16}>
-              <div className="mt-12">{s.demo}</div>
+            <Reveal delay={0.12}>
+              <p className="mt-7 max-w-[34rem] text-base leading-7 text-slate-400 sm:text-lg sm:leading-8">
+                Create a table, invite your people, and deal. Your cards stay private, every chip
+                has a receipt, and nobody plays with real money.
+              </p>
             </Reveal>
+            <Reveal delay={0.18} className="mt-8 flex flex-wrap items-center gap-4">
+              <PrimaryLink to={playHref}>{playLabel}</PrimaryLink>
+              <a href="#sessions" className="landing-text-link group">
+                See a game night
+                <ArrowDown
+                  size={16}
+                  className="transition-transform duration-500 group-hover:translate-y-1"
+                />
+              </a>
+            </Reveal>
+            <Reveal
+              delay={0.24}
+              className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-500"
+            >
+              {['Play money only', 'No download', 'Open source'].map((item) => (
+                <span key={item} className="flex items-center gap-1.5">
+                  <CheckCircle size={13} weight="fill" className="text-indigo-300" /> {item}
+                </span>
+              ))}
+            </Reveal>
+          </div>
+
+          <LiveTablePreview />
+        </section>
+
+        <section
+          className="border-y border-white/[0.07] bg-white/[0.018]"
+          aria-label="Product principles"
+        >
+          <div className="mx-auto grid max-w-[82rem] divide-y divide-white/[0.07] px-4 sm:grid-cols-2 sm:divide-x sm:divide-y-0 sm:px-6 lg:grid-cols-4 lg:px-8">
+            <ProofItem
+              icon={<UsersThree size={17} weight="duotone" />}
+              title="Built for friends"
+              text="Private rooms, table codes, voice, chat, and house rules."
+            />
+            <ProofItem
+              icon={<LockKey size={17} weight="duotone" />}
+              title="Cards stay private"
+              text="Every browser helps encrypt and shuffle the deck."
+            />
+            <ProofItem
+              icon={<Receipt size={17} weight="duotone" />}
+              title="Chips stay accountable"
+              text="A shared ledger records buy-ins and every settled pot."
+            />
+            <ProofItem
+              icon={<GithubLogo size={17} weight="duotone" />}
+              title="Open by default"
+              text="Inspect the code, self-host it, or give an AI a seat."
+            />
           </div>
         </section>
-      ))}
 
-      {/* closing block */}
-      <section className="mx-auto max-w-5xl px-6 py-28 text-center">
-        <Reveal>
-          <h2 className="font-display text-4xl font-bold sm:text-5xl">Free poker with your friends.</h2>
-        </Reveal>
-        <Reveal delay={0.1}>
-          <p className="mx-auto mt-5 max-w-xl text-lg text-slate-400">
-            Online poker doesn&apos;t have to mean trusting a server. 4AM Casino replaces trust with
-            math and leaves the fun part alone.
-          </p>
-        </Reveal>
-        <Reveal delay={0.2}>
-          <div className="mt-9">
-            <Cta label={playLabel} to={playHref} />
+        <section
+          id="sessions"
+          className="mx-auto max-w-[82rem] px-4 py-28 sm:px-6 sm:py-36 lg:px-8 lg:py-44"
+        >
+          <Reveal className="max-w-3xl">
+            <span className="landing-kicker">A whole game night, one link</span>
+            <h2 className="landing-section-title mt-5">The table gets out of the way.</h2>
+            <p className="landing-section-copy mt-6">
+              The controls stay clear when the hand gets tense. Everything around them helps your
+              group join, talk, remember, and settle the session.
+            </p>
+          </Reveal>
+
+          <div className="mt-20 space-y-24 sm:mt-24 sm:space-y-32">
+            <article className="landing-story-grid">
+              <Reveal className="landing-story-copy">
+                <span className="landing-story-number">01</span>
+                <UsersThree size={22} weight="duotone" className="mt-10 text-indigo-300" />
+                <h3 className="landing-story-title">Send the code. Everyone&apos;s in.</h3>
+                <p className="landing-story-body">
+                  Start a private room in seconds. Friends join from any browser, choose a seat, buy
+                  play chips, and keep talking with built-in voice.
+                </p>
+              </Reveal>
+              <Reveal delay={0.08}>
+                <InviteVisual />
+              </Reveal>
+            </article>
+
+            <article className="landing-story-grid landing-story-reverse">
+              <Reveal delay={0.08}>
+                <ReplayVisual />
+              </Reveal>
+              <Reveal className="landing-story-copy">
+                <span className="landing-story-number">02</span>
+                <Waveform size={22} weight="duotone" className="mt-10 text-indigo-300" />
+                <h3 className="landing-story-title">Every hand leaves a replay.</h3>
+                <p className="landing-story-body">
+                  Revisit the betting, reveal the showdown, and share the hand that changed the
+                  night. The replay is built from the real game record, not a screen recording.
+                </p>
+              </Reveal>
+            </article>
+
+            <article className="landing-story-grid">
+              <Reveal className="landing-story-copy">
+                <span className="landing-story-number">03</span>
+                <Receipt size={22} weight="duotone" className="mt-10 text-indigo-300" />
+                <h3 className="landing-story-title">Finish with one clean receipt.</h3>
+                <p className="landing-story-body">
+                  Buy-ins, pots, bounties, and transfers resolve into a verified session report, so
+                  the group can settle outside the app without rebuilding the night in a
+                  spreadsheet.
+                </p>
+              </Reveal>
+              <Reveal delay={0.08}>
+                <LedgerVisual />
+              </Reveal>
+            </article>
           </div>
-        </Reveal>
-      </section>
+        </section>
 
-      <footer className="border-t border-white/10">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-6 py-8 text-sm text-slate-500">
-          <span>♠ 4AM Casino</span>
-          <Link to="/fair" className="hover:text-slate-300">
-            How it&apos;s fair
-          </Link>
-          <a
-            href="https://github.com/notpritam/4amcasino"
-            className="flex items-center gap-1.5 hover:text-slate-300"
-          >
-            <GithubLogo size={15} /> GitHub
-          </a>
-          <span className="ml-auto">Play money only. The stakes are bragging rights.</span>
+        <section id="trust" className="border-y border-white/[0.07] bg-[#0a0e16]">
+          <div className="mx-auto grid max-w-[82rem] gap-16 px-4 py-28 sm:px-6 sm:py-36 lg:grid-cols-[0.85fr_1.15fr] lg:gap-24 lg:px-8">
+            <Reveal>
+              <span className="landing-kicker">Under the table</span>
+              <h2 className="landing-section-title mt-5">Trust the proof, not the host.</h2>
+              <p className="landing-section-copy mt-6">
+                4AM uses mental poker: every player encrypts and shuffles the same deck. The server
+                coordinates the hand but never gets the keys to your cards.
+              </p>
+              <Link to="/fair" className="landing-text-link mt-8 w-fit">
+                See how a hand stays private <ArrowUpRight size={16} />
+              </Link>
+            </Reveal>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                {
+                  icon: <LockKey size={20} weight="duotone" />,
+                  title: 'Encrypted dealing',
+                  text: 'Your hole cards open in your browser and nowhere else.',
+                },
+                {
+                  icon: <ShieldCheck size={20} weight="duotone" />,
+                  title: 'Proof with every reveal',
+                  text: 'Invalid shuffle and unmask actions are rejected and attributed.',
+                },
+                {
+                  icon: <Robot size={20} weight="duotone" />,
+                  title: 'A real seat for AI',
+                  text: 'Agents play through the same protocol and rules as people.',
+                },
+                {
+                  icon: <SpeakerHigh size={20} weight="duotone" />,
+                  title: 'Still feels social',
+                  text: 'Voice, reactions, bounties, and bad beats stay in the room.',
+                },
+              ].map((item, index) => (
+                <Reveal key={item.title} delay={index * 0.05} className="landing-tech-card">
+                  <span className="text-indigo-300">{item.icon}</span>
+                  <h3 className="mt-8 font-display text-lg font-medium tracking-[-0.03em] text-white">
+                    {item.title}
+                  </h3>
+                  <p className="mt-3 text-sm leading-6 text-slate-500">{item.text}</p>
+                </Reveal>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-[82rem] px-4 py-28 sm:px-6 sm:py-40 lg:px-8">
+          <Reveal className="relative overflow-hidden rounded-[2rem] bg-indigo-500 px-6 py-16 text-center shadow-[0_32px_100px_rgba(79,70,229,0.2)] sm:px-12 sm:py-24">
+            <div className="landing-cta-grid" aria-hidden="true" />
+            <p className="relative z-10 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-100/70">
+              Your table is ready
+            </p>
+            <h2 className="relative z-10 mx-auto mt-5 max-w-[10ch] font-display text-4xl font-semibold leading-[0.95] tracking-[-0.055em] text-white sm:text-6xl">
+              Deal the first hand tonight.
+            </h2>
+            <div className="relative z-10 mt-9">
+              <Link to={playHref} className="landing-final-cta group">
+                {playLabel}
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 transition-transform duration-500 group-hover:translate-x-1 group-hover:-translate-y-0.5">
+                  <ArrowUpRight size={17} weight="bold" />
+                </span>
+              </Link>
+            </div>
+          </Reveal>
+        </section>
+      </main>
+
+      <footer className="border-t border-white/[0.07]">
+        <div className="mx-auto flex max-w-[82rem] flex-col gap-8 px-4 py-10 sm:px-6 md:flex-row md:items-end md:justify-between lg:px-8">
+          <div>
+            <Brand />
+            <p className="mt-3 text-xs text-slate-600">
+              Play money only. The stakes are bragging rights.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3 text-xs text-slate-500">
+            <Link to="/fair" className="hover:text-slate-200">
+              Fairness
+            </Link>
+            <a
+              href="https://github.com/notpritam/4amcasino"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-slate-200"
+            >
+              GitHub
+            </a>
+            <a
+              href="https://github.com/notpritam/4amcasino/blob/main/LICENSE"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-slate-200"
+            >
+              MIT License
+            </a>
+            <span>© 2026 4AM Casino</span>
+          </div>
         </div>
       </footer>
     </div>
