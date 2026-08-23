@@ -59,6 +59,31 @@ Your password never leaves the browser: the client derives a login key and a sep
 identity from it with domain-separated scrypt, so the server can authenticate you but can never
 sign or decrypt as you.
 
+## Hosting
+
+The app is one long-running Node process (HTTP + WebSocket + a SQLite file), so it needs a
+host that runs real servers — serverless platforms (Vercel/Netlify functions, GitHub Pages)
+can't run it.
+
+**Render (free):** this repo ships a [`render.yaml`](render.yaml) blueprint. In the Render
+dashboard choose **New → Blueprint**, pick this repository, and deploy. Free-tier caveats: the
+service sleeps after ~15 min idle (first visit takes up to a minute to wake), and storage is
+ephemeral — accounts and the ledger reset on every deploy or restart. For a persistent ledger,
+switch the plan to `starter`, uncomment the disk block in `render.yaml`, and set
+`DB_PATH=/data/4amcasino.db`.
+
+**Docker (any VPS, Fly.io, Railway):**
+
+```bash
+docker build -t 4amcasino .
+docker run -p 8787:8787 -v 4amcasino-data:/data 4amcasino
+```
+
+**Quick game night without hosting at all:** run it locally (`npm run start --workspace
+@4am/server`) and share a tunnel, e.g. `npx ngrok http 8787` or a
+[Tailscale](https://tailscale.com) address. Friends on the same Wi-Fi can just open
+`http://<your-LAN-IP>:8787`.
+
 ## Repository layout
 
 ```

@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: 4amcasino
+    runtime: node
+    plan: free
+    buildCommand: NODE_ENV=development npm ci && npm run build --workspace @4am/web
+    startCommand: npm run start --workspace @4am/server
+    healthCheckPath: /api/health
+    envVars:
+      - key: DB_PATH
+        value: ./4amcasino.db
+    # Free plan storage is ephemeral: the ledger resets on every deploy/restart.
+    # For a persistent ledger, switch plan to starter, uncomment the disk below,
+    # and change DB_PATH to /data/4amcasino.db.
+    # disk:
+    #   name: data
+    #   mountPath: /data
+    #   sizeGB: 1
