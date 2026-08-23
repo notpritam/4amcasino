@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../shared/api.ts';
 import { useStore } from '../../shared/store.ts';
 import { Badge, Button, Dialog, Input, Panel } from '../../shared/ui/index.tsx';
+import { Trophy } from '@phosphor-icons/react';
 import { Avatar } from '../../entities/user/Avatar.tsx';
 import { ProfileDialog } from '../../features/profile/ProfileDialog.tsx';
 
@@ -61,9 +62,7 @@ export function LobbyPage() {
     <div className="mx-auto max-w-3xl p-6">
       <header className="mb-8 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => setProfileOpen(true)} aria-label="Edit profile">
-            <Avatar userId={auth.userId ?? 0} name={prefs.displayName || username || '?'} version={prefs.avatarVersion} />
-          </button>
+          <Avatar userId={auth.userId ?? 0} name={prefs.displayName || username || '?'} version={prefs.avatarVersion} />
           <div>
             <h1 className="font-display text-2xl font-bold">4AM Casino</h1>
             <p className="text-sm text-slate-500">Signed in as {prefs.displayName || username}</p>
@@ -71,9 +70,12 @@ export function LobbyPage() {
         </div>
         <div className="flex items-center gap-2">
           <Link to="/leaderboard">
-            <Button variant="secondary">🏆 Leaderboard</Button>
+            <Button variant="secondary">
+              <Trophy size={16} weight="bold" /> Leaderboard
+            </Button>
           </Link>
           <Button variant="secondary" onClick={() => setProfileOpen(true)}>
+            <Avatar userId={auth.userId ?? 0} name={prefs.displayName || username || '?'} version={prefs.avatarVersion} size="sm" className="-ml-1 h-5 w-5 text-[0.6rem]" />
             Edit profile
           </Button>
           <Button variant="ghost" onClick={logout}>
@@ -110,14 +112,14 @@ export function LobbyPage() {
 
       <h2 className="mb-3 font-display font-semibold">Your rooms</h2>
       {rooms.length === 0 ? (
-        <p className="text-sm text-slate-500">No rooms yet — create one and share the code.</p>
+        <p className="text-sm text-slate-500">No rooms yet. Create one and share the code.</p>
       ) : (
         <div className="space-y-2">
           {rooms.map((r) => (
             <Link
               key={r.id}
               to={`/room/${r.id}`}
-              className="flex items-center justify-between rounded-xl bg-white p-4 ring-1 ring-slate-200/70 transition-shadow hover:shadow-md"
+              className="flex items-center justify-between rounded-xl bg-white p-4 ring-1 ring-slate-200/70 transition-shadow hover:shadow-md dark:bg-slate-900 dark:ring-slate-700/70"
             >
               <div>
                 <div className="font-medium">{r.name}</div>
@@ -166,7 +168,7 @@ export function LobbyPage() {
               className="mt-0.5"
             />
             <span>
-              Strict audit — everyone's cards become checkable after each hand (folded cards included)
+              Strict audit: everyone's cards become checkable after each hand (folded cards included)
             </span>
           </label>
           {error && <p className="text-sm text-rose-600">{error}</p>}

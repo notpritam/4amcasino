@@ -3,6 +3,7 @@ import { sendChat } from '../../shared/gameClient.ts';
 import { useStore } from '../../shared/store.ts';
 import { cn } from '../../shared/lib/cn.ts';
 import { Button, Input } from '../../shared/ui/index.tsx';
+import { Smiley } from '@phosphor-icons/react';
 import { Avatar } from '../../entities/user/Avatar.tsx';
 
 export const STICKERS = ['🔥', '😂', '😭', '🤯', '🃏', '💰', '🐟', '🦈', '🫠', '👏'] as const;
@@ -45,7 +46,7 @@ export function ChatPanel() {
         Chat
       </div>
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
-        {chat.length === 0 && <p className="text-sm text-slate-400">Say hi — messages are not saved.</p>}
+        {chat.length === 0 && <p className="text-sm text-slate-400">Say hi. Messages are not saved.</p>}
         {chat.map((m, i) => {
           const mine = m.userId === myId;
           return (
@@ -113,7 +114,7 @@ export function ChatPanel() {
             className="rounded-lg px-2 text-xl hover:bg-slate-100 dark:hover:bg-slate-800"
             aria-label="stickers"
           >
-            😊
+            <Smiley size={22} />
           </button>
           <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Message…" maxLength={500} />
           <Button type="submit" variant="secondary" disabled={!text.trim()}>

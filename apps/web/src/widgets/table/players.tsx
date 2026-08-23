@@ -5,6 +5,8 @@ import { Badge } from '../../shared/ui/index.tsx';
 import { cn, fmt } from '../../shared/lib/cn.ts';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
 import { Avatar } from '../../entities/user/Avatar.tsx';
+import { MicrophoneSlash } from '@phosphor-icons/react';
+import { TurnProgress } from './TurnProgress.tsx';
 
 export interface SeatView {
   seat: number;
@@ -50,7 +52,7 @@ function VoiceDot({ muted }: { muted: boolean }) {
       title="muted"
       className="absolute -left-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-[0.6rem] text-white ring-2 ring-white dark:ring-slate-900"
     >
-      🔇
+      <MicrophoneSlash size={11} weight="fill" />
     </span>
   );
 }
@@ -59,13 +61,14 @@ export function PlayerRow({ p, urgent }: { p: SeatView; urgent: boolean }) {
   return (
     <div
       className={cn(
-        'flex items-center gap-3 rounded-2xl bg-white p-3 pr-4 ring-1 ring-slate-200/70 transition-all dark:bg-slate-900 dark:ring-slate-700/70',
+        'relative flex items-center gap-3 rounded-2xl bg-white p-3 pb-4 pr-4 ring-1 ring-slate-200/70 transition-all dark:bg-slate-900 dark:ring-slate-700/70',
         p.isToAct && 'ring-2 ring-indigo-500 shadow-md',
         p.isToAct && urgent && 'ring-rose-500 animate-urgent',
         p.won && 'animate-winner',
         (p.folded || !p.connected) && 'opacity-50',
       )}
     >
+      {p.isToAct && <TurnProgress />}
       <div className="relative">
         <Link to={`/players/${p.userId}`} aria-label={`${p.displayName}'s profile`}>
           <Avatar userId={p.userId} name={p.displayName} version={p.avatarVersion} speaking={p.speaking} />
@@ -111,13 +114,14 @@ export function YouRow({ p, cards, urgent }: { p: SeatView; cards: CardId[]; urg
   return (
     <div
       className={cn(
-        'flex items-center gap-4 rounded-2xl bg-white p-4 ring-1 ring-slate-200/70 dark:bg-slate-900 dark:ring-slate-700/70',
+        'relative flex items-center gap-4 rounded-2xl bg-white p-4 pb-5 ring-1 ring-slate-200/70 dark:bg-slate-900 dark:ring-slate-700/70',
         p.isToAct && 'ring-2 ring-indigo-500 shadow-lg',
         p.isToAct && urgent && 'ring-rose-500 animate-urgent',
         p.won && 'animate-winner',
         p.folded && 'opacity-60',
       )}
     >
+      {p.isToAct && <TurnProgress className="inset-x-4 bottom-1.5" />}
       <div className="relative">
         <Avatar userId={p.userId} name={p.displayName} version={p.avatarVersion} size="lg" speaking={p.speaking} className="bg-indigo-600 text-white" />
         <VoiceDot muted={p.voiceMuted} />

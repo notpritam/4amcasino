@@ -48,7 +48,7 @@ export function LoginPage() {
         </div>
         <h1 className="mb-1 text-center font-display text-2xl font-bold">4AM Casino</h1>
         <p className="mb-6 text-center text-sm text-slate-500">
-          Hold'em with friends. Nobody sees your cards — not even the house.
+          Hold'em with friends. Nobody sees your cards. Not even the house.
         </p>
         <Panel>
           <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">

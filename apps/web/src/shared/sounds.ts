@@ -2,7 +2,7 @@
  * Minimal synthesized game sounds (WebAudio, no assets).
  * Every sound is a named recipe behind one `play(name)` call, so individual
  * sounds can later be swapped for generated/recorded samples (e.g. ElevenLabs)
- * by replacing a recipe with a file-backed player — game code never changes.
+ * by replacing a recipe with a file-backed player. game code never changes.
  */
 
 export type SoundName =
@@ -53,7 +53,7 @@ function ensureCtx(): AudioContext | null {
   }
 }
 
-// browsers unlock audio only after a user gesture — arm once, globally
+// browsers unlock audio only after a user gesture. arm once, globally
 if (typeof window !== 'undefined') {
   const unlock = () => {
     ensureCtx();
@@ -73,7 +73,7 @@ function noise(c: AudioContext): AudioBuffer {
   return buf;
 }
 
-/** A short filtered noise burst — the basis of card/paper sounds. */
+/** A short filtered noise burst. the basis of card/paper sounds. */
 function noiseBurst(
   c: AudioContext,
   at: number,

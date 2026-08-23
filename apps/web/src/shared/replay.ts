@@ -42,7 +42,7 @@ const ACTION_WORDS: Record<PlayerAction['type'], string> = {
 /**
  * Rebuild a hand's public timeline from its stored transcript.
  * Only ever uses public information: actions, opened board cards, and
- * showdown reveals recorded in the settlement — folded hole cards do not
+ * showdown reveals recorded in the settlement. folded hole cards do not
  * exist anywhere in the transcript in readable form.
  */
 export function buildReplay(entries: TranscriptEntry[]): Replay | null {

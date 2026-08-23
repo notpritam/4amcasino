@@ -17,7 +17,7 @@ export interface LeaderboardRow {
 
 export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
   if (rows.length === 0) {
-    return <p className="text-sm text-slate-500">No settled hands yet — go play.</p>;
+    return <p className="text-sm text-slate-500">No settled hands yet. Deal one and come back.</p>;
   }
   return (
     <div className="space-y-2">
@@ -37,8 +37,10 @@ export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
           </span>
           <Avatar userId={r.userId} name={r.displayName ?? r.username} version={r.avatarVersion} size="sm" />
           <span className="min-w-0 flex-1 truncate font-medium">{r.displayName ?? r.username}</span>
-          <span className="hidden text-xs text-slate-400 sm:block">{r.handsPlayed} hands</span>
-          <span className="hidden text-xs text-slate-400 sm:block">best +{fmt(r.biggestWin)}</span>
+          <span className="hidden text-xs text-slate-400 sm:block">{r.handsPlayed} hand{r.handsPlayed === 1 ? '' : 's'}</span>
+          {r.biggestWin > 0 && (
+            <span className="hidden text-xs text-slate-400 sm:block">best +{fmt(r.biggestWin)}</span>
+          )}
           <span
             className={cn(
               'font-display text-lg font-bold',

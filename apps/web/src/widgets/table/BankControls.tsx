@@ -83,7 +83,7 @@ export function BankControls({ roomId }: { roomId: string }) {
 
       <Dialog open={buyOpen} onClose={() => setBuyOpen(false)} title="Buy points from the bank">
         {sent ? (
-          <p className="text-sm text-emerald-600">Request sent — the banker will approve it.</p>
+          <p className="text-sm text-emerald-600">Request sent. The banker will review it.</p>
         ) : (
           <form onSubmit={buy} className="space-y-3">
             <p className="text-sm text-slate-500">
@@ -111,7 +111,7 @@ export function BankControls({ roomId }: { roomId: string }) {
         ) : (
           <div className="space-y-3">
             {requests.map((r) => (
-              <div key={r.id} className="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
+              <div key={r.id} className="flex items-center gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
                 <div className="flex-1">
                   <div className="text-sm font-semibold">
                     {r.username} · <span className="font-display">{fmt(r.amount)}</span>

@@ -12,7 +12,7 @@ export function Button({
     primary: 'bg-indigo-600 text-white hover:bg-indigo-700',
     secondary: 'bg-white text-slate-900 border border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 dark:hover:bg-slate-700',
     ghost: 'bg-transparent text-slate-600 hover:bg-slate-200/60 dark:text-slate-300 dark:hover:bg-slate-800',
-    danger: 'bg-white text-rose-600 border border-rose-200 hover:bg-rose-50',
+    danger: 'bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 dark:bg-slate-800 dark:text-rose-400 dark:border-rose-900 dark:hover:bg-rose-950',
     success: 'bg-emerald-500 text-white hover:bg-emerald-600',
   };
   return (
@@ -61,10 +61,10 @@ export function Badge({
 }) {
   const tones = {
     slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-    indigo: 'bg-indigo-100 text-indigo-700',
-    rose: 'bg-rose-100 text-rose-700',
-    emerald: 'bg-emerald-100 text-emerald-700',
-    amber: 'bg-amber-100 text-amber-700',
+    indigo: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300',
+    rose: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
+    emerald: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+    amber: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
   };
   return (
     <span
@@ -108,7 +108,7 @@ export function Dialog({
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
           >
             ✕
           </button>

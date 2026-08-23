@@ -36,7 +36,7 @@ class VoiceManager {
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      useStore.getState().pushError('microphone blocked — voice chat is off');
+      useStore.getState().pushError('Microphone blocked. Voice chat stays off.');
       return false;
     }
     useStore.getState().patchVoice({ joined: true, muted: false });

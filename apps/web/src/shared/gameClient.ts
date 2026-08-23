@@ -127,7 +127,7 @@ function handle(msg: ServerMsg): void {
       const plain = mulPoint(pointFromHex(msg.point), invScalar(k));
       const card = recoverCard(plain, lookup);
       if (card === null) {
-        store.pushError('could not decode a dealt card — the hand will abort');
+        store.pushError('Could not decode a dealt card. The hand will abort.');
         return;
       }
       play('deal');

@@ -67,9 +67,11 @@ export function PlayingCard({
         {rank}
         <div className="-mt-0.5">{glyph}</div>
       </div>
-      <div className={cn('absolute inset-0 flex items-center justify-center', centerSizes[size])}>
-        {glyph}
-      </div>
+      {(size === 'md' || size === 'lg') && (
+        <div className={cn('absolute inset-0 flex items-center justify-center', centerSizes[size])}>
+          {glyph}
+        </div>
+      )}
       <div className="absolute bottom-0.5 right-1 rotate-180 font-display font-bold leading-tight">
         {rank}
         <div className="-mt-0.5">{glyph}</div>

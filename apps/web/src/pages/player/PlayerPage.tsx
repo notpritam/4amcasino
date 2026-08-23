@@ -89,7 +89,11 @@ export function PlayerPage() {
           tone={p.stats.net > 0 ? 'up' : p.stats.net < 0 ? 'down' : undefined}
         />
         <Stat label="Hands played" value={fmt(p.stats.handsPlayed)} />
-        <Stat label="Biggest win" value={`+${fmt(p.stats.biggestWin)}`} tone="up" />
+        <Stat
+          label="Biggest win"
+          value={p.stats.biggestWin > 0 ? `+${fmt(p.stats.biggestWin)}` : '0'}
+          tone={p.stats.biggestWin > 0 ? 'up' : undefined}
+        />
       </div>
 
       <Panel>
@@ -103,7 +107,7 @@ export function PlayerPage() {
                 {i === 0 && <Badge tone="amber">top rival</Badge>}
                 <Avatar userId={r.userId} name={r.displayName} version={r.avatarVersion} size="sm" />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{r.displayName}</span>
-                <span className="text-xs text-slate-400">{r.handsTogether} hands together</span>
+                <span className="text-xs text-slate-400">{r.handsTogether} hand{r.handsTogether === 1 ? '' : 's'} together</span>
                 <span
                   className={cn(
                     'font-display text-sm font-bold',

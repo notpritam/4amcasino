@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
+import { Microphone, MicrophoneSlash, Timer } from '@phosphor-icons/react';
 import NumberFlow from '@number-flow/react';
 import confetti from 'canvas-confetti';
 import { HAND_CATEGORY_NAMES, handCategory } from '@4am/shared';
@@ -176,7 +177,8 @@ export function TablePage() {
               urgent && 'animate-urgent bg-rose-50 text-rose-600 ring-rose-300 dark:bg-rose-950',
             )}
           >
-            ⏱ 0:{String(secs).padStart(2, '0')}
+            <Timer size={15} weight="bold" className="-mt-0.5 mr-1 inline" />
+            0:{String(secs).padStart(2, '0')}
           </span>
         )}
         {isHost && (
@@ -203,7 +205,21 @@ export function TablePage() {
             onClick={() => (voiceState.joined ? voice.toggleMute() : void voice.join())}
             title={voiceState.joined ? (voiceState.muted ? 'Unmute' : 'Mute') : 'Join voice chat'}
           >
-            {voiceState.joined ? (voiceState.muted ? '🔇 Muted' : '🎙 Live') : '🎙 Join voice'}
+            {voiceState.joined ? (
+              voiceState.muted ? (
+                <>
+                  <MicrophoneSlash size={16} weight="bold" /> Muted
+                </>
+              ) : (
+                <>
+                  <Microphone size={16} weight="bold" /> Live
+                </>
+              )
+            ) : (
+              <>
+                <Microphone size={16} /> Join voice
+              </>
+            )}
           </Button>
           <BankControls roomId={roomId!} />
           <Link to={`/room/${roomId}/ledger`}>
@@ -217,7 +233,7 @@ export function TablePage() {
 
       <div className="grid flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex flex-col gap-4">
-          <div className="grid flex-1 gap-4 md:grid-cols-[280px_minmax(0,1fr)]">
+          <div className="grid gap-4 md:grid-cols-[280px_minmax(0,1fr)]">
             {/* opponents */}
             <div className="space-y-2.5">
               {opponents.length === 0 && (
@@ -232,7 +248,7 @@ export function TablePage() {
             </div>
 
             {/* board */}
-            <div className="relative flex flex-col items-center justify-center gap-6 rounded-3xl bg-slate-200/50 p-6 ring-1 ring-slate-200 dark:bg-slate-900/60 dark:ring-slate-800">
+            <div className="relative flex min-h-[440px] flex-col items-center justify-center gap-6 rounded-3xl bg-slate-200/50 p-6 ring-1 ring-slate-200 dark:bg-slate-900/60 dark:ring-slate-800">
               {/* floating sticker reactions */}
               {floats.map((f) => (
                 <span
@@ -284,7 +300,7 @@ export function TablePage() {
                 <div className="text-sm">
                   <span className="font-semibold text-rose-600">Hand aborted:</span> {hand.abort.reason}
                   {hand.abort.blamedSeat !== null &&
-                    ` — caused by seat ${hand.abort.blamedSeat + 1}; stacks rolled back.`}
+                    `. Caused by seat ${hand.abort.blamedSeat + 1}; stacks rolled back.`}
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2">

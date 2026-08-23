@@ -130,8 +130,11 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
                 ? 'Deal when everyone is seated.'
                 : 'Waiting for the host to deal.'
               : st
-                ? `Waiting for seat ${st.toAct !== null ? st.toAct + 1 : '—'}…`
-                : 'Shuffling — every player is encrypting the deck…'}
+                ? `Waiting for ${
+                    room?.players.find((p) => p.seat === st.toAct)?.displayName ??
+                    `seat ${st.toAct !== null ? st.toAct + 1 : '-'}`
+                  }…`
+                : 'Shuffling: everyone is encrypting the deck…'}
           </div>
         )}
 

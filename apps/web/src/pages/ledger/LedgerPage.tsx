@@ -56,7 +56,7 @@ export function LedgerPage() {
           (verified.ok ? (
             <Badge tone="emerald">chain verified</Badge>
           ) : (
-            <Badge tone="rose">TAMPERED — hashes do not match</Badge>
+            <Badge tone="rose">TAMPERED: hashes do not match</Badge>
           ))}
       </header>
 
@@ -84,7 +84,7 @@ export function LedgerPage() {
       <Panel className="overflow-x-auto p-0">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
+            <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400 dark:border-slate-800">
               <th className="px-4 py-3">When</th>
               <th className="px-4 py-3">Player</th>
               <th className="px-4 py-3">Kind</th>
@@ -95,7 +95,7 @@ export function LedgerPage() {
           </thead>
           <tbody>
             {entries.map((e) => (
-              <tr key={e.id} className="border-b border-slate-50">
+              <tr key={e.id} className="border-b border-slate-50 dark:border-slate-800">
                 <td className="whitespace-nowrap px-4 py-2.5 text-slate-500">
                   {new Date(e.ts).toLocaleString()}
                 </td>
@@ -123,7 +123,7 @@ export function LedgerPage() {
             {entries.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
-                  The ledger is empty — buy points to start.
+                  The ledger is empty. Buy points to start.
                 </td>
               </tr>
             )}

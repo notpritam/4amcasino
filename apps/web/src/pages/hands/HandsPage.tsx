@@ -63,7 +63,7 @@ export function HandsPage() {
             <button
               key={h.handId}
               onClick={() => api.hand(roomId!, h.handId).then(setDetail)}
-              className="flex w-full items-center justify-between rounded-xl bg-white p-4 text-left ring-1 ring-slate-200/70 hover:shadow-md"
+              className="flex w-full items-center justify-between rounded-xl bg-white p-4 text-left ring-1 ring-slate-200/70 hover:shadow-md dark:bg-slate-900 dark:ring-slate-700/70"
             >
               <div>
                 <div className="font-display text-sm font-semibold">hand {h.handId.slice(0, 8)}</div>
@@ -85,7 +85,7 @@ export function HandsPage() {
                 return v.ok ? (
                   <Badge tone="emerald">✓ verified in your browser</Badge>
                 ) : (
-                  <Badge tone="rose">TAMPERED — {v.reason ?? 'invalid'} at entry {v.badSeq}</Badge>
+                  <Badge tone="rose">TAMPERED. {v.reason ?? 'invalid'} at entry {v.badSeq}</Badge>
                 );
               })()}
               <span className="font-mono text-xs text-slate-400">head {detail.head.slice(0, 16)}…</span>

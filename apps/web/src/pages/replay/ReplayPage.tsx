@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { CaretLeft, CaretRight, SkipBack } from '@phosphor-icons/react';
 import { api } from '../../shared/api.ts';
 import { buildReplay, type Replay } from '../../shared/replay.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
@@ -70,7 +71,7 @@ export function ReplayPage() {
         </Badge>
       </header>
       <p className="text-sm text-slate-500">
-        Rebuilt from the signed transcript — only what was public. Folded cards stay secret forever.
+        Rebuilt from the signed transcript, showing only what was public. Folded cards stay secret forever.
       </p>
 
       {/* board */}
@@ -142,16 +143,16 @@ export function ReplayPage() {
       {/* controls */}
       <Panel className="flex items-center gap-3">
         <Button variant="secondary" onClick={() => setIdx(0)} aria-label="restart">
-          ⏮
+          <SkipBack size={16} weight="fill" />
         </Button>
         <Button variant="secondary" onClick={() => setIdx((i) => Math.max(0, i - 1))} aria-label="back">
-          ◀
+          <CaretLeft size={16} weight="bold" />
         </Button>
         <Button onClick={() => (idx >= last ? (setIdx(0), setPlaying(true)) : setPlaying((p) => !p))}>
           {playing ? 'Pause' : 'Play'}
         </Button>
         <Button variant="secondary" onClick={() => setIdx((i) => Math.min(last, i + 1))} aria-label="forward">
-          ▶
+          <CaretRight size={16} weight="bold" />
         </Button>
         <input
           type="range"
