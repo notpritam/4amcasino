@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../shared/api.ts';
 import { useStore } from '../../shared/store.ts';
-import { fmt } from '../../shared/lib/cn.ts';
+import { cn, fmt } from '../../shared/lib/cn.ts';
 import { Badge, Button, Dialog, Input } from '../../shared/ui/index.tsx';
-import { Coins, HandCoins, Tray } from '@phosphor-icons/react';
+import { CaretDown, Coins, HandCoins, Tray } from '@phosphor-icons/react';
 
 interface BuyRequest {
   id: number;
@@ -14,7 +14,13 @@ interface BuyRequest {
   ts: number;
 }
 
-export function BankControls({ roomId }: { roomId: string }) {
+export function BankControls({
+  roomId,
+  mode = 'expanded',
+}: {
+  roomId: string;
+  mode?: 'expanded' | 'hub';
+}) {
   const room = useStore((s) => s.room);
   const userId = useStore((s) => s.auth.userId);
   const pushError = useStore((s) => s.pushError);
@@ -29,6 +35,10 @@ export function BankControls({ roomId }: { roomId: string }) {
   const [note, setNote] = useState('');
   const [sent, setSent] = useState(false);
   const [requests, setRequests] = useState<BuyRequest[]>([]);
+  const [hubOpen, setHubOpen] = useState(false);
+  const hubTriggerRef = useRef<HTMLButtonElement>(null);
+  const firstHubActionRef = useRef<HTMLButtonElement>(null);
+  const restoreHubFocus = useRef(true);
   const isMainBanker = room?.room.bankerId === userId;
   const isBanker = isMainBanker || room?.room.coBankerId === userId;
 
@@ -47,6 +57,28 @@ export function BankControls({ roomId }: { roomId: string }) {
       clearInterval(iv);
     };
   }, [isBanker, roomId]);
+
+  useEffect(() => {
+    if (!hubOpen) return;
+    firstHubActionRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setHubOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      if (restoreHubFocus.current) hubTriggerRef.current?.focus();
+    };
+  }, [hubOpen]);
+
+  function openFromHub(openDialog: (open: boolean) => void) {
+    restoreHubFocus.current = false;
+    setHubOpen(false);
+    openDialog(true);
+    requestAnimationFrame(() => {
+      restoreHubFocus.current = true;
+    });
+  }
 
   async function buy(e: React.FormEvent) {
     e.preventDefault();
@@ -74,21 +106,102 @@ export function BankControls({ roomId }: { roomId: string }) {
 
   return (
     <>
-      <Button variant="secondary" onClick={() => setBuyOpen(true)}>
-        <Coins size={17} /> Buy points
-      </Button>
-      <Button variant="secondary" onClick={() => setSendOpen(true)}>
-        <HandCoins size={17} /> Send chips
-      </Button>
-      {isBanker && (
-        <Button variant="secondary" onClick={() => setInboxOpen(true)} className="relative">
-          <Tray size={17} /> Bank inbox
-          {requests.length > 0 && (
-            <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[0.65rem] font-bold text-white">
-              {requests.length}
-            </span>
+      {mode === 'hub' ? (
+        <div className="relative">
+          <button
+            ref={hubTriggerRef}
+            type="button"
+            className={cn(
+              'relative inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-900 transition-[color,background-color,transform] duration-200',
+              'hover:bg-slate-50 active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600',
+              'dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700',
+            )}
+            onClick={() => setHubOpen((open) => !open)}
+            aria-haspopup="menu"
+            aria-expanded={hubOpen}
+          >
+            <Coins size={17} weight="bold" />
+            Chips
+            <CaretDown
+              size={13}
+              weight="bold"
+              className={hubOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
+            />
+            {requests.length > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[0.65rem] font-bold text-white ring-2 ring-white dark:ring-slate-950">
+                {requests.length > 9 ? '9+' : requests.length}
+              </span>
+            )}
+          </button>
+          {hubOpen && (
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-20 cursor-default"
+                aria-label="Close chips menu"
+                onClick={() => setHubOpen(false)}
+              />
+              <div
+                role="menu"
+                aria-label="Chip controls"
+                className="absolute right-0 top-12 z-30 w-56 rounded-2xl bg-white p-1.5 shadow-[0_20px_60px_rgba(15,23,42,0.18)] ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700"
+              >
+                <button
+                  ref={firstHubActionRef}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => openFromHub(setBuyOpen)}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 dark:hover:bg-slate-800"
+                >
+                  <Coins size={18} /> Buy points
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => openFromHub(setSendOpen)}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 dark:hover:bg-slate-800"
+                >
+                  <HandCoins size={18} /> Send chips
+                </button>
+                {isBanker && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => openFromHub(setInboxOpen)}
+                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 dark:hover:bg-slate-800"
+                  >
+                    <Tray size={18} />
+                    <span className="flex-1">Bank inbox</span>
+                    {requests.length > 0 && (
+                      <span className="rounded-full bg-rose-100 px-2 py-0.5 font-display text-xs font-bold text-rose-700 dark:bg-rose-950 dark:text-rose-300">
+                        {requests.length}
+                      </span>
+                    )}
+                  </button>
+                )}
+              </div>
+            </>
           )}
-        </Button>
+        </div>
+      ) : (
+        <>
+          <Button variant="secondary" onClick={() => setBuyOpen(true)}>
+            <Coins size={17} /> Buy points
+          </Button>
+          <Button variant="secondary" onClick={() => setSendOpen(true)}>
+            <HandCoins size={17} /> Send chips
+          </Button>
+          {isBanker && (
+            <Button variant="secondary" onClick={() => setInboxOpen(true)} className="relative">
+              <Tray size={17} /> Bank inbox
+              {requests.length > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[0.65rem] font-bold text-white">
+                  {requests.length}
+                </span>
+              )}
+            </Button>
+          )}
+        </>
       )}
 
       <Dialog open={buyOpen} onClose={() => setBuyOpen(false)} title="Buy points from the bank">

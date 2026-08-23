@@ -33,10 +33,8 @@ const PlayerPage = lazy(() =>
 const ReplayPage = lazy(() =>
   import('../pages/replay/ReplayPage.tsx').then((module) => ({ default: module.ReplayPage })),
 );
-const DesignBoardPage = lazy(() =>
-  import('../pages/design/DesignBoardPage.tsx').then((module) => ({
-    default: module.DesignBoardPage,
-  })),
+const SettingsPage = lazy(() =>
+  import('../pages/settings/SettingsPage.tsx').then((module) => ({ default: module.SettingsPage })),
 );
 const FairPage = lazy(() =>
   import('../pages/fair/FairPage.tsx').then((module) => ({ default: module.FairPage })),
@@ -124,6 +122,16 @@ export function App() {
             }
           />
           <Route
+            path="/settings"
+            element={
+              <RequireAuth>
+                <AppShell>
+                  <SettingsPage />
+                </AppShell>
+              </RequireAuth>
+            }
+          />
+          <Route
             path="/leaderboard"
             element={
               <RequireAuth>
@@ -144,7 +152,6 @@ export function App() {
             }
           />
           <Route path="/fair" element={<FairPage />} />
-          <Route path="/design" element={<DesignBoardPage />} />
           <Route path="*" element={<Navigate to="/lobby" replace />} />
         </Routes>
       </Suspense>

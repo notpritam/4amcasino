@@ -10,6 +10,7 @@ import {
   Microphone,
   MicrophoneSlash,
   Moon,
+  PauseCircle,
   Play,
   Receipt,
   ShareNetwork,
@@ -49,7 +50,12 @@ import { InviteFriendsDialogBody } from '../../features/friends/FriendsPanel.tsx
 import { LeaderboardTable, type LeaderboardRow } from '../leaderboard/LeaderboardPage.tsx';
 import { ShareHandDialog } from '../../features/share/ShareHandDialog.tsx';
 import type { ShareData } from '../../features/share/shareCard.ts';
-import { unreadChatCount } from './tableUi.ts';
+import {
+  tableUtilityGroups,
+  unreadChatCount,
+  type TableUtilityAction,
+  type TableUtilityGroupId,
+} from './tableUi.ts';
 
 function useNow(tickMs = 500): number {
   const [now, setNow] = useState(Date.now());
@@ -76,6 +82,9 @@ function DesktopIconButton({
   active = false,
   badge = 0,
   buttonRef,
+  className,
+  hasPopup,
+  expanded,
 }: {
   label: string;
   onClick: () => void;
@@ -83,6 +92,9 @@ function DesktopIconButton({
   active?: boolean;
   badge?: number;
   buttonRef?: React.Ref<HTMLButtonElement>;
+  className?: string;
+  hasPopup?: boolean;
+  expanded?: boolean;
 }) {
   return (
     <button
@@ -91,9 +103,12 @@ function DesktopIconButton({
       onClick={onClick}
       aria-label={label}
       title={label}
+      aria-haspopup={hasPopup ? 'menu' : undefined}
+      aria-expanded={hasPopup ? expanded : undefined}
       className={cn(
         desktopIconClass,
         active && 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300',
+        className,
       )}
     >
       {children}
@@ -150,6 +165,8 @@ export function TablePage() {
   const desktopChatCloseRef = useRef<HTMLButtonElement>(null);
   const desktopChatDrawerRef = useRef<HTMLElement>(null);
   const desktopChatTriggerRef = useRef<HTMLButtonElement>(null);
+  const desktopMenuRef = useRef<HTMLDivElement>(null);
+  const desktopMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const now = useNow();
   const reduceMotion = useReducedMotion();
   const unreadChat = unreadChatCount(chat.length, chatSeenCount, chatOpen);
@@ -195,6 +212,28 @@ export function TablePage() {
       if (desktopMedia.matches) desktopChatTriggerRef.current?.focus();
     };
   }, [chatOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const desktopMedia = window.matchMedia('(min-width: 768px)');
+    const closeAtBreakpoint = () => setMenuOpen(false);
+    desktopMedia.addEventListener('change', closeAtBreakpoint);
+    if (!desktopMedia.matches) {
+      return () => desktopMedia.removeEventListener('change', closeAtBreakpoint);
+    }
+    desktopMenuRef.current
+      ?.querySelector<HTMLElement>('a[href], button:not([disabled]), select:not([disabled])')
+      ?.focus();
+    const closeMenu = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('keydown', closeMenu);
+    return () => {
+      desktopMedia.removeEventListener('change', closeAtBreakpoint);
+      document.removeEventListener('keydown', closeMenu);
+      if (desktopMedia.matches) desktopMenuTriggerRef.current?.focus();
+    };
+  }, [menuOpen]);
 
   // winner-reveal choreography: parent staggers, items spring in, cards drop in
   const revealParent = {
@@ -303,6 +342,13 @@ export function TablePage() {
   const amBroke = mySeat !== null && myRoomStack === 0 && !handLive;
   const remaining = hand.deadline ? hand.deadline - now : null;
   const urgent = handLive && remaining !== null && remaining <= 10_000;
+  const utilityGroups = tableUtilityGroups({
+    amSpectator,
+    isBankerHere: !!isBankerHere,
+    isHost: !!isHost,
+    hasSeat: mySeat !== null,
+    hasMeetLink: !!room?.room.meetLink,
+  });
 
   useEffect(() => {
     setPeekSent({});
@@ -842,6 +888,149 @@ export function TablePage() {
     </div>
   );
 
+  const utilityGroupLabels: Record<TableUtilityGroupId, string> = {
+    people: 'People',
+    records: 'Records',
+    table: 'Table',
+    preferences: 'Preferences',
+  };
+  const utilityItemClass =
+    'flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-white';
+
+  const closeUtilityMenu = () => setMenuOpen(false);
+  const utilityAction = (action: TableUtilityAction) => {
+    switch (action) {
+      case 'invite':
+        return (
+          <button
+            type="button"
+            role="menuitem"
+            className={utilityItemClass}
+            onClick={() => {
+              closeUtilityMenu();
+              setInviteOpen(true);
+            }}
+          >
+            <UserPlus size={18} /> Invite friends
+          </button>
+        );
+      case 'watch':
+        return (
+          <button
+            type="button"
+            role="menuitem"
+            className={utilityItemClass}
+            onClick={() => {
+              closeUtilityMenu();
+              setWatchOpen(true);
+            }}
+          >
+            <Eye size={18} /> Watch-only link
+          </button>
+        );
+      case 'video':
+        return (
+          <a
+            href={room.room.meetLink!}
+            target="_blank"
+            rel="noreferrer"
+            role="menuitem"
+            className={utilityItemClass}
+            onClick={closeUtilityMenu}
+          >
+            <VideoCamera size={18} /> Open video call
+          </a>
+        );
+      case 'standings':
+        return (
+          <button
+            type="button"
+            role="menuitem"
+            className={utilityItemClass}
+            onClick={() => {
+              closeUtilityMenu();
+              setStandingsOpen(true);
+            }}
+          >
+            <Trophy size={18} /> Standings
+          </button>
+        );
+      case 'ledger':
+        return (
+          <Link
+            to={`/room/${roomId}/ledger`}
+            role="menuitem"
+            className={utilityItemClass}
+            onClick={closeUtilityMenu}
+          >
+            <Receipt size={18} /> Ledger
+          </Link>
+        );
+      case 'hands':
+        return (
+          <Link
+            to={`/room/${roomId}/hands`}
+            role="menuitem"
+            className={utilityItemClass}
+            onClick={closeUtilityMenu}
+          >
+            <CardsThree size={18} /> Hand history
+          </Link>
+        );
+      case 'sit-out':
+        return (
+          <button
+            type="button"
+            role="menuitem"
+            className={utilityItemClass}
+            onClick={() => {
+              setSitOut(!meSittingOut);
+              closeUtilityMenu();
+            }}
+          >
+            <PauseCircle size={18} /> {meSittingOut ? 'Deal me back in' : 'Sit out next hand'}
+          </button>
+        );
+      case 'timer':
+        return (
+          <label className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200">
+            <Timer size={18} />
+            <span className="flex-1">Turn timer</span>
+            <select
+              aria-label="Turn timer"
+              value={room.room.actionSecs ?? 45}
+              disabled={handLive}
+              onChange={(event) => void api.roomSettings(roomId!, +event.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 dark:border-slate-700 dark:bg-slate-800"
+              title={handLive ? 'Applies from the next hand' : undefined}
+            >
+              {[15, 30, 45, 60, 90, 120].map((seconds) => (
+                <option key={seconds} value={seconds}>
+                  {seconds}s
+                </option>
+              ))}
+              <option value={0}>No limit</option>
+            </select>
+          </label>
+        );
+      case 'theme':
+        return (
+          <button
+            type="button"
+            role="menuitem"
+            className={utilityItemClass}
+            onClick={() => {
+              toggleTheme();
+              closeUtilityMenu();
+            }}
+          >
+            {prefs.theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            {prefs.theme === 'dark' ? 'Use light appearance' : 'Use dark appearance'}
+          </button>
+        );
+    }
+  };
+
   return (
     <div className="table-app-bg min-h-screen">
       {/* MOBILE: full-screen Offsuit-style app view */}
@@ -1092,62 +1281,30 @@ export function TablePage() {
           )}
 
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
-            <Button
-              variant={voiceState.joined ? (voiceState.muted ? 'danger' : 'success') : 'secondary'}
-              className="h-10 rounded-xl"
+            <BankControls roomId={roomId!} mode="hub" />
+            <DesktopIconButton
+              label={
+                voiceState.joined
+                  ? voiceState.muted
+                    ? 'Unmute voice'
+                    : 'Mute voice'
+                  : 'Join voice'
+              }
               onClick={() => (voiceState.joined ? voice.toggleMute() : void voice.join())}
-              title={voiceState.joined ? (voiceState.muted ? 'Unmute' : 'Mute') : 'Join voice chat'}
-            >
-              {voiceState.joined ? (
-                voiceState.muted ? (
-                  <>
-                    <MicrophoneSlash size={17} weight="bold" /> Muted
-                  </>
-                ) : (
-                  <>
-                    <Microphone size={17} weight="bold" /> Voice live
-                  </>
-                )
-              ) : (
-                <>
-                  <Microphone size={17} /> Join voice
-                </>
+              className={cn(
+                voiceState.joined &&
+                  !voiceState.muted &&
+                  '!bg-emerald-100 !text-emerald-700 dark:!bg-emerald-950 dark:!text-emerald-300',
+                voiceState.joined &&
+                  voiceState.muted &&
+                  '!bg-rose-100 !text-rose-700 dark:!bg-rose-950 dark:!text-rose-300',
               )}
-            </Button>
-            <BankControls roomId={roomId!} />
-            <span className="mx-1 h-6 w-px bg-slate-200 dark:bg-slate-800" aria-hidden="true" />
-
-            {!amSpectator && (
-              <DesktopIconButton label="Invite friends" onClick={() => setInviteOpen(true)}>
-                <UserPlus size={19} />
-              </DesktopIconButton>
-            )}
-            {isBankerHere && (
-              <DesktopIconButton label="Create watch-only link" onClick={() => setWatchOpen(true)}>
-                <Eye size={19} />
-              </DesktopIconButton>
-            )}
-            <DesktopIconButton label="Room standings" onClick={() => setStandingsOpen(true)}>
-              <Trophy size={19} />
-            </DesktopIconButton>
-            <Link
-              to={`/room/${roomId}/ledger`}
-              className={desktopIconClass}
-              aria-label="Open ledger"
-              title="Open ledger"
             >
-              <Receipt size={19} />
-            </Link>
-            <Link
-              to={`/room/${roomId}/hands`}
-              className={desktopIconClass}
-              aria-label="Open hand history"
-              title="Open hand history"
-            >
-              <CardsThree size={19} />
-            </Link>
-            <DesktopIconButton label="Toggle theme" onClick={toggleTheme}>
-              {prefs.theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
+              {voiceState.joined && voiceState.muted ? (
+                <MicrophoneSlash size={19} weight="bold" />
+              ) : (
+                <Microphone size={19} weight={voiceState.joined ? 'bold' : 'regular'} />
+              )}
             </DesktopIconButton>
             <DesktopIconButton
               label={unreadChat > 0 ? `Open chat, ${unreadChat} unread messages` : 'Open chat'}
@@ -1164,6 +1321,9 @@ export function TablePage() {
                 label="More table controls"
                 onClick={() => setMenuOpen((open) => !open)}
                 active={menuOpen}
+                hasPopup
+                expanded={menuOpen}
+                buttonRef={desktopMenuTriggerRef}
               >
                 <DotsThreeVertical size={20} weight="bold" />
               </DesktopIconButton>
@@ -1174,47 +1334,31 @@ export function TablePage() {
                     aria-label="Close table controls"
                     onClick={() => setMenuOpen(false)}
                   />
-                  <div className="absolute right-0 top-12 z-30 w-64 space-y-1 rounded-2xl bg-white p-2 shadow-[0_20px_60px_rgba(15,23,42,0.18)] ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
-                    {mySeat !== null && (
-                      <button
-                        className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
-                        onClick={() => {
-                          setSitOut(!meSittingOut);
-                          setMenuOpen(false);
-                        }}
+                  <div
+                    ref={desktopMenuRef}
+                    role="menu"
+                    aria-label="Table controls"
+                    className="absolute right-0 top-12 z-30 w-72 rounded-2xl bg-white p-2 shadow-[0_20px_60px_rgba(15,23,42,0.18)] ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700"
+                  >
+                    {utilityGroups.map((group, index) => (
+                      <div
+                        key={group.id}
+                        role="group"
+                        aria-label={utilityGroupLabels[group.id]}
+                        className={cn(
+                          index > 0 && 'mt-1 border-t border-slate-100 pt-1 dark:border-slate-800',
+                        )}
                       >
-                        {meSittingOut ? 'Deal me back in' : 'Sit out next hand'}
-                      </button>
-                    )}
-                    {room.room.meetLink && (
-                      <a
-                        href={room.room.meetLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
-                      >
-                        <VideoCamera size={17} /> Open video call
-                      </a>
-                    )}
-                    {isHost && (
-                      <label className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
-                        Turn timer
-                        <select
-                          value={room.room.actionSecs ?? 45}
-                          disabled={handLive}
-                          onChange={(event) => void api.roomSettings(roomId!, +event.target.value)}
-                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-800"
-                          title={handLive ? 'Applies from the next hand' : undefined}
-                        >
-                          {[15, 30, 45, 60, 90, 120].map((seconds) => (
-                            <option key={seconds} value={seconds}>
-                              {seconds}s
-                            </option>
-                          ))}
-                          <option value={0}>No limit</option>
-                        </select>
-                      </label>
-                    )}
+                        <div className="px-3 pb-1 pt-2 text-[0.64rem] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+                          {utilityGroupLabels[group.id]}
+                        </div>
+                        {group.actions.map((action) => (
+                          <div key={action} role="none">
+                            {utilityAction(action)}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
                   </div>
                 </>
               )}
