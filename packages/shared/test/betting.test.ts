@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { startHand } from '../src/betting.js';
+import {
+  applyAction,
+  legalActions,
+  nextStreet,
+  startHand,
+  streetClosed,
+} from '../src/betting.js';
 
 const seats3 = [
   { seat: 2, stack: 1000 },
@@ -42,5 +48,116 @@ describe('startHand', () => {
       20,
     );
     expect(st.seats[0]).toMatchObject({ seat: 0, committed: 8, stack: 0, allIn: true });
+  });
+});
+
+const mk = () =>
+  startHand(
+    [
+      { seat: 0, stack: 1000 },
+      { seat: 1, stack: 1000 },
+      { seat: 2, stack: 1000 },
+    ],
+    2,
+    10,
+    20,
+  );
+
+describe('preflop action', () => {
+  it('call, call, check closes the street (BB option)', () => {
+    let st = mk();
+    st = applyAction(st, 2, { type: 'call' });
+    st = applyAction(st, 0, { type: 'call' });
+    expect(streetClosed(st)).toBe(false); // BB still has the option
+    st = applyAction(st, 1, { type: 'check' });
+    expect(streetClosed(st)).toBe(true);
+  });
+  it('raise reopens action', () => {
+    let st = mk();
+    st = applyAction(st, 2, { type: 'call' });
+    st = applyAction(st, 0, { type: 'raise', amount: 60 });
+    expect(st.currentBet).toBe(60);
+    expect(st.needToAct).toEqual([1, 2]);
+    const la = legalActions(st)!;
+    expect(la).toMatchObject({ seat: 1, callAmount: 40, minRaiseTo: 100, canRaise: true });
+  });
+  it('rejects illegal moves', () => {
+    const st = mk();
+    expect(() => applyAction(st, 0, { type: 'call' })).toThrow(); // not their turn
+    expect(() => applyAction(st, 2, { type: 'check' })).toThrow(); // facing a bet
+    expect(() => applyAction(st, 2, { type: 'raise', amount: 30 })).toThrow(); // below min raise-to 40
+  });
+  it('fold to one player ends the hand', () => {
+    let st = mk();
+    st = applyAction(st, 2, { type: 'fold' });
+    st = applyAction(st, 0, { type: 'fold' });
+    expect(st.winnerByFold).toBe(1);
+    expect(streetClosed(st)).toBe(true);
+  });
+});
+
+describe('postflop', () => {
+  const flop = () => {
+    let st = mk();
+    st = applyAction(st, 2, { type: 'call' });
+    st = applyAction(st, 0, { type: 'call' });
+    st = applyAction(st, 1, { type: 'check' });
+    return nextStreet(st);
+  };
+  it('first to act is SB; checks around close the street', () => {
+    let st = flop();
+    expect(st.street).toBe('flop');
+    expect(st.toAct).toBe(0);
+    st = applyAction(st, 0, { type: 'check' });
+    st = applyAction(st, 1, { type: 'check' });
+    st = applyAction(st, 2, { type: 'check' });
+    expect(streetClosed(st)).toBe(true);
+  });
+  it('heads-up: BB acts first postflop (button last)', () => {
+    let st = startHand(
+      [
+        { seat: 4, stack: 500 },
+        { seat: 6, stack: 500 },
+      ],
+      4,
+      5,
+      10,
+    );
+    st = applyAction(st, 4, { type: 'call' });
+    st = applyAction(st, 6, { type: 'check' });
+    st = nextStreet(st);
+    expect(st.toAct).toBe(6); // BB first, button (seat 4) last
+  });
+  it('bet must be at least the big blind', () => {
+    const st = flop();
+    expect(() => applyAction(st, 0, { type: 'bet', amount: 5 })).toThrow();
+    expect(applyAction(st, 0, { type: 'bet', amount: 20 }).currentBet).toBe(20);
+  });
+});
+
+describe('incomplete all-in raise', () => {
+  it('does not reopen raise rights', () => {
+    // seat 1 has only 70: raise-to 70 over a 60 bet is incomplete (min would be 100)
+    let st = startHand(
+      [
+        { seat: 0, stack: 1000 },
+        { seat: 1, stack: 70 },
+        { seat: 2, stack: 1000 },
+      ],
+      2,
+      10,
+      20,
+    );
+    st = applyAction(st, 2, { type: 'raise', amount: 60 });
+    st = applyAction(st, 0, { type: 'call' });
+    st = applyAction(st, 1, { type: 'raise', amount: 70 }); // all-in incomplete raise
+    expect(st.currentBet).toBe(70);
+    // seats 2 and 0 must respond but cannot re-raise
+    const la2 = legalActions(st)!;
+    expect(la2.seat).toBe(2);
+    expect(la2.canRaise).toBe(false);
+    st = applyAction(st, 2, { type: 'call' });
+    const la0 = legalActions(st)!;
+    expect(la0).toMatchObject({ seat: 0, canRaise: false, callAmount: 10 });
   });
 });
