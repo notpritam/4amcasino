@@ -66,10 +66,28 @@ export function sendChat(text: string, kind: 'text' | 'sticker' | 'phrase' = 'te
 function handle(msg: ServerMsg): void {
   const store = useStore.getState();
   switch (msg.t) {
-    case 'room_state':
+    case 'room_state': {
       store.setRoom(msg);
+      // after a reconnect (deploy or network drop): if the server no longer has
+      // our hand, stop showing it as live instead of freezing the table
+      if (wsClient.consumeResync() && !msg.handActive) {
+        const h = useStore.getState().hand;
+        if (h.handId && !h.result && !h.abort) {
+          store.patchHand({
+            abort: {
+              t: 'hand_abort',
+              handId: h.handId,
+              reason: 'The server restarted during this hand. Bets were returned; the host can deal again.',
+              blamedSeat: null,
+            },
+            deadline: null,
+          });
+          sessionStorage.removeItem(`4am/handkey/${h.handId}`);
+        }
+      }
       voice.syncPeers(msg.players);
       return;
+    }
     case 'chat':
       store.pushChat({ from: msg.from, userId: msg.userId, text: msg.text, kind: msg.kind, ts: msg.ts });
       return;

@@ -26,7 +26,11 @@ export function createApp(dbPath: string): { app: FastifyInstance; db: DB } {
     db.close();
   });
 
-  app.get('/api/health', async () => ({ ok: true }));
+  // storage: 'disk' when the DB lives on a mounted volume that survives deploys
+  app.get('/api/health', async () => ({
+    ok: true,
+    storage: dbPath.startsWith('/data') ? 'disk' : 'ephemeral',
+  }));
 
   app.post('/api/register', async (req, reply) => {
     const parsed = registerSchema.safeParse(req.body);

@@ -12,3 +12,11 @@ app
     console.error(err);
     process.exit(1);
   });
+
+// deploys send SIGTERM: close sockets and flush SQLite before exiting
+for (const sig of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(sig, () => {
+    void app.close().then(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5000).unref();
+  });
+}
