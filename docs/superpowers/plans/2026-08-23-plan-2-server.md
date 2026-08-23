@@ -67,7 +67,7 @@ Semantics locked here:
 - `bet`/`raise` `amount` is the seat's TOTAL committed for the street after the action ("raise to"). Legal raise: `amount >= currentBet + lastRaiseSize`, or all-in for less (an incomplete raise updates `currentBet` and re-adds unmatched seats to `needToAct` but does NOT update `lastRaiseSize`/`lastFullRaiseAt`, so raise rights don't reopen).
 - `canRaise` for a seat = `lastActedAt === null || lastActedAt < lastFullRaiseAt`.
 - Fold leaving one unfolded seat sets `winnerByFold` and empties `needToAct`.
-- `nextStreet` zeroes street state, sets `lastRaiseSize = bb`, `lastFullRaiseAt = 0`, `toAct` = first unfolded non-all-in seat in `seats` order (index 0 = SB side first, correct postflop for both ring and heads-up), `needToAct` accordingly; if fewer than 2 unfolded non-all-in seats, `toAct = null`, `needToAct = []` (streets just run out).
+- `nextStreet` zeroes street state, sets `lastRaiseSize = bb`, `lastFullRaiseAt = 0`, `toAct` = first unfolded non-all-in seat AFTER `buttonSeat` in `seats` order (ring: the SB side; heads-up: the BB — button acts last postflop), `needToAct` in order from there; if fewer than 2 unfolded non-all-in seats, `toAct = null`, `needToAct = []` (streets just run out).
 - `computePots`: slice by sorted distinct positive `total` levels over ALL seats (folded chips stay in pots, folded seats never eligible); merge adjacent slices with identical eligible sets.
 - `awardPots`: per pot, winners = eligible ∩ max score; integer split; odd chips go to the earliest winner in `seatOrder` (pass dealing order — first after button gets odd chip).
 
@@ -346,7 +346,7 @@ export function nextStreet(prev: BettingState): BettingState {
   return st;
 }
 ```
-NOTE — the `needToAct` rebuild in bet/raise walks seats in order after the actor, so action continues clockwise. `nextStreet` starts from `seats[0]` (SB side), which is correct postflop for ring and heads-up.
+NOTE — the `needToAct` rebuild in bet/raise walks seats in order after the actor, so action continues clockwise. `nextStreet` starts from the first live seat after `buttonSeat` (ring: SB; heads-up: BB, since the button acts last postflop).
 
 - [ ] **Step 4: Run — PASS.**
 - [ ] **Step 5: Commit** — `feat(shared): betting engine part 2 - actions, legality, streets`
@@ -676,6 +676,8 @@ describe('bank flow', () => {
 //         DB stacks unchanged from before the hand.
 ```
 
+- [ ] **Step 0: DLEQ unmask proofs in `@4am/mental-poker`** (spec amendment 2026-08-23: forged showdown reveals were possible without this). New `src/dleq.ts`:
+  `handKeyCommit(k: bigint): Point` (= k·G); `proveUnmask(k: bigint, pIn: Point): { out: Point; proof: DleqProof }` where `out = k⁻¹·pIn` and the Chaum–Pedersen proof shows `log_G(K) == log_out(pIn) == k` (Fiat–Shamir over sha512, domain-separated); `verifyUnmask(commit: Point, pIn: Point, out: Point, proof: DleqProof): boolean`. Also `signContent`/`verifyContent` (ed25519 over `canonicalize({handId, type, body})`) for order-independent message signatures — the server assigns transcript order. TDD: honest proof verifies; proof with wrong key, swapped out-point, or tampered proof fails; content sig round-trip.
 - [ ] **Step 1: Write wsProtocol.ts schemas in packages/shared (+ zod dep), typecheck.**
 - [ ] **Step 2: Write the integration test first (it will fail: modules missing).**
 - [ ] **Step 3: Implement hub.ts (connect/auth/join/chat/room_state, socket lifecycle).**

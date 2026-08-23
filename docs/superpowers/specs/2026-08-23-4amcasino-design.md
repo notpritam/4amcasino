@@ -44,7 +44,9 @@ Group: **ristretto255** (prime-order, via `@noble/curves`). All keys are **per-h
 
 **Shuffle-mask phase (start of each hand).** The deck starts as the canonical 52 points. In seat order, each player multiplies every point by their secret hand-scalar `k_i` and applies a private random permutation, then broadcasts the resulting deck (via the server relay). After all players have gone, the deck is masked by the product of all keys and permuted by the composition of all permutations — its order is unknown to every party.
 
-**Dealing a hole card.** For the card at a given deck index, every player *except the recipient* publishes their partial unmask (multiplication by `k_i⁻¹`) of that point, in any order. The recipient applies their own `k_i⁻¹` **locally, last** — so only they learn the card. Observers see a point still masked by the recipient's key; under DDH this reveals nothing.
+**Key commitments & unmask proofs.** At hand start each player publishes a commitment `K_i = k_i·G` to their hand key. Every partial unmask any player ever sends (dealing, board, showdown reveal) carries a Chaum–Pedersen DLEQ proof that it was computed with exactly the committed key. A wrong share is therefore rejected the moment it arrives, attributed to its sender — and a showdown reveal cannot claim a different card than the one dealt. Unmasking is sequential per card (each player applies `k_i⁻¹` to the previous player's output); chains for different cards run pipelined in parallel.
+
+**Dealing a hole card.** For the card at a given deck index, every player *except the recipient* applies their proven partial unmask in sequence. The recipient applies their own `k_i⁻¹` **locally, last** — so only they learn the card. Observers see a point still masked by the recipient's key; under DDH this reveals nothing.
 
 **Community cards.** All players publish their partial unmasks; the resulting plaintext point is looked up in the canonical mapping. Anyone can verify.
 
@@ -61,7 +63,7 @@ Group: **ristretto255** (prime-order, via `@noble/curves`). All keys are **per-h
 ## 4. Threat model (explicit)
 
 - **Server operator**: cannot see any card, ever — cards exist only masked under keys the server never has. Server *can* deny service or misorder messages; signatures + transcript hashes make tampering evident to clients.
-- **Malicious player**: cannot learn others' cards (DDH). Can mis-shuffle (e.g., duplicate an unknown card); this is **detected** when an unmask yields a point outside the canonical 52, a duplicate appears among revealed cards, or in `strict-audit` mode at the end of every hand — and **attributed** via the signed transcript. This is detect-and-attribute, not ZK-prevented; accepted trade for a friends game (documented in README).
+- **Malicious player**: cannot learn others' cards (DDH). Cannot send a wrong unmask share or forge a showdown reveal — every share carries a DLEQ proof against their hand-key commitment, so those are rejected and attributed instantly. Can still mis-shuffle (e.g., duplicate an unknown card); that is **detected** when an open yields a point outside the canonical 52, a duplicate appears among opened cards, or on key reveal (dispute / `strict-audit`) — and **attributed** via the signed transcript plus key commitments (a revealed key that doesn't match its commitment, or a shuffle step that isn't a permutation of `k·prevDeck`, pinpoints the cheater). Shuffle honesty is detect-and-attribute, not ZK-prevented; accepted trade for a friends game (documented in README).
 - **Collusion out-of-band** (friends sharing screens): out of scope — no protocol prevents it.
 
 ## 5. Bank & ledger
