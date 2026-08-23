@@ -17,7 +17,7 @@ Points (chips) are **play money tracked as an IOU ledger**: players buy points f
 - Simple to self-host: one Node process + SQLite file.
 
 ### Non-goals (MVP)
-- Real-money payments, tournaments/sit-n-gos, other poker variants, spectator chat, mobile apps, ZK shuffle proofs (see §4 threat model).
+- Real-money payments, tournaments/sit-n-gos, other poker variants, mobile apps, ZK shuffle proofs (see §4 threat model). (Simple in-table text chat IS in scope — see §7.)
 
 ## 2. Architecture
 
@@ -81,7 +81,7 @@ Group: **ristretto255** (prime-order, via `@noble/curves`). All keys are **per-h
 ## 7. Web app (Feature-Sliced Design)
 
 - **Stack**: Vite, React 18, TypeScript, Tailwind, shadcn/ui, zustand for state.
-- **Design language**: minimal and clean — dark neutral background, a single restrained felt-green table ellipse, high-contrast white/red suits, shadcn components (buttons, dialogs, sheets, toasts) with generous spacing. No skeuomorphic clutter.
+- **Design language**: minimal, flat, light theme per the reference at `docs/design/reference-table.png` — light blue-gray background, white surfaces, a single indigo accent. No felt ellipse or skeuomorphism. Table layout follows the reference: opponents as a vertical list of rows on the left (avatar, name, stack, last action, two face-down cards); large white community cards centered with a pot pill above; your own row (stack + face-up hole cards) below the board; a full-width indigo action bar at the bottom (current bet, chip denominations, bet slider from 0 to all-in, Fold/Call/Raise buttons, your balance); timer pill and room info in the header; collapsible chat sidebar on the right (plain text chat over the room WS, stored in transcript as unsigned chatter — not part of game state).
 
 ```
 apps/web/src/
