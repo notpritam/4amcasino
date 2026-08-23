@@ -12,7 +12,7 @@ import {
   recoverCard,
   signContent,
 } from '@4am/mental-poker';
-import type { PlayerAction, ServerMsg } from '@4am/shared';
+import { legalActions, type PlayerAction, type ServerMsg } from '@4am/shared';
 import { useStore } from './store.ts';
 import { wsClient } from './ws.ts';
 import { voice } from './voice.ts';
@@ -205,8 +205,19 @@ function handle(msg: ServerMsg): void {
         actionSeq: msg.actionSeq,
         deadline: msg.deadline,
         board: msg.board,
-        ...(streetChanged ? { lastActions: {} } : {}),
+        ...(streetChanged ? { lastActions: {}, preAction: null } : {}),
       });
+      // fire a pre-selected action the moment the turn arrives
+      const pre = streetChanged ? null : prev.preAction;
+      if (pre && mySeat !== undefined && msg.state.toAct === mySeat) {
+        const la = legalActions(msg.state);
+        if (la && la.seat === mySeat) {
+          useStore.getState().patchHand({ preAction: null });
+          if (pre === 'check-fold') act(la.canCheck ? { type: 'check' } : { type: 'fold' });
+          else if (pre === 'call-any') act(la.canCheck ? { type: 'check' } : { type: 'call' });
+          else if (pre === 'check' && la.canCheck) act({ type: 'check' });
+        }
+      }
       return;
     }
 

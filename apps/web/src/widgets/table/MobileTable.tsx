@@ -177,9 +177,35 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
   }
 
   if (!myTurn || !la || !st) {
+    const canPreAct = !iFolded && dealtIn && !!st;
+    const preActions = [
+      { key: 'check-fold', label: 'Check / Fold' },
+      { key: 'check', label: 'Check' },
+      { key: 'call-any', label: 'Call any' },
+    ] as const;
     return (
       <div className="space-y-2">
         {showBtn}
+        {canPreAct && (
+          <div className="flex gap-1.5">
+            {preActions.map((pa) => (
+              <button
+                key={pa.key}
+                onClick={() =>
+                  useStore.getState().patchHand({ preAction: hand.preAction === pa.key ? null : pa.key })
+                }
+                className={cn(
+                  'flex-1 rounded-full border px-2 py-2 text-xs font-semibold',
+                  hand.preAction === pa.key
+                    ? 'border-white bg-white text-slate-900'
+                    : 'border-white/25 text-white/70',
+                )}
+              >
+                {pa.label}
+              </button>
+            ))}
+          </div>
+        )}
         <p className="py-2 text-center text-sm text-white/50">{statusText ?? 'Waiting…'}</p>
       </div>
     );

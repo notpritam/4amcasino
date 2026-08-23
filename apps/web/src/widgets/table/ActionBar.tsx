@@ -6,9 +6,16 @@ import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
 import { Button } from '../../shared/ui/index.tsx';
 
+const PRE_ACTIONS = [
+  { key: 'check-fold', label: 'Check / Fold' },
+  { key: 'check', label: 'Check' },
+  { key: 'call-any', label: 'Call any' },
+] as const;
+
 export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; isHost: boolean; urgent: boolean }) {
   const hand = useStore((s) => s.hand);
   const room = useStore((s) => s.room);
+  const patchHand = useStore((s) => s.patchHand);
   const [raiseTo, setRaiseTo] = useState(0);
 
   const st = hand.betting;
@@ -35,6 +42,9 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
     (!!hand.shown[mySeat] || !!hand.showdown?.reveals.some((r) => r.seat === mySeat));
   const canShow = dealtIn && !alreadyPublic && (iFolded || handOver);
   const [showSentFor, setShowSentFor] = useState<string | null>(null);
+
+  // pre-select an action before your turn; the game client fires it when you are to act
+  const canPreAct = !handIdle && !iFolded && dealtIn && !myTurn && !!st;
 
   // players still in the hand whose connection dropped: the hand holds for them
   const disconnected =
@@ -184,6 +194,26 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
                       `seat ${st.toAct !== null ? st.toAct + 1 : '-'}`
                     }…`
                   : 'Shuffling: everyone is encrypting the deck…'}
+          </div>
+        )}
+
+        {canPreAct && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs uppercase tracking-wide text-indigo-200">Ahead of turn</span>
+            {PRE_ACTIONS.map((pa) => (
+              <button
+                key={pa.key}
+                onClick={() => patchHand({ preAction: hand.preAction === pa.key ? null : pa.key })}
+                className={cn(
+                  'rounded-full px-3 py-1 text-xs font-semibold transition-colors',
+                  hand.preAction === pa.key
+                    ? 'bg-white text-indigo-700'
+                    : 'bg-white/15 text-white hover:bg-white/25',
+                )}
+              >
+                {pa.label}
+              </button>
+            ))}
           </div>
         )}
 

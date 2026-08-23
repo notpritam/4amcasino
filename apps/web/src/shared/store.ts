@@ -60,6 +60,8 @@ interface HandView {
   showdown: ShowdownMsg | null;
   result: HandEndMsg | null;
   abort: HandAbortMsg | null;
+  /** Armed before your turn; the game client fires it the moment you are to act. */
+  preAction: 'check-fold' | 'check' | 'call-any' | null;
 }
 
 export const emptyHand: HandView = {
@@ -77,6 +79,7 @@ export const emptyHand: HandView = {
   showdown: null,
   result: null,
   abort: null,
+  preAction: null,
 };
 
 interface Store {
