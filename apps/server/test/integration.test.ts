@@ -308,6 +308,14 @@ describe('full hand integration', () => {
       .prepare('SELECT head FROM transcripts WHERE hand_id = ?')
       .get(players[0]!.handEnd!.handId) as { head: string };
     expect(row.head).toBe(players[0]!.handEnd!.head);
+
+    // the session report reflects the played hand
+    const session = await host.api(`/api/rooms/${room.id}/session`);
+    expect(session.hands).toBeGreaterThanOrEqual(1);
+    expect(session.firstTs).toBeLessThanOrEqual(session.lastTs);
+    expect(session.biggestPot).toBeGreaterThan(0);
+    const nets = session.players.reduce((s: number, p: { net: number }) => s + p.net, 0);
+    expect(nets).toBe(0);
   });
 
   it('fold-out ends the hand without any reveal', async () => {

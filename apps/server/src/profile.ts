@@ -209,4 +209,58 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
     const rows = db.prepare(LEADERBOARD_SQL.replace('%ROOM%', 'AND l.room_id = @roomId')).all({ roomId: id });
     return { rows };
   });
+
+  // the full session report: duration, hands, biggest pot, per-player detail
+  app.get('/api/rooms/:id/session', authed, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!getRoom(db, id)) return reply.code(404).send({ error: 'no such room' });
+    if (!isMember(db, id, req.userId)) return reply.code(403).send({ error: 'not a member' });
+    const span = db
+      .prepare('SELECT COUNT(*) as hands, MIN(ts) as firstTs, MAX(ts) as lastTs FROM transcripts WHERE room_id = ?')
+      .get(id) as { hands: number; firstTs: number | null; lastTs: number | null };
+    const pot = db
+      .prepare(
+        `SELECT MAX(potSum) as biggestPot FROM (
+           SELECT SUM(CASE WHEN delta > 0 THEN delta ELSE 0 END) as potSum
+           FROM ledger WHERE room_id = ? AND kind = 'hand-settlement' GROUP BY ref
+         )`,
+      )
+      .get(id) as { biggestPot: number | null };
+    const players = db
+      .prepare(
+        `SELECT u.id as userId, u.username, COALESCE(u.display_name, u.username) as displayName,
+                u.avatar_version as avatarVersion, rp.stack, rp.seat,
+                COALESCE(b.bought, 0) as bought,
+                COALESCE(st.handsPlayed, 0) as handsPlayed,
+                COALESCE(st.wins, 0) as wins,
+                COALESCE(st.net, 0) as net,
+                COALESCE(st.biggestWin, 0) as biggestWin,
+                COALESCE(st.biggestLoss, 0) as biggestLoss
+         FROM room_players rp
+         JOIN users u ON u.id = rp.user_id
+         LEFT JOIN (
+           SELECT user_id, SUM(delta) as bought FROM ledger
+           WHERE room_id = @roomId AND kind IN ('purchase', 'revert') GROUP BY user_id
+         ) b ON b.user_id = rp.user_id
+         LEFT JOIN (
+           SELECT user_id,
+                  COUNT(*) as handsPlayed,
+                  SUM(CASE WHEN delta > 0 THEN 1 ELSE 0 END) as wins,
+                  SUM(delta) as net,
+                  MAX(delta) as biggestWin,
+                  MIN(delta) as biggestLoss
+           FROM ledger WHERE room_id = @roomId AND kind = 'hand-settlement' GROUP BY user_id
+         ) st ON st.user_id = rp.user_id
+         WHERE rp.room_id = @roomId
+         ORDER BY net DESC`,
+      )
+      .all({ roomId: id });
+    return {
+      hands: span.hands,
+      firstTs: span.firstTs,
+      lastTs: span.lastTs,
+      biggestPot: pot.biggestPot ?? 0,
+      players,
+    };
+  });
 }
