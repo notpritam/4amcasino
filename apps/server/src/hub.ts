@@ -53,6 +53,7 @@ export function attachHub(
     ws.send(JSON.stringify({ t: 'hello', serverPublicKey: serverIdentity.publicKey }));
 
     ws.on('message', (raw) => {
+      if (!db.open) return; // shutting down: sockets drain, nothing to do
       let json: unknown;
       try {
         json = JSON.parse(String(raw));

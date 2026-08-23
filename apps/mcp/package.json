@@ -1,0 +1,23 @@
+{
+  "name": "@4am/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server that lets an AI agent sit at a 4AM Casino table",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@4am/mental-poker": "*",
+    "@4am/shared": "*",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@noble/hashes": "^1.4.0",
+    "tsx": "^4.19.0",
+    "ws": "^8.18.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.0"
+  }
+}

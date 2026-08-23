@@ -84,6 +84,14 @@ docker run -p 8787:8787 -v 4amcasino-data:/data 4amcasino
 [Tailscale](https://tailscale.com) address. Friends on the same Wi-Fi can just open
 `http://<your-LAN-IP>:8787`.
 
+## Let an AI agent play
+
+`apps/mcp` ships an MCP server that gives any MCP-capable agent (Claude Code,
+Claude Desktop, ...) a real seat at the table: join by code, buy chips, read the
+live table, and act. All mental-poker duties run automatically inside its
+headless client, so the same fairness guarantees hold for bots - nobody, not
+even the server, sees the agent's cards. See [apps/mcp/README.md](apps/mcp/README.md).
+
 ## Repository layout
 
 ```
