@@ -17,6 +17,7 @@ const profileSchema = z.object({
   theme: z.enum(['light', 'dark']).optional(),
   quickPhrases: z.array(z.string().trim().min(1).max(60)).max(8).optional(),
   privateMode: z.boolean().optional(),
+  autoJoinInvites: z.boolean().optional(),
 });
 
 const avatarSchema = z.object({
@@ -26,8 +27,9 @@ const avatarSchema = z.object({
 const LEADERBOARD_SQL = `
   SELECT u.id as userId, u.username, u.display_name as displayName, u.avatar_version as avatarVersion,
          SUM(l.delta) as net, COUNT(*) as handsPlayed, MAX(l.delta) as biggestWin
-  FROM ledger l JOIN users u ON u.id = l.user_id
-  WHERE l.kind = 'hand-settlement' AND u.private_mode = 0 %ROOM%
+  FROM ledger l JOIN users u ON u.id = l.user_id JOIN rooms r ON r.id = l.room_id
+  WHERE l.kind = 'hand-settlement' AND u.private_mode = 0 AND r.voided = 0
+    AND NOT EXISTS (SELECT 1 FROM ledger v WHERE v.room_id = l.room_id AND v.kind = 'void-hand' AND v.ref = l.ref) %ROOM%
   GROUP BY u.id ORDER BY net DESC, handsPlayed DESC
 `;
 
@@ -37,7 +39,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
   app.get('/api/profile', authed, async (req) => {
     const row = db
       .prepare(
-        'SELECT id, username, display_name, bio, avatar_version, card_back, four_color, theme, quick_phrases, private_mode, avatar IS NOT NULL as hasAvatar FROM users WHERE id = ?',
+        'SELECT id, username, display_name, bio, avatar_version, card_back, four_color, theme, quick_phrases, private_mode, auto_join_invites, avatar IS NOT NULL as hasAvatar FROM users WHERE id = ?',
       )
       .get(req.userId) as {
       id: number;
@@ -50,6 +52,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       theme: string;
       quick_phrases: string | null;
       private_mode: number;
+      auto_join_invites: number;
       hasAvatar: number;
     };
     return {
@@ -64,6 +67,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       theme: row.theme,
       quickPhrases: row.quick_phrases ? (JSON.parse(row.quick_phrases) as string[]) : [],
       privateMode: !!row.private_mode,
+      autoJoinInvites: !!row.auto_join_invites,
     };
   });
 
@@ -73,6 +77,11 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
     const { displayName, bio, cardBack, fourColor, theme, quickPhrases, privateMode } = parsed.data;
     if (privateMode !== undefined)
       db.prepare('UPDATE users SET private_mode = ? WHERE id = ?').run(privateMode ? 1 : 0, req.userId);
+    if (parsed.data.autoJoinInvites !== undefined)
+      db.prepare('UPDATE users SET auto_join_invites = ? WHERE id = ?').run(
+        parsed.data.autoJoinInvites ? 1 : 0,
+        req.userId,
+      );
     if (theme !== undefined)
       db.prepare('UPDATE users SET theme = ? WHERE id = ?').run(theme, req.userId);
     if (quickPhrases !== undefined)
@@ -142,8 +151,10 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
 
     const stats = db
       .prepare(
-        `SELECT COALESCE(SUM(delta),0) as net, COUNT(*) as handsPlayed, COALESCE(MAX(delta),0) as biggestWin
-         FROM ledger WHERE user_id = ? AND kind = 'hand-settlement'`,
+        `SELECT COALESCE(SUM(l.delta),0) as net, COUNT(*) as handsPlayed, COALESCE(MAX(l.delta),0) as biggestWin
+         FROM ledger l JOIN rooms r ON r.id = l.room_id
+         WHERE l.user_id = ? AND l.kind = 'hand-settlement' AND r.voided = 0
+           AND NOT EXISTS (SELECT 1 FROM ledger v WHERE v.room_id = l.room_id AND v.kind = 'void-hand' AND v.ref = l.ref)`,
       )
       .get(id) as { net: number; handsPlayed: number; biggestWin: number };
 
@@ -226,8 +237,10 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
     const pot = db
       .prepare(
         `SELECT MAX(potSum) as biggestPot FROM (
-           SELECT SUM(CASE WHEN delta > 0 THEN delta ELSE 0 END) as potSum
-           FROM ledger WHERE room_id = ? AND kind = 'hand-settlement' GROUP BY ref
+           SELECT SUM(CASE WHEN l.delta > 0 THEN l.delta ELSE 0 END) as potSum
+           FROM ledger l WHERE l.room_id = ? AND l.kind = 'hand-settlement'
+             AND NOT EXISTS (SELECT 1 FROM ledger v WHERE v.room_id = l.room_id AND v.kind = 'void-hand' AND v.ref = l.ref)
+           GROUP BY l.ref
          )`,
       )
       .get(id) as { biggestPot: number | null };
@@ -254,7 +267,9 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
                   SUM(delta) as net,
                   MAX(delta) as biggestWin,
                   MIN(delta) as biggestLoss
-           FROM ledger WHERE room_id = @roomId AND kind = 'hand-settlement' GROUP BY user_id
+           FROM ledger l WHERE l.room_id = @roomId AND l.kind = 'hand-settlement'
+             AND NOT EXISTS (SELECT 1 FROM ledger v WHERE v.room_id = l.room_id AND v.kind = 'void-hand' AND v.ref = l.ref)
+           GROUP BY l.user_id
          ) st ON st.user_id = rp.user_id
          WHERE rp.room_id = @roomId
          ORDER BY net DESC`,

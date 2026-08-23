@@ -3,6 +3,8 @@ import { useEffect, type ReactNode } from 'react';
 import { useStore } from '../shared/store.ts';
 import { applyTheme, loadPrefs } from '../shared/prefs.ts';
 import { LoginPage } from '../pages/login/LoginPage.tsx';
+import { LandingPage } from '../pages/landing/LandingPage.tsx';
+import { WatchPage } from '../pages/watch/WatchPage.tsx';
 import { LobbyPage } from '../pages/lobby/LobbyPage.tsx';
 import { TablePage } from '../pages/table/TablePage.tsx';
 import { LedgerPage } from '../pages/ledger/LedgerPage.tsx';
@@ -33,6 +35,15 @@ export function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route
+          path="/watch/:token"
+          element={
+            <RequireAuth>
+              <WatchPage />
+            </RequireAuth>
+          }
+        />
         <Route path="/login" element={<LoginPage />} />
         <Route
           path="/lobby"

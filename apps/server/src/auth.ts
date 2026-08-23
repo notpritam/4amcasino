@@ -53,6 +53,18 @@ export function userForToken(db: DB, token: string): number | null {
   return row ? row.user_id : null;
 }
 
+const seenCache = new Map<number, number>();
+
+/** Marks a user online; writes at most one row update per 30s per user. */
+export function touchPresence(db: DB, userId: number): void {
+  const now = Date.now();
+  if (now - (seenCache.get(userId) ?? 0) < 30_000) return;
+  seenCache.set(userId, now);
+  db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(now, userId);
+}
+
+export const ONLINE_WINDOW_MS = 2 * 60_000;
+
 declare module 'fastify' {
   interface FastifyRequest {
     userId: number;
@@ -69,5 +81,6 @@ export function requireUser(db: DB) {
       return reply;
     }
     req.userId = userId;
+    touchPresence(db, userId);
   };
 }

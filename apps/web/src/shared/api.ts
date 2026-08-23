@@ -53,6 +53,30 @@ export const api = {
   setCoBanker: (roomId: string, userId: number | null) =>
     req(`/api/rooms/${roomId}/co-banker`, { userId }, 'PUT'),
   session: (roomId: string) => req(`/api/rooms/${roomId}/session`),
+  friends: () => req('/api/friends'),
+  addFriend: (username: string) => req('/api/friends/request', { username }),
+  respondFriend: (userId: number, accept: boolean) => req('/api/friends/respond', { userId, accept }),
+  removeFriend: (userId: number) => req(`/api/friends/${userId}`, undefined, 'DELETE'),
+  inviteFriend: (roomId: string, userId: number) => req(`/api/rooms/${roomId}/invite`, { userId }),
+  invites: () => req('/api/invites'),
+  respondInvite: (inviteId: number, accept: boolean) => req(`/api/invites/${inviteId}/respond`, { accept }),
+  voidRoom: (roomId: string, voided: boolean) => req(`/api/rooms/${roomId}/void`, { voided }),
+  publicRooms: () => req('/api/rooms/public'),
+  joinPublic: (roomId: string) => req(`/api/rooms/${roomId}/join-public`, {}),
+  spectateSettings: (roomId: string, allow?: boolean) =>
+    req(`/api/rooms/${roomId}/spectate-settings`, allow === undefined ? {} : { allow }),
+  watch: (token: string) => req(`/api/watch/${token}`),
+  askJoin: (roomId: string) => req(`/api/rooms/${roomId}/ask-join`, {}),
+  joinRequests: (roomId: string) => req(`/api/rooms/${roomId}/join-requests`),
+  admit: (roomId: string, userId: number, accept: boolean) =>
+    req(`/api/rooms/${roomId}/admit`, { userId, accept }),
+  transfer: (roomId: string, toUserId: number, amount: number, note?: string) =>
+    req(`/api/rooms/${roomId}/transfer`, { toUserId, amount, ...(note ? { note } : {}) }),
+  roomExtras: (roomId: string, extras: Record<string, unknown>) =>
+    req(`/api/rooms/${roomId}/settings`, extras, 'PUT'),
+  setMeetLink: (roomId: string, meetLink: string) =>
+    req(`/api/rooms/${roomId}/settings`, { meetLink }, 'PUT'),
+  voidHand: (roomId: string, handId: string) => req(`/api/rooms/${roomId}/void-hand`, { handId }),
   ledger: (roomId: string) => req(`/api/rooms/${roomId}/ledger`),
   hands: (roomId: string) => req(`/api/rooms/${roomId}/hands`),
   hand: (roomId: string, handId: string) => req(`/api/rooms/${roomId}/hands/${handId}`),

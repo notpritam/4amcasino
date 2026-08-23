@@ -27,6 +27,8 @@ export interface Prefs {
   quickPhrases: string[];
   /** Hide my winnings from other players (leaderboards, session report, crown). */
   privateMode: boolean;
+  /** Friends' table invites add me to the room automatically. */
+  autoJoinInvites: boolean;
 }
 
 export const defaultPrefs: Prefs = {
@@ -39,6 +41,7 @@ export const defaultPrefs: Prefs = {
   theme: 'light',
   quickPhrases: [],
   privateMode: false,
+  autoJoinInvites: false,
 };
 
 export interface AuthState {

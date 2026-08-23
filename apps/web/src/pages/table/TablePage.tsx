@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
-import { ArrowLeft, ChatCircle, DotsThreeVertical, Microphone, MicrophoneSlash, Moon, ShareNetwork, Sun, Timer, Trophy, X } from '@phosphor-icons/react';
+import { ArrowLeft, ChatCircle, DotsThreeVertical, Eye, Microphone, MicrophoneSlash, Moon, ShareNetwork, Sun, Timer, Trophy, VideoCamera, X } from '@phosphor-icons/react';
 import NumberFlow from '@number-flow/react';
 import confetti from 'canvas-confetti';
 import { HAND_CATEGORY_NAMES, bestFive, describeScore, evaluate7, handCategory } from '@4am/shared';
@@ -20,6 +20,7 @@ import { ChatPanel } from '../../widgets/table/ChatPanel.tsx';
 import { MobileTable } from '../../widgets/table/MobileTable.tsx';
 import { BankControls } from '../../widgets/table/BankControls.tsx';
 import { BrokeBuyInDialog } from '../../features/bank/BrokeBuyInDialog.tsx';
+import { InviteFriendsDialogBody } from '../../features/friends/FriendsPanel.tsx';
 import { LeaderboardTable, type LeaderboardRow } from '../leaderboard/LeaderboardPage.tsx';
 import { ShareHandDialog } from '../../features/share/ShareHandDialog.tsx';
 import type { ShareData } from '../../features/share/shareCard.ts';
@@ -67,6 +68,11 @@ export function TablePage() {
   const [peekSent, setPeekSent] = useState<Record<number, boolean>>({});
   const [shareOpen, setShareOpen] = useState(false);
   const [standingsOpen, setStandingsOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [watchOpen, setWatchOpen] = useState(false);
+  const [watchInfo, setWatchInfo] = useState<{ allow: boolean; token: string } | null>(null);
+  const [joinReqs, setJoinReqs] = useState<{ id: number; userId: number; displayName: string }[]>([]);
+  const [askedToJoin, setAskedToJoin] = useState(false);
   const [standings, setStandings] = useState<LeaderboardRow[] | null>(null);
   const [floats, setFloats] = useState<FloatingReaction[]>([]);
   const floatId = useRef(0);
@@ -150,6 +156,10 @@ export function TablePage() {
 
   const mySeat = room?.players.find((p) => p.userId === auth.userId)?.seat ?? null;
   const isHost = room?.room.hostId === auth.userId;
+  const isBankerHere =
+    room?.room.bankerId === auth.userId || room?.room.coBankerId === auth.userId || isHost;
+  // no membership row at all means this login came through a watch link
+  const amSpectator = !!room && !room.players.some((p) => p.userId === auth.userId);
   const handLive = hand.handId !== null && !hand.result && !hand.abort;
   const myRoomStack = room?.players.find((p) => p.userId === auth.userId)?.stack ?? null;
   const amBroke = mySeat !== null && myRoomStack === 0 && !handLive;
@@ -159,6 +169,15 @@ export function TablePage() {
   useEffect(() => {
     setPeekSent({});
   }, [hand.handId]);
+
+  useEffect(() => {
+    if (!watchOpen || !isBankerHere) return;
+    api.spectateSettings(roomId!).then(setWatchInfo).catch(() => {});
+    const loadReqs = () => api.joinRequests(roomId!).then((r) => setJoinReqs(r.requests)).catch(() => {});
+    loadReqs();
+    const iv = setInterval(loadReqs, 5000);
+    return () => clearInterval(iv);
+  }, [watchOpen, isBankerHere, roomId]);
 
   useEffect(() => {
     if (!standingsOpen) return;
@@ -515,6 +534,28 @@ export function TablePage() {
     </motion.div>
   );
 
+  const spectatorPanel = (
+    <Panel className="text-center">
+      <p className="flex items-center justify-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
+        <Eye size={16} /> You are watching this table.
+      </p>
+      <p className="mt-1 text-xs text-slate-500">
+        You can see everything public, but not anyone's cards, the join code, or the chips.
+      </p>
+      <Button
+        className="mt-3"
+        variant="secondary"
+        disabled={askedToJoin}
+        onClick={() => {
+          setAskedToJoin(true);
+          void api.askJoin(roomId!).catch(() => {});
+        }}
+      >
+        {askedToJoin ? 'Asked. Waiting for the host to let you in.' : 'Ask to join the game'}
+      </Button>
+    </Panel>
+  );
+
   const seatPicker = (
     <Panel>
       <div className="mb-3 text-sm font-medium text-slate-600 dark:text-slate-300">Pick a seat</div>
@@ -715,7 +756,7 @@ export function TablePage() {
           <div className="space-y-3 px-4 pb-6">
             {mobileResult}
             {mobilePeekPanel}
-            {!me && mobileSeatPicker}
+            {!me && (amSpectator ? spectatorPanel : mobileSeatPicker)}
           </div>
         )}
 
@@ -754,16 +795,47 @@ export function TablePage() {
                   {prefs.theme === 'dark' ? 'Light mode' : 'Dark mode'}
                 </Button>
               </div>
-              <Button
-                variant="secondary"
-                className="w-full"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setStandingsOpen(true);
-                }}
-              >
-                <Trophy size={16} /> Standings
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setStandingsOpen(true);
+                  }}
+                >
+                  <Trophy size={16} /> Standings
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setInviteOpen(true);
+                  }}
+                >
+                  Invite friends
+                </Button>
+              </div>
+              {room.room.meetLink && (
+                <a href={room.room.meetLink} target="_blank" rel="noreferrer" className="block">
+                  <Button variant="secondary" className="w-full">
+                    <VideoCamera size={16} /> Join the video call
+                  </Button>
+                </a>
+              )}
+              {isBankerHere && (
+                <Button
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setWatchOpen(true);
+                  }}
+                >
+                  <Eye size={16} /> Watch-only share link
+                </Button>
+              )}
               {isHost && (
                 <label className="flex items-center justify-between text-sm text-white/70">
                   Turn timer{handLive && ' (next hand)'}
@@ -807,13 +879,20 @@ export function TablePage() {
           ← Leave table
         </Link>
         <h1 className="font-display text-lg font-bold">{room.room.name}</h1>
-        <Badge tone="indigo" className="font-display tracking-widest">
-          {room.room.joinCode}
-        </Badge>
+        {room.room.joinCode !== '' && (
+          <Badge tone="indigo" className="font-display tracking-widest">
+            {room.room.joinCode}
+          </Badge>
+        )}
         <Badge tone="slate">
           blinds {room.room.sb}/{room.room.bb}
         </Badge>
         {room.room.auditMode === 'strict-audit' && <Badge tone="amber">strict audit</Badge>}
+        {room.room.voided && (
+          <span title="The banker voided this table: results do not count anywhere">
+            <Badge tone="rose">void table</Badge>
+          </span>
+        )}
         {handLive && secs !== null && (
           <span
             className={cn(
@@ -852,6 +931,23 @@ export function TablePage() {
               title={handLive ? 'applies from the next hand' : undefined}
             >
               {meSittingOut ? 'Deal me in' : 'Sit out'}
+            </Button>
+          )}
+          {room.room.meetLink && (
+            <a href={room.room.meetLink} target="_blank" rel="noreferrer">
+              <Button variant="ghost" title="Open the video call">
+                <VideoCamera size={16} /> Call
+              </Button>
+            </a>
+          )}
+          {!amSpectator && (
+            <Button variant="ghost" onClick={() => setInviteOpen(true)}>
+              Invite friends
+            </Button>
+          )}
+          {isBankerHere && (
+            <Button variant="ghost" onClick={() => setWatchOpen(true)} title="Watch-only share link">
+              <Eye size={16} />
             </Button>
           )}
           <Button
@@ -908,8 +1004,14 @@ export function TablePage() {
             <div className="space-y-2.5">
               {opponents.length === 0 && (
                 <Panel className="text-sm text-slate-500">
-                  Share code <span className="font-display font-bold">{room.room.joinCode}</span> with
-                  your friends.
+                  {room.room.joinCode !== '' ? (
+                    <>
+                      Share code <span className="font-display font-bold">{room.room.joinCode}</span>{' '}
+                      with your friends.
+                    </>
+                  ) : (
+                    'Waiting for players.'
+                  )}
                 </Panel>
               )}
               {opponents.map((p) => (
@@ -967,7 +1069,13 @@ export function TablePage() {
           {peekPanel}
 
           {/* you + actions */}
-          {me ? <YouRow p={me} cards={hand.myCards} urgent={urgent} /> : seatPicker}
+          {me ? (
+            <YouRow p={me} cards={hand.myCards} urgent={urgent} />
+          ) : amSpectator ? (
+            spectatorPanel
+          ) : (
+            seatPicker
+          )}
           <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} />
         </div>
 
@@ -984,6 +1092,70 @@ export function TablePage() {
         onClose={() => setBrokeDismissed(true)}
       />
       <ShareHandDialog open={shareOpen} onClose={() => setShareOpen(false)} data={shareData} />
+      <Dialog open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite friends to this table">
+        <InviteFriendsDialogBody roomId={roomId!} memberIds={room.players.map((p) => p.userId)} />
+      </Dialog>
+      <Dialog open={watchOpen} onClose={() => setWatchOpen(false)} title="Watch-only share link">
+        <div className="space-y-4">
+          <label className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={watchInfo?.allow ?? false}
+              onChange={(e) =>
+                void api.spectateSettings(roomId!, e.target.checked).then(setWatchInfo).catch(() => {})
+              }
+              className="mt-0.5"
+            />
+            <span>
+              Let anyone with the link watch this table. Viewers see the public game only: no hole
+              cards, no join code, no chips of their own.
+            </span>
+          </label>
+          {watchInfo && (
+            <div className="flex items-center gap-2">
+              <code className="min-w-0 flex-1 truncate rounded-lg bg-slate-100 px-3 py-2 text-xs dark:bg-slate-800">
+                {`${location.origin}/watch/${watchInfo.token}`}
+              </code>
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  void navigator.clipboard.writeText(`${location.origin}/watch/${watchInfo.token}`)
+                }
+              >
+                Copy
+              </Button>
+            </div>
+          )}
+          {joinReqs.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Watchers asking to play
+              </p>
+              {joinReqs.map((r) => (
+                <div key={r.id} className="flex items-center gap-3 rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800/60">
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{r.displayName}</span>
+                  <Button
+                    variant="success"
+                    onClick={() =>
+                      void api.admit(roomId!, r.userId, true).then(() => setJoinReqs((q) => q.filter((x) => x.id !== r.id)))
+                    }
+                  >
+                    Let them in
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() =>
+                      void api.admit(roomId!, r.userId, false).then(() => setJoinReqs((q) => q.filter((x) => x.id !== r.id)))
+                    }
+                  >
+                    No
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Dialog>
       <Dialog open={standingsOpen} onClose={() => setStandingsOpen(false)} title="Room standings">
         {standings === null ? (
           <Spinner label="Counting the chips…" />

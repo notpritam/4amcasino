@@ -3,8 +3,8 @@ import type { FastifyInstance } from 'fastify';
 import { clientMsgSchema } from '@4am/shared';
 import { genIdentity } from '@4am/mental-poker';
 import type { DB } from './db.js';
-import { userForToken } from './auth.js';
-import { isMember, roomEvents } from './rooms.js';
+import {userForToken, touchPresence } from './auth.js';
+import { isMember, isSpectator, roomEvents } from './rooms.js';
 import { GameRoom, type GameOpts } from './game.js';
 
 // 10s per attempt with 3 retries: a stalled player gets a fixed ~40s to rejoin
@@ -52,8 +52,10 @@ export function attachHub(
     let current: GameRoom | null = null;
     ws.send(JSON.stringify({ t: 'hello', serverPublicKey: serverIdentity.publicKey }));
 
+    touchPresence(db, userId);
     ws.on('message', (raw) => {
       if (!db.open) return; // shutting down: sockets drain, nothing to do
+      touchPresence(db, userId);
       let json: unknown;
       try {
         json = JSON.parse(String(raw));
@@ -68,7 +70,7 @@ export function attachHub(
       }
       const msg = parsed.data;
       if (msg.t === 'join_room') {
-        if (!isMember(db, msg.roomId, userId)) {
+        if (!isMember(db, msg.roomId, userId) && !isSpectator(db, msg.roomId, userId)) {
           ws.send(JSON.stringify({ t: 'error', message: 'not a member of that room' }));
           return;
         }

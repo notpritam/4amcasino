@@ -47,6 +47,8 @@ const mockRoom = {
     coBankerId: null,
     minSettleHands: 0,
     sevenDeuceBonus: 0,
+    voided: false,
+    meetLink: null,
   },
   players: CAST.map((p) => ({
     ...p,

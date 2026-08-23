@@ -19,6 +19,11 @@ export interface RoomRow {
   co_banker_id: number | null;
   min_settle_hands: number;
   seven_deuce_bonus: number;
+  voided: number;
+  meet_link: string | null;
+  visibility: string;
+  spectate_token: string | null;
+  allow_spectators: number;
   created_at: number;
 }
 
@@ -34,6 +39,12 @@ const actionSecsSchema = z.union([z.literal(0), z.number().int().min(5).max(180)
 
 const minSettleSchema = z.number().int().min(0).max(500);
 
+const meetLinkSchema = z
+  .string()
+  .max(300)
+  .regex(/^https:\/\//, 'must be an https link')
+  .or(z.literal(''));
+
 const createSchema = z.object({
   name: z.string().min(1).max(48),
   sb: z.number().int().positive(),
@@ -41,6 +52,8 @@ const createSchema = z.object({
   auditMode: z.enum(['private', 'strict-audit']).optional(),
   actionSecs: actionSecsSchema.optional(),
   minSettleHands: minSettleSchema.optional(),
+  meetLink: meetLinkSchema.optional(),
+  visibility: z.enum(['private', 'public']).optional(),
 });
 
 function newJoinCode(): string {
@@ -50,6 +63,10 @@ function newJoinCode(): string {
 
 export function getRoom(db: DB, roomId: string): RoomRow | undefined {
   return db.prepare('SELECT * FROM rooms WHERE id = ?').get(roomId) as RoomRow | undefined;
+}
+
+export function isSpectator(db: DB, roomId: string, userId: number): boolean {
+  return !!db.prepare('SELECT 1 FROM spectators WHERE room_id = ? AND user_id = ?').get(roomId, userId);
 }
 
 export function isMember(db: DB, roomId: string, userId: number): boolean {
@@ -101,6 +118,10 @@ function roomJson(db: DB, room: RoomRow) {
     coBankerId: room.co_banker_id,
     minSettleHands: room.min_settle_hands,
     sevenDeuceBonus: room.seven_deuce_bonus,
+    voided: !!room.voided,
+    meetLink: room.meet_link,
+    visibility: room.visibility,
+    allowSpectators: !!room.allow_spectators,
     players: roomPlayers(db, room.id).map((p) => ({
       ...p,
       privateMode: undefined,
@@ -116,14 +137,14 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
   app.post('/api/rooms', authed, async (req, reply) => {
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
-    const { name, sb, bb, auditMode, actionSecs, minSettleHands } = parsed.data;
+    const { name, sb, bb, auditMode, actionSecs, minSettleHands, meetLink, visibility } = parsed.data;
     if (bb < sb) return reply.code(400).send({ error: 'big blind must be >= small blind' });
     const id = randomBytes(6).toString('hex');
     const joinCode = newJoinCode();
     db.prepare(
-      `INSERT INTO rooms (id, name, join_code, host_id, banker_id, sb, bb, audit_mode, action_secs, min_settle_hands, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, name, joinCode, req.userId, req.userId, sb, bb, auditMode ?? 'private', actionSecs ?? null, minSettleHands ?? 0, Date.now());
+      `INSERT INTO rooms (id, name, join_code, host_id, banker_id, sb, bb, audit_mode, action_secs, min_settle_hands, meet_link, visibility, spectate_token, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, name, joinCode, req.userId, req.userId, sb, bb, auditMode ?? 'private', actionSecs ?? null, minSettleHands ?? 0, meetLink || null, visibility ?? 'private', randomBytes(9).toString('hex'), Date.now());
     db.prepare('INSERT INTO room_players (room_id, user_id) VALUES (?, ?)').run(id, req.userId);
     return roomJson(db, getRoom(db, id)!);
   });
@@ -147,7 +168,34 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     const { id } = req.params as { id: string };
     const room = getRoom(db, id);
     if (!room) return reply.code(404).send({ error: 'no such room' });
-    if (!isMember(db, id, req.userId)) return reply.code(403).send({ error: 'not a member' });
+    if (isMember(db, id, req.userId)) return { ...roomJson(db, room), youAre: 'member' };
+    if (isSpectator(db, id, req.userId))
+      return { ...roomJson(db, room), joinCode: '', youAre: 'spectator' };
+    return reply.code(403).send({ error: 'not a member' });
+  });
+
+  // browse and join tables whose hosts made them public (no code needed)
+  app.get('/api/rooms/public', authed, async () => {
+    const rows = db
+      .prepare(
+        `SELECT r.id, r.name, r.sb, r.bb, r.meet_link as meetLink,
+                COALESCE(u.display_name, u.username) as hostName,
+                (SELECT COUNT(*) FROM room_players rp WHERE rp.room_id = r.id) as playerCount
+         FROM rooms r JOIN users u ON u.id = r.host_id
+         WHERE r.visibility = 'public' ORDER BY r.created_at DESC LIMIT 30`,
+      )
+      .all();
+    return { rooms: rows };
+  });
+
+  app.post('/api/rooms/:id/join-public', authed, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const room = getRoom(db, id);
+    if (!room) return reply.code(404).send({ error: 'no such room' });
+    if (room.visibility !== 'public') return reply.code(403).send({ error: 'this table is private' });
+    db.prepare('INSERT OR IGNORE INTO room_players (room_id, user_id) VALUES (?, ?)').run(id, req.userId);
+    db.prepare('DELETE FROM spectators WHERE room_id = ? AND user_id = ?').run(id, req.userId);
+    roomEvents.emit('changed', id);
     return roomJson(db, room);
   });
 
@@ -291,6 +339,8 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
         actionSecs: actionSecsSchema.optional(),
         minSettleHands: minSettleSchema.optional(),
         sevenDeuceBonus: z.number().int().min(0).max(100_000).optional(),
+        meetLink: meetLinkSchema.optional(),
+        visibility: z.enum(['private', 'public']).optional(),
       })
       .safeParse(req.body);
     if (!parsed.success)
@@ -305,6 +355,10 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
       db.prepare('UPDATE rooms SET min_settle_hands = ? WHERE id = ?').run(parsed.data.minSettleHands, id);
     if (parsed.data.sevenDeuceBonus !== undefined)
       db.prepare('UPDATE rooms SET seven_deuce_bonus = ? WHERE id = ?').run(parsed.data.sevenDeuceBonus, id);
+    if (parsed.data.meetLink !== undefined)
+      db.prepare('UPDATE rooms SET meet_link = ? WHERE id = ?').run(parsed.data.meetLink || null, id);
+    if (parsed.data.visibility !== undefined)
+      db.prepare('UPDATE rooms SET visibility = ? WHERE id = ?').run(parsed.data.visibility, id);
     roomEvents.emit('changed', id);
     return { ok: true };
   });

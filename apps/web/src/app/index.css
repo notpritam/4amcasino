@@ -102,7 +102,7 @@ body {
   from { opacity: 0; transform: translateY(-14px) scale(0.85) rotate(-4deg); }
   to { opacity: 1; transform: none; }
 }
-.animate-deal { animation: deal-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+.animate-deal { animation: deal-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
 @keyframes pot-bump {
   0% { transform: scale(1); }

@@ -19,6 +19,7 @@ export async function loadPrefs(): Promise<void> {
       theme: p.theme,
       quickPhrases: p.quickPhrases ?? [],
       privateMode: !!p.privateMode,
+      autoJoinInvites: !!p.autoJoinInvites,
     });
     applyTheme(p.theme);
   } catch {

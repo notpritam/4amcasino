@@ -63,6 +63,9 @@ interface Chain {
   remaining: number[]; // seats yet to apply their unmask, in order
 }
 
+/** Rooms with a hand in flight; REST money moves must wait for the settle. */
+export const activeHands = new Set<string>();
+
 /** The classic house rule: 7-2 offsuit wins collect a bounty from everyone. */
 export function isSevenDeuce(cards: CardId[]): boolean {
   if (cards.length !== 2) return false;
@@ -159,6 +162,7 @@ export class GameRoom {
   shutdown(): void {
     this.hand?.clearTimer();
     this.hand = null;
+    activeHands.delete(this.roomId);
     if (this.autoDeal) clearTimeout(this.autoDeal);
     this.autoDeal = null;
   }
@@ -205,7 +209,7 @@ export class GameRoom {
       totalBought: p.privateMode ? 0 : p.totalBought,
       privateStats: !!p.privateMode,
     }));
-    this.broadcast({
+    const state: ServerMsg = {
       t: 'room_state',
       room: {
         id: room.id,
@@ -221,10 +225,17 @@ export class GameRoom {
         coBankerId: room.co_banker_id,
         minSettleHands: room.min_settle_hands,
         sevenDeuceBonus: room.seven_deuce_bonus,
+        voided: !!room.voided,
+        meetLink: room.meet_link,
       },
       players,
       handActive: this.hand !== null,
-    });
+    };
+    // spectators watch the table but never see the join code
+    const memberIds = new Set(players.map((p) => p.userId));
+    const masked = JSON.stringify({ ...state, room: { ...state.room, joinCode: '' } });
+    const full = JSON.stringify(state);
+    for (const [uid, ws] of this.sockets) ws.send(memberIds.has(uid) ? full : masked);
   }
 
   handleMessage(userId: number, msg: ClientMsg): void {
@@ -348,7 +359,9 @@ export class GameRoom {
     this.shown.clear();
     this.shownHandId = null;
     this.peekOffers.clear();
+    activeHands.add(this.roomId);
     this.hand = new Hand(this, this.db, room.id, handSeats, button, room.sb, room.bb, room.audit_mode, this.serverId, handOpts, () => {
+      activeHands.delete(this.roomId);
       this.lastButton = button;
       this.lastHandShow = this.hand?.showSnapshot() ?? null;
       this.hand = null;

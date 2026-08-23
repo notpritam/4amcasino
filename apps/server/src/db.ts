@@ -88,6 +88,43 @@ function migrate(db: DB): void {
   ensureColumn(db, 'rooms', 'min_settle_hands', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'rooms', 'seven_deuce_bonus', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'users', 'private_mode', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'users', 'last_seen', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'users', 'auto_join_invites', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'rooms', 'voided', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'rooms', 'meet_link', 'TEXT');
+  ensureColumn(db, 'rooms', 'visibility', "TEXT NOT NULL DEFAULT 'private'");
+  ensureColumn(db, 'rooms', 'spectate_token', 'TEXT');
+  ensureColumn(db, 'rooms', 'allow_spectators', 'INTEGER NOT NULL DEFAULT 0');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS friends (
+      requester_id INTEGER NOT NULL,
+      target_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (requester_id, target_id)
+    );
+    CREATE TABLE IF NOT EXISTS spectators (
+      room_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      ts INTEGER NOT NULL,
+      PRIMARY KEY (room_id, user_id)
+    );
+    CREATE TABLE IF NOT EXISTS join_requests (
+      id INTEGER PRIMARY KEY,
+      room_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      ts INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS invites (
+      id INTEGER PRIMARY KEY,
+      room_id TEXT NOT NULL,
+      from_id INTEGER NOT NULL,
+      to_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      ts INTEGER NOT NULL
+    );
+  `);
 }
 
 function ensureColumn(db: DB, table: string, column: string, decl: string): void {

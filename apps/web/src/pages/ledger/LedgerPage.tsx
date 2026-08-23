@@ -67,6 +67,7 @@ export function LedgerPage() {
   const [bankerId, setBankerId] = useState<number | null>(null);
   const [coBankerId, setCoBankerId] = useState<number | null>(null);
   const [minSettleHands, setMinSettleHands] = useState(0);
+  const [voided, setVoided] = useState(false);
   const [revertErr, setRevertErr] = useState<string | null>(null);
   const myUserId = useStore((s) => s.auth.userId);
 
@@ -80,6 +81,7 @@ export function LedgerPage() {
       setBankerId(r.bankerId);
       setCoBankerId(r.coBankerId ?? null);
       setMinSettleHands(r.minSettleHands ?? 0);
+      setVoided(!!r.voided);
     }).catch(() => {});
   };
   useEffect(load, [roomId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -108,7 +110,23 @@ export function LedgerPage() {
   }
   // purchases already compensated by a revert entry (revert.ref = purchase hash)
   const revertedHashes = new Set(entries.filter((e) => e.kind === 'revert').map((e) => e.ref));
+  const voidedHands = new Set(entries.filter((e) => e.kind === 'void-hand').map((e) => e.ref));
+  // the void-hand button sits on the first settlement row of each hand
+  const firstOfHand = new Map<string, number>();
+  for (const e of entries) {
+    if (e.kind === 'hand-settlement' && e.ref && !firstOfHand.has(e.ref)) firstOfHand.set(e.ref, e.id);
+  }
   const amBanker = myUserId !== null && (myUserId === bankerId || myUserId === coBankerId);
+
+  async function voidHand(handId: string) {
+    setRevertErr(null);
+    try {
+      await api.voidHand(roomId!, handId);
+      load();
+    } catch (err) {
+      setRevertErr(err instanceof Error ? err.message : 'could not void the hand');
+    }
+  }
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
@@ -255,6 +273,17 @@ export function LedgerPage() {
         )}
       </Panel>
 
+      {voided && (
+        <div className="rounded-2xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
+          The banker voided this table. Nothing here counts toward leaderboards, profiles, or who
+          owes whom.
+        </div>
+      )}
+      {amBanker && (
+        <Button variant="secondary" onClick={() => void api.voidRoom(roomId!, !voided).then(load)}>
+          {voided ? 'Restore this table (results count again)' : 'Void this table (results stop counting)'}
+        </Button>
+      )}
       {revertErr && <p className="text-sm text-rose-600">Could not revert: {revertErr}</p>}
       <Panel className="overflow-x-auto p-0">
         <table className="w-full text-sm">
@@ -302,6 +331,16 @@ export function LedgerPage() {
                       ) : (
                         <Button variant="ghost" onClick={() => void revert(e.id)}>
                           Revert
+                        </Button>
+                      ))}
+                    {e.kind === 'hand-settlement' &&
+                      e.ref &&
+                      firstOfHand.get(e.ref) === e.id &&
+                      (voidedHands.has(e.ref) ? (
+                        <Badge tone="slate">voided</Badge>
+                      ) : (
+                        <Button variant="ghost" onClick={() => void voidHand(e.ref!)}>
+                          Void hand
                         </Button>
                       ))}
                   </td>

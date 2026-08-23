@@ -62,6 +62,7 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
         cardBack: prefs.cardBack,
         fourColor: prefs.fourColor,
         privateMode: prefs.privateMode,
+        autoJoinInvites: prefs.autoJoinInvites,
         theme: prefs.theme,
         quickPhrases,
       });
@@ -146,6 +147,18 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
             <PlayingCard card={cardFromName('Td')} size="sm" />
           </div>
         </div>
+
+        <label className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <input
+            type="checkbox"
+            checked={prefs.autoJoinInvites}
+            onChange={(e) => setPrefs({ autoJoinInvites: e.target.checked })}
+            className="mt-0.5"
+          />
+          <span>
+            Auto-join: when a friend invites me to a table, add me right away instead of asking.
+          </span>
+        </label>
 
         <label className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
           <input

@@ -18,6 +18,11 @@ export function BankControls({ roomId }: { roomId: string }) {
   const userId = useStore((s) => s.auth.userId);
   const pushError = useStore((s) => s.pushError);
   const [buyOpen, setBuyOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendTo, setSendTo] = useState<number | ''>('');
+  const [sendAmount, setSendAmount] = useState(100);
+  const [sendNote, setSendNote] = useState('');
+  const [sendDone, setSendDone] = useState<string | null>(null);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [amount, setAmount] = useState(500);
   const [note, setNote] = useState('');
@@ -71,6 +76,9 @@ export function BankControls({ roomId }: { roomId: string }) {
       <Button variant="secondary" onClick={() => setBuyOpen(true)}>
         Buy points
       </Button>
+      <Button variant="secondary" onClick={() => setSendOpen(true)}>
+        Send chips
+      </Button>
       {isBanker && (
         <Button variant="secondary" onClick={() => setInboxOpen(true)} className="relative">
           Bank inbox
@@ -101,6 +109,70 @@ export function BankControls({ roomId }: { roomId: string }) {
             </label>
             <Button type="submit" className="w-full">
               Request {fmt(amount)} points
+            </Button>
+          </form>
+        )}
+      </Dialog>
+
+      <Dialog open={sendOpen} onClose={() => setSendOpen(false)} title="Send chips to a player">
+        {sendDone ? (
+          <p className="text-sm text-emerald-600">{sendDone}</p>
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (sendTo === '') return;
+              void api
+                .transfer(roomId, sendTo, sendAmount, sendNote || undefined)
+                .then(() => {
+                  setSendDone('Sent. It is on the ledger.');
+                  setTimeout(() => {
+                    setSendOpen(false);
+                    setSendDone(null);
+                    setSendNote('');
+                  }, 1200);
+                })
+                .catch((err) => pushError(err instanceof Error ? err.message : 'transfer failed'));
+            }}
+            className="space-y-3"
+          >
+            <p className="text-sm text-slate-500">
+              Lend a short-stacked friend some chips or settle a side bet. Every transfer is written
+              to the room ledger. Chips move between hands only.
+            </p>
+            <label className="block text-sm">
+              <span className="mb-1 block text-slate-500">To</span>
+              <select
+                value={sendTo}
+                onChange={(e) => setSendTo(e.target.value === '' ? '' : +e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                required
+              >
+                <option value="">Pick a player</option>
+                {room?.players
+                  .filter((p) => p.userId !== userId)
+                  .map((p) => (
+                    <option key={p.userId} value={p.userId}>
+                      {p.displayName}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-slate-500">Amount</span>
+              <Input
+                type="number"
+                min={1}
+                value={sendAmount}
+                onChange={(e) => setSendAmount(Math.max(1, +e.target.value))}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-slate-500">Note (optional)</span>
+              <Input value={sendNote} onChange={(e) => setSendNote(e.target.value)} placeholder="loan until next buy-in" />
+            </label>
+            <Button type="submit" className="w-full" disabled={sendTo === ''}>
+              Send {fmt(sendAmount)}
             </Button>
           </form>
         )}
