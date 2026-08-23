@@ -2,6 +2,7 @@
   "name": "4amcasino",
   "private": true,
   "type": "module",
+  "engines": { "node": ">=22.0.0" },
   "workspaces": ["packages/*", "apps/*"],
   "scripts": {
     "test": "vitest run",
