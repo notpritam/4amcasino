@@ -250,3 +250,39 @@ describe('chip transfers', () => {
     ).toBe(400);
   });
 });
+
+describe('play style mining', () => {
+  it('computes vpip, aggression, and archetype inputs from transcripts', async () => {
+    const a = await user('style_a');
+    const b = await user('style_b');
+    const room = (await post('/api/rooms', a.token, { name: 'Style', sb: 10, bb: 20 })).json();
+    await post('/api/rooms/join', b.token, { joinCode: room.joinCode });
+    const entries = [
+      { seq: 0, type: 'hand_start', from: 'srv', payload: { seats: [{ seat: 0, userId: a.userId }, { seat: 1, userId: b.userId }] }, sig: 'x' },
+      { seq: 1, type: 'action', from: 'a', payload: { seat: 0, action: { type: 'raise', amount: 40 } }, sig: 'x' },
+      { seq: 2, type: 'action', from: 'b', payload: { seat: 1, action: { type: 'call' } }, sig: 'x' },
+      { seq: 3, type: 'street', from: 'srv', payload: { street: 'flop' }, sig: 'x' },
+      { seq: 4, type: 'action', from: 'b', payload: { seat: 1, action: { type: 'check' } }, sig: 'x' },
+      { seq: 5, type: 'action', from: 'a', payload: { seat: 0, action: { type: 'bet', amount: 60 } }, sig: 'x' },
+      { seq: 6, type: 'action', from: 'b', payload: { seat: 1, action: { type: 'fold' } }, sig: 'x' },
+      { seq: 7, type: 'settlement', from: 'srv', payload: { awards: [{ seat: 0, amount: 100 }], reveals: [] }, sig: 'x' },
+    ];
+    ctx.db
+      .prepare('INSERT INTO transcripts (hand_id, room_id, head, entries, ts) VALUES (?, ?, ?, ?, ?)')
+      .run('stylehand1', room.id, 'head', JSON.stringify(entries), Date.now());
+
+    const styleA = await get(`/api/users/${a.userId}/style`, b.token);
+    expect(styleA.hands).toBe(1);
+    expect(styleA.vpipPct).toBe(100);
+    expect(styleA.pfrPct).toBe(100);
+    expect(styleA.winPct).toBe(100);
+    expect(styleA.quietWinPct).toBe(100); // won without a showdown
+    expect(styleA.aggressionFactor).toBeGreaterThan(1);
+
+    const styleB = await get(`/api/users/${b.userId}/style`, a.token);
+    expect(styleB.vpipPct).toBe(100); // called preflop voluntarily
+    expect(styleB.pfrPct).toBe(0);
+    expect(styleB.winPct).toBe(0);
+    expect(styleB.aggressionFactor).toBe(0);
+  });
+});

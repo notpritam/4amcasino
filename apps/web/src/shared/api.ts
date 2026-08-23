@@ -53,6 +53,8 @@ export const api = {
   setCoBanker: (roomId: string, userId: number | null) =>
     req(`/api/rooms/${roomId}/co-banker`, { userId }, 'PUT'),
   session: (roomId: string) => req(`/api/rooms/${roomId}/session`),
+  timeline: () => req('/api/me/timeline'),
+  playStyle: (userId: number) => req(`/api/users/${userId}/style`),
   friends: () => req('/api/friends'),
   addFriend: (username: string) => req('/api/friends/request', { username }),
   respondFriend: (userId: number, accept: boolean) => req('/api/friends/respond', { userId, accept }),

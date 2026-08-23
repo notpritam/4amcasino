@@ -226,6 +226,114 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
     return { rows };
   });
 
+  // my cumulative results over time, for the lobby chart
+  app.get('/api/me/timeline', authed, async (req) => {
+    const rows = db
+      .prepare(
+        `SELECT l.ts, l.delta FROM ledger l JOIN rooms r ON r.id = l.room_id
+         WHERE l.user_id = ? AND l.kind = 'hand-settlement' AND r.voided = 0
+           AND NOT EXISTS (SELECT 1 FROM ledger v WHERE v.room_id = l.room_id AND v.kind = 'void-hand' AND v.ref = l.ref)
+         ORDER BY l.ts LIMIT 2000`,
+      )
+      .all(req.userId) as { ts: number; delta: number }[];
+    let net = 0;
+    return { points: rows.map((r) => ({ ts: r.ts, net: (net += r.delta) })) };
+  });
+
+  // play-style profile mined from the public hand transcripts
+  app.get('/api/users/:id/style', authed, async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    if (!db.prepare('SELECT 1 FROM users WHERE id = ?').get(id))
+      return reply.code(404).send({ error: 'no such user' });
+    const rows = db
+      .prepare(
+        `SELECT t.entries FROM transcripts t JOIN rooms r ON r.id = t.room_id
+         WHERE r.voided = 0
+           AND t.room_id IN (SELECT room_id FROM room_players WHERE user_id = ?)
+         ORDER BY t.ts DESC LIMIT 500`,
+      )
+      .all(id) as { entries: string }[];
+    let hands = 0;
+    let vpip = 0;
+    let pfr = 0;
+    let raisesBets = 0;
+    let calls = 0;
+    let folds = 0;
+    let showdowns = 0;
+    let wins = 0;
+    let quietWins = 0;
+    for (const row of rows) {
+      let entries: { type: string; payload: Record<string, unknown> }[];
+      try {
+        entries = JSON.parse(row.entries);
+      } catch {
+        continue;
+      }
+      const hs = entries.find((e) => e.type === 'hand_start');
+      const seats = (hs?.payload.seats ?? []) as { seat: number; userId: number }[];
+      const seat = seats.find((x) => x.userId === id)?.seat;
+      if (seat === undefined) continue;
+      hands++;
+      let street = 0;
+      let voluntary = false;
+      let raisedPre = false;
+      for (const e of entries) {
+        if (e.type === 'street') street++;
+        if (e.type === 'action' && (e.payload.seat as number) === seat) {
+          const a = e.payload.action as { type: string };
+          if (a.type === 'call') {
+            calls++;
+            if (street === 0) voluntary = true;
+          } else if (a.type === 'bet' || a.type === 'raise') {
+            raisesBets++;
+            if (street === 0) {
+              voluntary = true;
+              raisedPre = true;
+            }
+          } else if (a.type === 'fold') {
+            folds++;
+          }
+        }
+        if (e.type === 'settlement') {
+          const p = e.payload as {
+            awards?: { seat: number; amount: number }[];
+            reveals?: { seat: number }[];
+          };
+          if ((p.reveals ?? []).some((r) => r.seat === seat)) showdowns++;
+          const award = (p.awards ?? []).find((a) => a.seat === seat)?.amount ?? 0;
+          if (award > 0) {
+            wins++;
+            if ((p.reveals ?? []).length === 0) quietWins++;
+          }
+        }
+      }
+      if (voluntary) vpip++;
+      if (raisedPre) pfr++;
+    }
+    if (hands === 0) return { hands: 0 };
+    const pct = (n: number) => Math.round((n / hands) * 100);
+    const af = calls > 0 ? raisesBets / calls : raisesBets > 0 ? 3 : 0;
+    const vpipPct = pct(vpip);
+    let archetype: string;
+    if (hands < 10) archetype = 'Too early to tell';
+    else if (vpipPct >= 45 && af < 1) archetype = 'The calling station';
+    else if (vpipPct >= 45) archetype = 'The maniac';
+    else if (vpipPct <= 28 && af >= 1.5) archetype = 'The shark';
+    else if (vpipPct <= 28 && af < 1) archetype = 'The rock';
+    else archetype = 'Balanced';
+    return {
+      hands,
+      vpipPct,
+      pfrPct: pct(pfr),
+      aggressionFactor: Math.round(af * 100) / 100,
+      showdownPct: pct(showdowns),
+      winPct: pct(wins),
+      quietWinPct: wins > 0 ? Math.round((quietWins / wins) * 100) : 0,
+      foldRate: pct(folds),
+      archetype,
+    };
+  });
+
   // the full session report: duration, hands, biggest pot, per-player detail
   app.get('/api/rooms/:id/session', authed, async (req, reply) => {
     const { id } = req.params as { id: string };

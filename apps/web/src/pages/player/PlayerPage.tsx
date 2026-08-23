@@ -4,6 +4,19 @@ import { api } from '../../shared/api.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
 import { Badge, Panel, Spinner } from '../../shared/ui/index.tsx';
 import { Avatar } from '../../entities/user/Avatar.tsx';
+import { StyleRadar } from '../../features/stats/charts.tsx';
+
+interface PlayStyle {
+  hands: number;
+  vpipPct: number;
+  pfrPct: number;
+  aggressionFactor: number;
+  showdownPct: number;
+  winPct: number;
+  quietWinPct: number;
+  foldRate: number;
+  archetype: string;
+}
 
 interface PlayerProfile {
   userId: number;
@@ -52,9 +65,11 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: 'up
 export function PlayerPage() {
   const { id } = useParams<{ id: string }>();
   const [p, setP] = useState<PlayerProfile | null>(null);
+  const [style, setStyle] = useState<PlayStyle | null>(null);
 
   useEffect(() => {
     api.userProfile(Number(id)).then(setP);
+    api.playStyle(Number(id)).then(setStyle).catch(() => {});
   }, [id]);
 
   if (!p) {
@@ -91,6 +106,35 @@ export function PlayerPage() {
           tone={p.stats.biggestWin > 0 ? 'up' : undefined}
         />
       </div>
+
+      {style && style.hands > 0 && (
+        <Panel>
+          <div className="mb-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <h2 className="font-display font-semibold">Play style</h2>
+            <Badge tone={style.archetype === 'The shark' ? 'emerald' : style.archetype === 'The calling station' ? 'amber' : 'indigo'}>
+              {style.archetype}
+            </Badge>
+            <span className="text-xs text-slate-400">from {fmt(style.hands)} public hand transcripts</span>
+          </div>
+          <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,1fr)_220px]">
+            <StyleRadar style={style} />
+            <div className="space-y-1.5 text-sm text-slate-600 dark:text-slate-300">
+              <p>
+                Plays <b>{style.vpipPct}%</b> of hands, raises first in <b>{style.pfrPct}%</b>.
+              </p>
+              <p>
+                Aggression factor <b>{style.aggressionFactor}</b> (bets and raises per call).
+              </p>
+              <p>
+                Reaches showdown in <b>{style.showdownPct}%</b> of hands and wins <b>{style.winPct}%</b>.
+              </p>
+              <p>
+                <b>{style.quietWinPct}%</b> of wins never showed a card.
+              </p>
+            </div>
+          </div>
+        </Panel>
+      )}
 
       <Panel>
         <h2 className="mb-3 font-display font-semibold">Rivals</h2>

@@ -1,5 +1,7 @@
 # 4AM Casino
 
+**Play it live: [poker.notpritam.in](https://poker.notpritam.in)**
+
 Open-source no-limit Texas Hold'em for friend groups where **nobody can see a card they
 shouldn't — not even the person hosting the server**.
 

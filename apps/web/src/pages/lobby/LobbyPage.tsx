@@ -4,6 +4,8 @@ import { api } from '../../shared/api.ts';
 import { useStore } from '../../shared/store.ts';
 import { Badge, Button, Dialog, Input, Panel } from '../../shared/ui/index.tsx';
 import { FriendsPanel, InvitesPanel } from '../../features/friends/FriendsPanel.tsx';
+import { NetAreaChart } from '../../features/stats/charts.tsx';
+import { fmt } from '../../shared/lib/cn.ts';
 
 interface RoomSummary {
   id: string;
@@ -25,6 +27,8 @@ export function LobbyPage() {
   const [minSettleHands, setMinSettleHands] = useState(0);
   const [meetLink, setMeetLink] = useState('');
   const [visibility, setVisibility] = useState<'private' | 'public'>('private');
+  const [timeline, setTimeline] = useState<{ ts: number; net: number }[]>([]);
+  const [myStats, setMyStats] = useState<{ net: number; handsPlayed: number; biggestWin: number } | null>(null);
   const [publicRooms, setPublicRooms] = useState<
     { id: string; name: string; sb: number; bb: number; playerCount: number; hostName: string; meetLink: string | null }[]
   >([]);
@@ -37,7 +41,12 @@ export function LobbyPage() {
   useEffect(() => {
     api.myRooms().then((r) => setRooms(r.rooms)).catch(() => {});
     api.publicRooms().then((r) => setPublicRooms(r.rooms)).catch(() => {});
+    api.timeline().then((r) => setTimeline(r.points)).catch(() => {});
   }, []);
+  const userId = useStore((s) => s.auth.userId);
+  useEffect(() => {
+    if (userId) api.userProfile(userId).then((r) => setMyStats(r.stats)).catch(() => {});
+  }, [userId]);
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
@@ -72,6 +81,30 @@ export function LobbyPage() {
       </div>
 
       <InvitesPanel onJoined={(roomId) => nav(`/room/${roomId}`)} />
+
+      {timeline.length >= 2 && myStats && (
+        <Panel className="mb-8">
+          <div className="mb-4 flex flex-wrap items-baseline gap-x-6 gap-y-2">
+            <h2 className="font-display font-semibold">Your game so far</h2>
+            <span
+              className={
+                myStats.net > 0
+                  ? 'font-display text-lg font-bold text-emerald-600'
+                  : myStats.net < 0
+                    ? 'font-display text-lg font-bold text-rose-600'
+                    : 'font-display text-lg font-bold text-slate-400'
+              }
+            >
+              {myStats.net > 0 ? '+' : ''}
+              {fmt(myStats.net)}
+            </span>
+            <span className="text-sm text-slate-500">
+              {fmt(myStats.handsPlayed)} hands · best pot +{fmt(myStats.biggestWin)}
+            </span>
+          </div>
+          <NetAreaChart points={timeline} />
+        </Panel>
+      )}
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2">
         <Panel>
