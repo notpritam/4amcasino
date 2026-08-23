@@ -4,5 +4,6 @@
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
-  "scripts": { "typecheck": "tsc --noEmit" }
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": { "zod": "^3.23.0" }
 }
