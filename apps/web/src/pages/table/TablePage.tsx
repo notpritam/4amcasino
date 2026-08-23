@@ -485,6 +485,7 @@ export function TablePage() {
                         {t}s
                       </option>
                     ))}
+                    <option value={0}>No limit</option>
                   </select>
                 </label>
               )}
@@ -546,6 +547,7 @@ export function TablePage() {
                   {s}s
                 </option>
               ))}
+              <option value={0}>No limit</option>
             </select>
           </label>
         )}

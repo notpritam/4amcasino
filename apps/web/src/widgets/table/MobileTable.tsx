@@ -39,7 +39,9 @@ function OpponentColumn({ p, urgent }: { p: SeatView; urgent: boolean }) {
   return (
     <div
       className={cn(
-        'flex w-16 shrink-0 flex-col items-center gap-1',
+        'flex w-16 shrink-0 flex-col items-center gap-1 rounded-2xl px-1 pt-1.5',
+        p.isToAct && 'turn-stripes-dark bg-indigo-500/10 ring-1 ring-indigo-400/50',
+        p.isToAct && urgent && 'turn-stripes-dark-rose bg-rose-500/10 ring-rose-400/60',
         (p.folded || !p.connected) && 'opacity-40',
         p.broke && 'opacity-50 saturate-50',
       )}
@@ -100,6 +102,7 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
   const room = useStore((s) => s.room);
   const [raiseOpen, setRaiseOpen] = useState(false);
   const [raiseTo, setRaiseTo] = useState(0);
+  const [sentAtSeq, setSentAtSeq] = useState<number | null>(null);
 
   const st = hand.betting;
   const la = st ? legalActions(st) : null;
@@ -113,6 +116,20 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
     if (myTurn && la) setRaiseTo(la.minRaiseTo);
     if (!myTurn) setRaiseOpen(false);
   }, [myTurn, la?.minRaiseTo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pending = sentAtSeq !== null;
+  useEffect(() => {
+    if (sentAtSeq !== null && (hand.actionSeq !== sentAtSeq || !myTurn)) setSentAtSeq(null);
+  }, [hand.actionSeq, myTurn, sentAtSeq]);
+  useEffect(() => {
+    if (sentAtSeq === null) return;
+    const t = setTimeout(() => setSentAtSeq(null), 6000);
+    return () => clearTimeout(t);
+  }, [sentAtSeq]);
+  const send = (a: Parameters<typeof act>[0]) => {
+    setSentAtSeq(hand.actionSeq);
+    act(a);
+  };
 
   const ghost =
     'flex-1 rounded-full border border-white/25 px-4 py-3 text-center text-sm font-semibold text-white active:scale-[0.98]';
@@ -178,18 +195,25 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
             aria-label="Raise amount"
           />
           <button
-            onClick={() => act(st.currentBet === 0 ? { type: 'bet', amount: raiseTo } : { type: 'raise', amount: raiseTo })}
-            className="w-full rounded-full bg-white py-2.5 text-sm font-bold text-slate-900 active:scale-[0.98]"
+            disabled={pending}
+            onClick={() => send(st.currentBet === 0 ? { type: 'bet', amount: raiseTo } : { type: 'raise', amount: raiseTo })}
+            className="w-full rounded-full bg-white py-2.5 text-sm font-bold text-slate-900 active:scale-[0.98] disabled:opacity-50"
           >
             {st.currentBet === 0 ? `Bet ${fmt(raiseTo)}` : `Raise to ${fmt(raiseTo)}`}
           </button>
         </div>
       )}
-      <div className="flex gap-2">
-        <button onClick={() => act({ type: 'fold' })} className={cn(ghost, 'border-rose-500/40 text-rose-300')}>
+      {pending && (
+        <p className="flex items-center justify-center gap-1.5 text-xs text-white/60">
+          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+          Sending…
+        </p>
+      )}
+      <div className={cn('flex gap-2', pending && 'pointer-events-none opacity-50')}>
+        <button onClick={() => send({ type: 'fold' })} className={cn(ghost, 'border-rose-500/40 text-rose-300')}>
           Fold
         </button>
-        <button onClick={() => act(la.canCheck ? { type: 'check' } : { type: 'call' })} className={ghost}>
+        <button onClick={() => send(la.canCheck ? { type: 'check' } : { type: 'call' })} className={ghost}>
           {la.canCheck ? 'Check' : `Call ${fmt(la.callAmount)}`}
         </button>
         {la.canRaise && (
@@ -293,8 +317,8 @@ export function MobileTable({
           <div
             className={cn(
               'flex min-w-28 flex-col items-center gap-1 rounded-2xl border border-white/20 px-4 py-3',
-              me.isToAct && 'border-indigo-400',
-              me.isToAct && urgent && 'border-rose-500 animate-urgent',
+              me.isToAct && 'turn-stripes-dark border-indigo-400 bg-indigo-500/10',
+              me.isToAct && urgent && 'turn-stripes-dark-rose border-rose-500 bg-rose-500/10 animate-urgent',
               me.won && 'animate-winner',
             )}
           >

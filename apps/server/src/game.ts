@@ -608,7 +608,13 @@ class Hand {
     );
     this.appendServer('betting_start', { street: 'preflop' });
     this.broadcastBetting();
-    this.armTimer(this.opts.actionTimeoutMs);
+    this.armActionTimer();
+  }
+
+  /** actionTimeoutMs of 0 means unlimited thinking time: no timer, no auto-fold. */
+  private armActionTimer(): void {
+    if (this.opts.actionTimeoutMs > 0) this.armTimer(this.opts.actionTimeoutMs);
+    else this.clearTimer();
   }
 
   private broadcastBetting(): void {
@@ -618,7 +624,7 @@ class Hand {
       actionSeq: this.actionSeq,
       state: this.betting!,
       board: this.currentBoard(),
-      deadline: Date.now() + this.opts.actionTimeoutMs,
+      deadline: this.opts.actionTimeoutMs > 0 ? Date.now() + this.opts.actionTimeoutMs : null,
     });
   }
 
@@ -650,7 +656,7 @@ class Hand {
   private afterBettingChange(): void {
     const st = this.betting!;
     if (!streetClosed(st)) {
-      this.armTimer(this.opts.actionTimeoutMs);
+      this.armActionTimer();
       return;
     }
     if (st.winnerByFold !== null) {
@@ -715,7 +721,7 @@ class Hand {
     this.phase = 'betting';
     this.appendServer('street', { street: this.betting.street, board: this.currentBoard() });
     this.broadcastBetting();
-    this.armTimer(this.opts.actionTimeoutMs);
+    this.armActionTimer();
   }
 
   private openRemainingRunoutBoards(): void {

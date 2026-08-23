@@ -63,8 +63,8 @@ export function PlayerRow({ p, urgent }: { p: SeatView; urgent: boolean }) {
     <div
       className={cn(
         'relative flex items-center gap-3 rounded-2xl bg-white p-3 pb-4 pr-4 ring-1 ring-slate-200/70 transition-all dark:bg-slate-900 dark:ring-slate-700/70',
-        p.isToAct && 'ring-2 ring-indigo-500 shadow-md',
-        p.isToAct && urgent && 'ring-rose-500 animate-urgent',
+        p.isToAct && 'turn-stripes bg-indigo-50/80 ring-2 ring-indigo-500 shadow-md dark:bg-indigo-950/40',
+        p.isToAct && urgent && 'turn-stripes-rose bg-rose-50/80 ring-rose-500 animate-urgent dark:bg-rose-950/40',
         p.won && 'animate-winner',
         (p.folded || !p.connected) && 'opacity-50',
         p.broke && 'opacity-60 saturate-50',
@@ -128,8 +128,8 @@ export function YouRow({ p, cards, urgent }: { p: SeatView; cards: CardId[]; urg
     <div
       className={cn(
         'relative flex items-center gap-4 rounded-2xl bg-white p-4 pb-5 ring-1 ring-slate-200/70 dark:bg-slate-900 dark:ring-slate-700/70',
-        p.isToAct && 'ring-2 ring-indigo-500 shadow-lg',
-        p.isToAct && urgent && 'ring-rose-500 animate-urgent',
+        p.isToAct && 'turn-stripes bg-indigo-50/80 ring-2 ring-indigo-500 shadow-lg dark:bg-indigo-950/40',
+        p.isToAct && urgent && 'turn-stripes-rose bg-rose-50/80 ring-rose-500 animate-urgent dark:bg-rose-950/40',
         p.won && 'animate-winner',
         p.folded && 'opacity-60',
       )}

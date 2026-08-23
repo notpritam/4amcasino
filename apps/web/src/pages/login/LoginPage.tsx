@@ -55,8 +55,8 @@ export function LoginPage() {
         </p>
         {expired && (
           <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
-            Your session expired, most likely because the server restarted. On free hosting the
-            play-money data resets with it, so you may need to register again.
+            The server restarted and reset its data, so your login is gone. Sessions here never
+            time out on their own. Register again with the same name and you are back in.
           </div>
         )}
         <Panel>

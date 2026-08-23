@@ -22,7 +22,7 @@ export interface RoomRow {
 /** Emits ('changed', roomId) when REST mutations alter room membership or stacks. */
 export const roomEvents = new EventEmitter();
 
-const actionSecsSchema = z.number().int().min(5).max(180);
+const actionSecsSchema = z.union([z.literal(0), z.number().int().min(5).max(180)]); // 0 = no limit
 
 const createSchema = z.object({
   name: z.string().min(1).max(48),
@@ -197,7 +197,7 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
   app.put('/api/rooms/:id/settings', authed, async (req, reply) => {
     const { id } = req.params as { id: string };
     const parsed = z.object({ actionSecs: actionSecsSchema }).safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'turn time must be 5-180 seconds' });
+    if (!parsed.success) return reply.code(400).send({ error: 'turn time must be 0 (no limit) or 5-180 seconds' });
     const room = getRoom(db, id);
     if (!room) return reply.code(404).send({ error: 'no such room' });
     if (room.host_id !== req.userId) return reply.code(403).send({ error: 'host only' });

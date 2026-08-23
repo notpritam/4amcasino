@@ -106,7 +106,7 @@ export type ServerMsg =
   | { t: 'share_applied'; handId: string; deckIndex: number; seat: number; out: string; forSeat: number | null }
   | { t: 'your_card'; handId: string; deckIndex: number; point: string }
   | { t: 'board_open'; handId: string; deckIndex: number; card: CardId }
-  | { t: 'betting_state'; handId: string; actionSeq: number; state: BettingState; board: CardId[]; deadline: number }
+  | { t: 'betting_state'; handId: string; actionSeq: number; state: BettingState; board: CardId[]; deadline: number | null }
   | { t: 'action_applied'; handId: string; seat: number; action: PlayerAction; auto?: boolean }
   | {
       t: 'showdown';

@@ -132,6 +132,7 @@ export function LobbyPage() {
                   {s} seconds per decision
                 </option>
               ))}
+              <option value={0}>No limit</option>
             </select>
           </label>
           <label className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">

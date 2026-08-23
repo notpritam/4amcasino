@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import NumberFlow from '@number-flow/react';
-import { legalActions } from '@4am/shared';
+import { legalActions, type PlayerAction } from '@4am/shared';
 import { act, startHand } from '../../shared/gameClient.ts';
 import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
@@ -26,6 +26,22 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
 
   const handIdle = !hand.handId || handOver;
   const sb = room?.room.sb ?? 1;
+
+  // pending: an action left this device but the table has not updated yet
+  const [sentAtSeq, setSentAtSeq] = useState<number | null>(null);
+  const pending = sentAtSeq !== null;
+  useEffect(() => {
+    if (sentAtSeq !== null && (hand.actionSeq !== sentAtSeq || !myTurn)) setSentAtSeq(null);
+  }, [hand.actionSeq, myTurn, sentAtSeq]);
+  useEffect(() => {
+    if (sentAtSeq === null) return;
+    const t = setTimeout(() => setSentAtSeq(null), 6000);
+    return () => clearTimeout(t);
+  }, [sentAtSeq]);
+  const send = (a: PlayerAction) => {
+    setSentAtSeq(hand.actionSeq);
+    act(a);
+  };
 
   /** Sensible raise-to for a fraction of the pot (pot counted after our call). */
   const potRaise = (frac: number): number => {
@@ -93,16 +109,24 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
               </div>
             )}
             <div className="flex items-center gap-2">
+              {pending && (
+                <span className="flex items-center gap-1.5 text-xs text-indigo-100">
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  Sending…
+                </span>
+              )}
               <Button
                 variant="secondary"
                 className="border-0 bg-white/15 text-white hover:bg-white/25 dark:bg-white/15 dark:text-white dark:hover:bg-white/25"
-                onClick={() => act({ type: 'fold' })}
+                disabled={pending}
+                onClick={() => send({ type: 'fold' })}
               >
                 Fold
               </Button>
               <Button
                 variant="success"
-                onClick={() => act(la.canCheck ? { type: 'check' } : { type: 'call' })}
+                disabled={pending}
+                onClick={() => send(la.canCheck ? { type: 'check' } : { type: 'call' })}
               >
                 {la.canCheck ? 'Check' : `Call ${fmt(la.callAmount)}`}
               </Button>
@@ -110,8 +134,9 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
                 <Button
                   variant="secondary"
                   className="border-0 bg-white text-indigo-700 hover:bg-indigo-50 dark:bg-white dark:text-indigo-700 dark:hover:bg-indigo-50"
+                  disabled={pending}
                   onClick={() =>
-                    act(
+                    send(
                       st!.currentBet === 0
                         ? { type: 'bet', amount: Math.min(raiseTo, la.maxRaiseTo) }
                         : { type: 'raise', amount: Math.min(raiseTo, la.maxRaiseTo) },
