@@ -17,7 +17,10 @@ const registerSchema = z.object({
 });
 const loginSchema = registerSchema.omit({ publicKey: true });
 
-export function createApp(dbPath: string): { app: FastifyInstance; db: DB } {
+export function createApp(
+  dbPath: string,
+  storageInfo?: () => Record<string, unknown>,
+): { app: FastifyInstance; db: DB } {
   const db = openDb(dbPath);
   const app = Fastify();
   void app.register(cors, { origin: true });
@@ -26,10 +29,10 @@ export function createApp(dbPath: string): { app: FastifyInstance; db: DB } {
     db.close();
   });
 
-  // storage: 'disk' when the DB lives on a mounted volume that survives deploys
+  // storage: 'disk' or 'mongodb' when data survives deploys, 'ephemeral' when it resets
   app.get('/api/health', async () => ({
     ok: true,
-    storage: dbPath.startsWith('/data') ? 'disk' : 'ephemeral',
+    ...(storageInfo?.() ?? { storage: dbPath.startsWith('/data') ? 'disk' : 'ephemeral' }),
   }));
 
   app.post('/api/register', async (req, reply) => {

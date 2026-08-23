@@ -11,6 +11,9 @@ services:
         value: 22.16.0
       - key: DB_PATH
         value: /data/4amcasino.db
+      # optional off-site backup: set MONGO_URL (a mongodb+srv:// connection
+      # string) in the dashboard and the server continuously snapshots the
+      # database to MongoDB and restores from it when the local file is gone
     # persistent storage: accounts, the ledger, and hand history survive
     # every deploy and restart
     disk:
