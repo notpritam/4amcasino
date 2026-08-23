@@ -1,7 +1,9 @@
 import { createApp } from './app.js';
+import { attachHub } from './hub.js';
 
 const port = Number(process.env.PORT ?? 8787);
-const { app } = createApp(process.env.DB_PATH ?? './4amcasino.db');
+const { app, db } = createApp(process.env.DB_PATH ?? './4amcasino.db');
+attachHub(app, db);
 
 app
   .listen({ port, host: '0.0.0.0' })

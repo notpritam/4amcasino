@@ -4,7 +4,7 @@ import { clientMsgSchema } from '@4am/shared';
 import { genIdentity } from '@4am/mental-poker';
 import type { DB } from './db.js';
 import { userForToken } from './auth.js';
-import { isMember } from './rooms.js';
+import { isMember, roomEvents } from './rooms.js';
 import { GameRoom, type GameOpts } from './game.js';
 
 const DEFAULT_OPTS: GameOpts = { cryptoTimeoutMs: 30_000, actionTimeoutMs: 45_000 };
@@ -33,7 +33,11 @@ export function attachHub(
     wss.handleUpgrade(req, socket, head, (ws) => handleConnection(ws, userId));
   });
 
+  const onRoomChanged = (roomId: string) => rooms.get(roomId)?.broadcastRoomState();
+  roomEvents.on('changed', onRoomChanged);
+
   app.addHook('onClose', async () => {
+    roomEvents.off('changed', onRoomChanged);
     for (const room of rooms.values()) room.shutdown();
     wss.close();
   });

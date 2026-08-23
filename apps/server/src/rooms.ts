@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from './db.js';
@@ -16,6 +17,9 @@ export interface RoomRow {
   audit_mode: string;
   created_at: number;
 }
+
+/** Emits ('changed', roomId) when REST mutations alter room membership or stacks. */
+export const roomEvents = new EventEmitter();
 
 const createSchema = z.object({
   name: z.string().min(1).max(48),
@@ -98,6 +102,7 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
       room.id,
       req.userId,
     );
+    roomEvents.emit('changed', room.id);
     return roomJson(db, room);
   });
 
@@ -176,6 +181,7 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
       }
     });
     apply();
+    roomEvents.emit('changed', id);
     return { ok: true };
   });
 

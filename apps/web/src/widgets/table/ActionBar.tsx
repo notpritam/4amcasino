@@ -12,9 +12,11 @@ export function ActionBar({ mySeat, isHost }: { mySeat: number | null; isHost: b
 
   const st = hand.betting;
   const la = useMemo(() => (st ? legalActions(st) : null), [st]);
-  const myTurn = la !== null && la.seat === mySeat && !hand.result && !hand.abort;
+  const handOver = hand.result !== null || hand.abort !== null;
+  const myTurn = la !== null && la.seat === mySeat && !handOver;
   const me = st?.seats.find((s) => s.seat === mySeat);
-  const balance = me ? me.stack : (room?.players.find((p) => p.seat === mySeat)?.stack ?? 0);
+  const balance =
+    me && !handOver ? me.stack : (room?.players.find((p) => p.seat === mySeat)?.stack ?? 0);
 
   useEffect(() => {
     if (myTurn && la) setRaiseTo(la.minRaiseTo);
