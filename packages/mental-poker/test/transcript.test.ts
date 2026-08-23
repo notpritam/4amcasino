@@ -13,6 +13,19 @@ function signedEntry(
   return t.append({ type, from: id.publicKey, payload, sig });
 }
 
+describe('identityFromSeed', () => {
+  it('is deterministic and signs correctly', async () => {
+    const { identityFromSeed } = await import('../src/identity.js');
+    const seed = new Uint8Array(32).fill(7);
+    const a = identityFromSeed(seed);
+    const b = identityFromSeed(seed);
+    expect(a).toEqual(b);
+    const msg = new TextEncoder().encode('x');
+    expect(verifyBytes(a.publicKey, msg, signBytes(a.secretKey, msg))).toBe(true);
+    expect(() => identityFromSeed(new Uint8Array(16))).toThrow();
+  });
+});
+
 describe('identity', () => {
   it('signs and verifies', () => {
     const id = genIdentity();
