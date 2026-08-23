@@ -12,6 +12,7 @@ import { PlayerPage } from '../pages/player/PlayerPage.tsx';
 import { ReplayPage } from '../pages/replay/ReplayPage.tsx';
 import { DesignBoardPage } from '../pages/design/DesignBoardPage.tsx';
 import { AppShell } from '../widgets/nav/AppShell.tsx';
+import { FairPage } from '../pages/fair/FairPage.tsx';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const token = useStore((s) => s.auth.token);
@@ -99,6 +100,7 @@ export function App() {
             </RequireAuth>
           }
         />
+        <Route path="/fair" element={<FairPage />} />
         <Route path="/design" element={<DesignBoardPage />} />
         <Route path="*" element={<Navigate to="/lobby" replace />} />
       </Routes>

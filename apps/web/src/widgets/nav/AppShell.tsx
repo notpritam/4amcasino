@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { CaretDown, ChartBar, PaintBrush, SignOut, UserCircle } from '@phosphor-icons/react';
+import { CaretDown, ChartBar, PaintBrush, ShieldCheck, SignOut, UserCircle } from '@phosphor-icons/react';
 import { useStore } from '../../shared/store.ts';
 import { cn } from '../../shared/lib/cn.ts';
 import { Avatar } from '../../entities/user/Avatar.tsx';
@@ -80,6 +80,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </button>
                   <Link to={`/players/${auth.userId}`} className={itemCls} onClick={() => setMenuOpen(false)}>
                     <ChartBar size={17} /> My stats
+                  </Link>
+                  <Link to="/fair" className={itemCls} onClick={() => setMenuOpen(false)}>
+                    <ShieldCheck size={17} /> How it's fair
                   </Link>
                   <Link to="/design" className={itemCls} onClick={() => setMenuOpen(false)}>
                     <PaintBrush size={17} /> Design board

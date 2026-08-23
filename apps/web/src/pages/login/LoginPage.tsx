@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../shared/api.ts';
 import { deriveAuthKey, deriveIdentity } from '../../shared/crypto.ts';
 import { useStore } from '../../shared/store.ts';
@@ -93,6 +93,12 @@ export function LoginPage() {
             server.
           </p>
         </Panel>
+        <Link
+          to="/fair"
+          className="mt-4 block text-center text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+        >
+          How can an online deck be fair? Watch the 60-second explainer
+        </Link>
       </div>
     </div>
   );
