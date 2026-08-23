@@ -15,12 +15,17 @@ export interface LeaderboardRow {
   biggestWin: number;
 }
 
-export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
+export function LeaderboardTable({ rows, minHands = 0 }: { rows: LeaderboardRow[]; minHands?: number }) {
   if (rows.length === 0) {
     return <p className="text-sm text-slate-500">No settled hands yet. Deal one and come back.</p>;
   }
   return (
     <div className="space-y-2">
+      {minHands > 0 && (
+        <p className="text-xs text-slate-400">
+          Winnings count in settle-up after {minHands} hand{minHands === 1 ? '' : 's'} played.
+        </p>
+      )}
       {rows.map((r, i) => (
         <Link
           key={r.userId}
@@ -38,6 +43,11 @@ export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
           <Avatar userId={r.userId} name={r.displayName ?? r.username} version={r.avatarVersion} size="sm" />
           <span className="min-w-0 flex-1 truncate font-medium">{r.displayName ?? r.username}</span>
           <span className="hidden text-xs text-slate-400 sm:block">{r.handsPlayed} hand{r.handsPlayed === 1 ? '' : 's'}</span>
+          {minHands > 0 && r.handsPlayed < minHands && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[0.65rem] font-semibold text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+              {minHands - r.handsPlayed} more to qualify
+            </span>
+          )}
           {r.biggestWin > 0 && (
             <span className="hidden text-xs text-slate-400 sm:block">best +{fmt(r.biggestWin)}</span>
           )}

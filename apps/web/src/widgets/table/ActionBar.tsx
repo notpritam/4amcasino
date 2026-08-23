@@ -113,13 +113,15 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
                   {quicks.map((q) => (
                     <button
                       key={q.label}
-                      onClick={() => setRaiseTo(q.value)}
-                      className={cn(
-                        'rounded-full px-3 py-1 text-xs font-semibold transition-colors',
-                        raiseTo === q.value
-                          ? 'bg-white text-indigo-700'
-                          : 'bg-white/15 text-white hover:bg-white/25',
-                      )}
+                      disabled={pending}
+                      onClick={() =>
+                        send(
+                          st!.currentBet === 0
+                            ? { type: 'bet', amount: q.value }
+                            : { type: 'raise', amount: q.value },
+                        )
+                      }
+                      className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-white hover:text-indigo-700 disabled:opacity-50"
                     >
                       {q.label} · {fmt(q.value)}
                     </button>
@@ -150,7 +152,7 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
               )}
               <Button
                 variant="secondary"
-                className="border-0 bg-white/15 text-white hover:bg-white/25 dark:bg-white/15 dark:text-white dark:hover:bg-white/25"
+                className="border-0 bg-white/15! text-white! hover:bg-white/25! dark:bg-white/15! dark:text-white! dark:hover:bg-white/25!"
                 disabled={pending}
                 onClick={() => send({ type: 'fold' })}
               >
@@ -166,7 +168,7 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
               {la.canRaise && (
                 <Button
                   variant="secondary"
-                  className="border-0 bg-white text-indigo-700 hover:bg-indigo-50 dark:bg-white dark:text-indigo-700 dark:hover:bg-indigo-50"
+                  className="border-0 bg-white! text-indigo-700! hover:bg-indigo-50! dark:bg-white! dark:text-indigo-700! dark:hover:bg-indigo-50!"
                   disabled={pending}
                   onClick={() =>
                     send(
@@ -186,9 +188,11 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
             {handIdle
               ? balance === 0
                 ? 'You are out of chips. Buy points from the bank (top right) to keep playing.'
-                : isHost
-                  ? 'Deal when everyone is seated.'
-                  : 'Waiting for the host to deal.'
+                : hand.autoDealAt && hand.autoDealAt > Date.now()
+                  ? 'Next hand deals itself in a moment. Sit out (top right) if you need a break.'
+                  : isHost
+                    ? 'Deal when everyone is seated.'
+                    : 'Waiting for the host to deal.'
               : disconnected.length > 0
                 ? `${disconnected.join(', ')} lost connection. Holding the hand about 40 seconds for them to rejoin…`
                 : st
@@ -223,7 +227,7 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
         {canShow && (
           <Button
             variant="secondary"
-            className="border-0 bg-white/15 text-white hover:bg-white/25 dark:bg-white/15 dark:text-white dark:hover:bg-white/25"
+            className="border-0 bg-white/15! text-white! hover:bg-white/25! dark:bg-white/15! dark:text-white! dark:hover:bg-white/25!"
             disabled={showSentFor === hand.handId}
             onClick={() => {
               setShowSentFor(hand.handId);
@@ -237,7 +241,7 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
         {handIdle && isHost && (
           <Button
             variant="secondary"
-            className="border-0 bg-white text-indigo-700 dark:bg-white dark:text-indigo-700"
+            className="border-0 bg-white! text-indigo-700! dark:bg-white! dark:text-indigo-700!"
             onClick={startHand}
           >
             Start hand

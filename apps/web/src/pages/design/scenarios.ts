@@ -45,6 +45,7 @@ const mockRoom = {
     actionTimeoutMs: 30_000,
     actionSecs: 30,
     coBankerId: null,
+    minSettleHands: 0,
   },
   players: CAST.map((p) => ({
     ...p,

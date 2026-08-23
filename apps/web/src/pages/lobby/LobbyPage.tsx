@@ -21,6 +21,7 @@ export function LobbyPage() {
   const [sb, setSb] = useState(10);
   const [bb, setBb] = useState(20);
   const [actionSecs, setActionSecs] = useState(45);
+  const [minSettleHands, setMinSettleHands] = useState(0);
   const [strictAudit, setStrictAudit] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const prefs = useStore((s) => s.prefs);
@@ -34,7 +35,7 @@ export function LobbyPage() {
   async function create(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const room = await api.createRoom(name, sb, bb, strictAudit ? 'strict-audit' : undefined, actionSecs);
+      const room = await api.createRoom(name, sb, bb, strictAudit ? 'strict-audit' : undefined, actionSecs, minSettleHands);
       nav(`/room/${room.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'could not create room');
@@ -134,6 +135,19 @@ export function LobbyPage() {
               ))}
               <option value={0}>No limit</option>
             </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-slate-500">Hands required before winnings count in settle-up</span>
+            <Input
+              type="number"
+              min={0}
+              max={500}
+              value={minSettleHands}
+              onChange={(e) => setMinSettleHands(Math.max(0, +e.target.value))}
+            />
+            <span className="mt-1 block text-xs text-slate-400">
+              0 means everyone counts right away. The banker can change this later.
+            </span>
           </label>
           <label className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
             <input

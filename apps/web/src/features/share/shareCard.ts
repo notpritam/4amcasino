@@ -109,6 +109,81 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
 
 const fmtChips = (n: number) => new Intl.NumberFormat('en-US').format(n);
 
+function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let t = text;
+  while (t.length > 1 && ctx.measureText(`${t}\u2026`).width > maxWidth) t = t.slice(0, -1);
+  return `${t}\u2026`;
+}
+
+/** Subtle film grain over the finished card. */
+function grain(ctx: CanvasRenderingContext2D, W: number, H: number): void {
+  const off = document.createElement('canvas');
+  off.width = W;
+  off.height = H;
+  const octx = off.getContext('2d')!;
+  const img = octx.createImageData(W, H);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = 128 + (Math.random() - 0.5) * 255;
+    d[i] = d[i + 1] = d[i + 2] = v;
+    d[i + 3] = 255;
+  }
+  octx.putImageData(img, 0, 0);
+  ctx.globalAlpha = 0.05;
+  ctx.globalCompositeOperation = 'overlay';
+  ctx.drawImage(off, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/** One duel column: avatar, name, cards, hand label, hero delta. */
+function drawColumn(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  row: ShareRow,
+  five: Set<CardId>,
+  dim: boolean,
+): void {
+  ctx.save();
+  if (dim) ctx.globalAlpha = 0.72;
+  const winner = row.delta > 0;
+  // avatar
+  ctx.beginPath();
+  ctx.arc(cx, 178, 28, 0, Math.PI * 2);
+  ctx.fillStyle = winner ? '#10b981' : 'rgba(255,255,255,0.10)';
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.font = '700 26px "Space Grotesk", system-ui, sans-serif';
+  ctx.fillText(row.name.slice(0, 1).toUpperCase(), cx, 188);
+  // name
+  ctx.font = '600 27px "Inter", system-ui, sans-serif';
+  ctx.fillText(ellipsize(ctx, row.name, 320), cx, 243);
+  // cards
+  const cw = 96;
+  const ch = 134;
+  const gap = 12;
+  const startX = cx - cw - gap / 2;
+  if (row.cards) {
+    row.cards.forEach((c, j) =>
+      drawCardFace(ctx, startX + j * (cw + gap), 262, cw, ch, c, five.has(c)),
+    );
+  } else {
+    for (let j = 0; j < 2; j++) drawCardFace(ctx, startX + j * (cw + gap), 262, cw, ch, null, false);
+  }
+  // hand label
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.font = '21px "Inter", system-ui, sans-serif';
+  ctx.fillText(row.label ?? (row.cards ? '' : 'never shown'), cx, 428);
+  // hero delta
+  ctx.fillStyle = winner ? '#34d399' : '#fb7185';
+  ctx.font = '700 54px "Space Grotesk", system-ui, sans-serif';
+  ctx.fillText(`${winner ? '+' : '\u2212'}${fmtChips(Math.abs(row.delta))}`, cx, 492);
+  ctx.restore();
+}
+
 /** Renders the 1200x630 shareable hand card onto the canvas. */
 export function drawHandCard(canvas: HTMLCanvasElement, data: ShareData): void {
   const W = 1200;
@@ -118,111 +193,108 @@ export function drawHandCard(canvas: HTMLCanvasElement, data: ShareData): void {
   const ctx = canvas.getContext('2d')!;
   const five = new Set(data.winningFive ?? []);
 
-  // background
-  const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, '#0b1220');
-  bg.addColorStop(1, '#141b33');
-  ctx.fillStyle = bg;
+  // background: near-black with a faint indigo glow behind the duel
+  ctx.fillStyle = '#0c0d12';
   ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#4f46e5';
-  ctx.fillRect(0, 0, W, 8);
+  const glow = ctx.createRadialGradient(W / 2, 300, 60, W / 2, 300, 560);
+  glow.addColorStop(0, 'rgba(79,70,229,0.16)');
+  glow.addColorStop(1, 'rgba(79,70,229,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
 
-  // header
+  // quiet brand row
   ctx.fillStyle = '#4f46e5';
-  roundRect(ctx, 48, 40, 44, 44, 10);
+  roundRect(ctx, 48, 38, 34, 34, 8);
   ctx.fill();
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
-  ctx.font = '26px system-ui, sans-serif';
-  ctx.fillText('♠', 70, 72);
+  ctx.font = '20px system-ui, sans-serif';
+  ctx.fillText('\u2660', 65, 62);
   ctx.textAlign = 'left';
-  ctx.font = '700 28px "Space Grotesk", system-ui, sans-serif';
-  ctx.fillText('4AM CASINO', 106, 71);
+  ctx.font = '700 19px "Space Grotesk", system-ui, sans-serif';
+  try {
+    (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = '4px';
+  } catch {
+    /* older browsers */
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillText('4AM CASINO', 96, 61);
+  try {
+    (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = '0px';
+  } catch {
+    /* older browsers */
+  }
   ctx.textAlign = 'right';
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.font = '22px "Inter", system-ui, sans-serif';
-  ctx.fillText(data.roomName, W - 48, 71);
+  ctx.fillStyle = 'rgba(255,255,255,0.38)';
+  ctx.font = '18px "Inter", system-ui, sans-serif';
+  ctx.fillText(ellipsize(ctx, data.roomName, 360), W - 48, 61);
 
-  // headline
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '600 30px "Inter", system-ui, sans-serif';
-  const lines = wrapText(ctx, data.headline, W - 96);
-  lines.forEach((l, i) => ctx.fillText(l, 48, 136 + i * 40));
-  const afterHeadline = 136 + (lines.length - 1) * 40;
+  // headline, one quiet line
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,0.72)';
+  ctx.font = '500 23px "Inter", system-ui, sans-serif';
+  ctx.fillText(ellipsize(ctx, data.headline, W - 140), W / 2, 112);
 
-  // board
-  const bw = 104;
-  const bh = 146;
-  const gap = 18;
-  const boardW = 5 * bw + 4 * gap;
-  const bx = (W - boardW) / 2;
-  const by = afterHeadline + 34;
+  // the duel: winner vs the biggest loser
+  const rows = data.rows;
+  const winnerRow = rows[0];
+  const loserRow = rows.length > 1 ? rows[rows.length - 1] : null;
+  if (winnerRow && loserRow) {
+    // center divider
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(W / 2, 160);
+    ctx.lineTo(W / 2, 500);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(W / 2, 320, 26, 0, Math.PI * 2);
+    ctx.fillStyle = '#14161e';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.textAlign = 'center';
+    ctx.font = '600 19px "Inter", system-ui, sans-serif';
+    ctx.fillText('vs', W / 2, 327);
+    drawColumn(ctx, W * 0.27, winnerRow, five, false);
+    drawColumn(ctx, W * 0.73, loserRow, five, true);
+  } else if (winnerRow) {
+    drawColumn(ctx, W / 2, winnerRow, five, false);
+  }
+
+  // the board, small and quiet, winning five ringed
+  const bw = 62;
+  const bh = 87;
+  const gap = 12;
+  const startX = (W - (5 * bw + 4 * gap)) / 2;
   for (let i = 0; i < 5; i++) {
     const card = data.board[i];
     if (card !== undefined) {
-      drawCardFace(ctx, bx + i * (bw + gap), by, bw, bh, card, five.has(card));
+      drawCardFace(ctx, startX + i * (bw + gap), 516, bw, bh, card, five.has(card));
     } else {
-      roundRect(ctx, bx + i * (bw + gap), by, bw, bh, 14);
-      ctx.setLineDash([8, 8]);
-      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-      ctx.lineWidth = 3;
+      roundRect(ctx, startX + i * (bw + gap), 516, bw, bh, 9);
+      ctx.setLineDash([6, 6]);
+      ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+      ctx.lineWidth = 2;
       ctx.stroke();
       ctx.setLineDash([]);
     }
   }
 
-  // player rows
-  const rows = data.rows.slice(0, 4);
-  const top = by + bh + 36;
-  const rowH = Math.min(96, (H - top - 24) / rows.length);
-  rows.forEach((row, i) => {
-    const y = top + i * rowH;
-    const cy = y + rowH / 2;
-    const winner = row.delta > 0;
-    // accent chip for the initial
-    ctx.fillStyle = winner ? '#10b981' : 'rgba(255,255,255,0.12)';
-    ctx.beginPath();
-    ctx.arc(76, cy, 26, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.font = '700 26px "Space Grotesk", system-ui, sans-serif';
-    ctx.fillText(row.name.slice(0, 1).toUpperCase(), 76, cy + 9);
-    // name
-    ctx.textAlign = 'left';
-    ctx.font = '600 28px "Inter", system-ui, sans-serif';
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(row.name.slice(0, 16), 122, cy + 10);
-    // hole cards (or face-down when never shown)
-    const cw = 56;
-    const ch = 78;
-    const cardsX = 400;
-    if (row.cards) {
-      row.cards.forEach((c, j) =>
-        drawCardFace(ctx, cardsX + j * (cw + 10), cy - ch / 2, cw, ch, c, five.has(c)),
-      );
-    } else {
-      for (let j = 0; j < 2; j++)
-        drawCardFace(ctx, cardsX + j * (cw + 10), cy - ch / 2, cw, ch, null, false);
-    }
-    // hand label (or "never shown")
-    ctx.textAlign = 'left';
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.font = '24px "Inter", system-ui, sans-serif';
-    ctx.fillText(row.label ?? (row.cards ? '' : 'never shown'), 560, cy + 9);
-    // delta
-    ctx.textAlign = 'right';
-    ctx.fillStyle = row.delta > 0 ? '#34d399' : '#fb7185';
-    ctx.font = `700 34px "Space Grotesk", system-ui, sans-serif`;
-    ctx.fillText(`${row.delta > 0 ? '+' : '−'}${fmtChips(Math.abs(row.delta))}`, W - 48, cy + 12);
-    ctx.textAlign = 'left';
-  });
-
-  // footer watermark
-  ctx.fillStyle = 'rgba(255,255,255,0.28)';
-  ctx.font = '18px "Inter", system-ui, sans-serif';
-  ctx.textAlign = 'right';
-  ctx.fillText('provably fair · nobody sees your cards, not even the house', W - 48, H - 18);
+  // quiet footer: everyone else, and the promise
+  const others = rows.slice(1, -1);
   ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(255,255,255,0.30)';
+  ctx.font = '15px "Inter", system-ui, sans-serif';
+  if (others.length > 0) {
+    const line = others
+      .map((o) => `${o.name} ${o.delta > 0 ? '+' : '\u2212'}${fmtChips(Math.abs(o.delta))}`)
+      .join('  \u00b7  ');
+    ctx.fillText(ellipsize(ctx, `also in the pot: ${line}`, 560), 48, H - 20);
+  }
+  ctx.textAlign = 'right';
+  ctx.fillText('provably fair \u00b7 nobody sees your cards, not even the house', W - 48, H - 20);
+
+  grain(ctx, W, H);
 }

@@ -267,6 +267,11 @@ function handle(msg: ServerMsg): void {
       return;
     }
 
+    case 'auto_deal': {
+      store.patchHand({ autoDealAt: Date.now() + msg.inMs });
+      return;
+    }
+
     case 'peek_offer': {
       const h = useStore.getState().hand;
       if (h.handId !== msg.handId || h.peekOffers.some((o) => o.offerId === msg.offerId)) return;

@@ -179,6 +179,10 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
           <p className="py-2 text-center text-sm font-semibold text-rose-300">
             You are out of chips. Buy points from the bank (menu, top right).
           </p>
+        ) : hand.autoDealAt && hand.autoDealAt > Date.now() ? (
+          <p className="py-2 text-center text-sm text-white/50">
+            Next hand deals itself in a moment. Menu → sit out if you need a break.
+          </p>
         ) : isHost ? (
           <button onClick={startHand} className="w-full rounded-full bg-white py-3 text-sm font-bold text-slate-900 active:scale-[0.98]">
             Start hand
@@ -243,13 +247,13 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
             ].map((q) => (
               <button
                 key={q.label}
-                onClick={() => setRaiseTo(q.value)}
-                className={cn(
-                  'flex-1 rounded-full px-2 py-1.5 text-xs font-semibold',
-                  raiseTo === q.value ? 'bg-white text-slate-900' : 'bg-white/10 text-white/80',
-                )}
+                disabled={pending}
+                onClick={() =>
+                  send(st.currentBet === 0 ? { type: 'bet', amount: q.value } : { type: 'raise', amount: q.value })
+                }
+                className="flex-1 rounded-full bg-white/10 px-2 py-1.5 text-xs font-semibold text-white/80 active:bg-white active:text-slate-900 disabled:opacity-50"
               >
-                {q.label}
+                {q.label} · {fmt(q.value)}
               </button>
             ))}
           </div>

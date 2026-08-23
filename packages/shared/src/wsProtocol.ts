@@ -116,7 +116,7 @@ export type ServerMsg =
   | { t: 'hello'; serverPublicKey: string }
   | {
       t: 'room_state';
-      room: { id: string; name: string; joinCode: string; hostId: number; bankerId: number; sb: number; bb: number; auditMode: string; actionTimeoutMs: number; actionSecs: number | null; coBankerId: number | null };
+      room: { id: string; name: string; joinCode: string; hostId: number; bankerId: number; sb: number; bb: number; auditMode: string; actionTimeoutMs: number; actionSecs: number | null; coBankerId: number | null; minSettleHands: number };
       players: RoomStatePlayer[];
       handActive: boolean;
     }
@@ -124,6 +124,7 @@ export type ServerMsg =
   | { t: 'chat'; from: string; userId: number; text: string; kind: 'text' | 'sticker' | 'phrase'; ts: number }
   | { t: 'rtc'; from: number; data: unknown }
   | { t: 'voice_state'; userId: number; muted: boolean }
+  | { t: 'auto_deal'; inMs: number }
   | { t: 'hand_start'; handId: string; seats: HandSeat[]; buttonSeat: number; sb: number; bb: number; auditMode: string }
   | { t: 'key_commit_applied'; handId: string; seat: number; commit: string }
   | { t: 'shuffle_turn'; handId: string; seat: number; deck: string[] }

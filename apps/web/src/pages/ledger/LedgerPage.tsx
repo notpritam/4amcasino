@@ -26,6 +26,7 @@ export function LedgerPage() {
   const [standings, setStandings] = useState<LeaderboardRow[]>([]);
   const [bankerId, setBankerId] = useState<number | null>(null);
   const [coBankerId, setCoBankerId] = useState<number | null>(null);
+  const [minSettleHands, setMinSettleHands] = useState(0);
   const [revertErr, setRevertErr] = useState<string | null>(null);
   const myUserId = useStore((s) => s.auth.userId);
 
@@ -38,6 +39,7 @@ export function LedgerPage() {
     api.room(roomId!).then((r) => {
       setBankerId(r.bankerId);
       setCoBankerId(r.coBankerId ?? null);
+      setMinSettleHands(r.minSettleHands ?? 0);
     }).catch(() => {});
   };
   useEffect(load, [roomId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -85,7 +87,7 @@ export function LedgerPage() {
 
       <Panel>
         <h2 className="mb-3 font-display font-semibold">Table standings</h2>
-        <LeaderboardTable rows={standings} />
+        <LeaderboardTable rows={standings} minHands={minSettleHands} />
       </Panel>
 
       <Panel>

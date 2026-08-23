@@ -107,6 +107,20 @@ export function BankControls({ roomId }: { roomId: string }) {
       </Dialog>
 
       <Dialog open={inboxOpen} onClose={() => setInboxOpen(false)} title="Pending purchases">
+        {isBanker && (
+          <label className="mb-4 block text-sm">
+            <span className="mb-1 block text-slate-500">
+              Hands required before winnings count in settle-up (0 = everyone counts)
+            </span>
+            <Input
+              type="number"
+              min={0}
+              max={500}
+              defaultValue={room?.room.minSettleHands ?? 0}
+              onBlur={(e) => void api.setMinSettleHands(roomId, Math.max(0, +e.target.value)).catch(() => {})}
+            />
+          </label>
+        )}
         {isMainBanker && (
           <label className="mb-4 block text-sm">
             <span className="mb-1 block text-slate-500">

@@ -38,6 +38,8 @@ export interface GameOpts {
   actionTimeoutMs: number;
   /** Extra chances a stalled player gets before the hand aborts (default 3). */
   cryptoRetries?: number;
+  /** Delay before the next hand deals itself while the host is online (default 15s). */
+  autoDealMs?: number;
 }
 
 interface Identity {
@@ -112,6 +114,7 @@ export class GameRoom {
   private shownHandId: string | null = null;
   private lastHandShow: ShowSnapshot | null = null;
   private peekOffers = new Map<string, { handId: string; fromUserId: number; targetSeat: number; amount: number }>();
+  private autoDeal: NodeJS.Timeout | null = null;
   private lookup = cardLookup();
 
   constructor(
@@ -145,6 +148,24 @@ export class GameRoom {
   shutdown(): void {
     this.hand?.clearTimer();
     this.hand = null;
+    if (this.autoDeal) clearTimeout(this.autoDeal);
+    this.autoDeal = null;
+  }
+
+  /** While the host is online the next hand deals itself after a short break. */
+  private scheduleAutoDeal(): void {
+    if (this.autoDeal) clearTimeout(this.autoDeal);
+    const delay = this.opts.autoDealMs ?? 15_000;
+    const room = getRoom(this.db, this.roomId);
+    if (!room || !this.sockets.has(room.host_id)) return;
+    this.autoDeal = setTimeout(() => {
+      this.autoDeal = null;
+      if (this.hand || !this.db.open) return;
+      const current = getRoom(this.db, this.roomId);
+      if (!current || !this.sockets.has(current.host_id)) return;
+      this.startHand(true);
+    }, delay);
+    this.broadcast({ t: 'auto_deal', inMs: delay });
   }
 
   send(userId: number, msg: ServerMsg): void {
@@ -186,6 +207,7 @@ export class GameRoom {
         actionTimeoutMs: room.action_secs !== null ? room.action_secs * 1000 : this.opts.actionTimeoutMs,
         actionSecs: room.action_secs,
         coBankerId: room.co_banker_id,
+        minSettleHands: room.min_settle_hands,
       },
       players,
       handActive: this.hand !== null,
@@ -242,6 +264,10 @@ export class GameRoom {
         if (room.host_id !== userId)
           return this.send(userId, { t: 'error', message: 'only the host starts hands' });
         if (this.hand) return this.send(userId, { t: 'error', message: 'hand already running' });
+        if (this.autoDeal) {
+          clearTimeout(this.autoDeal);
+          this.autoDeal = null;
+        }
         this.startHand();
         return;
       }
@@ -276,13 +302,13 @@ export class GameRoom {
     }
   }
 
-  private startHand(): void {
+  private startHand(auto = false): void {
     const room = getRoom(this.db, this.roomId)!;
     const eligible = roomPlayers(this.db, this.roomId)
       .filter((p) => p.seat !== null && !p.sittingOut && p.stack > 0 && this.sockets.has(p.userId))
       .sort((a, b) => a.seat! - b.seat!);
     if (eligible.length < 2) {
-      this.broadcast({ t: 'error', message: 'need at least 2 seated, funded, connected players' });
+      if (!auto) this.broadcast({ t: 'error', message: 'need at least 2 seated, funded, connected players' });
       return;
     }
     const seats = eligible.map((p) => p.seat!);
@@ -314,6 +340,7 @@ export class GameRoom {
       this.lastHandShow = this.hand?.showSnapshot() ?? null;
       this.hand = null;
       this.broadcastRoomState();
+      this.scheduleAutoDeal();
     });
     this.hand.begin();
   }

@@ -17,6 +17,7 @@ export interface RoomRow {
   audit_mode: string;
   action_secs: number | null;
   co_banker_id: number | null;
+  min_settle_hands: number;
   created_at: number;
 }
 
@@ -30,12 +31,15 @@ export const roomEvents = new EventEmitter();
 
 const actionSecsSchema = z.union([z.literal(0), z.number().int().min(5).max(180)]); // 0 = no limit
 
+const minSettleSchema = z.number().int().min(0).max(500);
+
 const createSchema = z.object({
   name: z.string().min(1).max(48),
   sb: z.number().int().positive(),
   bb: z.number().int().positive(),
   auditMode: z.enum(['private', 'strict-audit']).optional(),
   actionSecs: actionSecsSchema.optional(),
+  minSettleHands: minSettleSchema.optional(),
 });
 
 function newJoinCode(): string {
@@ -92,6 +96,7 @@ function roomJson(db: DB, room: RoomRow) {
     auditMode: room.audit_mode,
     actionSecs: room.action_secs,
     coBankerId: room.co_banker_id,
+    minSettleHands: room.min_settle_hands,
     players: roomPlayers(db, room.id),
   };
 }
@@ -102,14 +107,14 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
   app.post('/api/rooms', authed, async (req, reply) => {
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
-    const { name, sb, bb, auditMode, actionSecs } = parsed.data;
+    const { name, sb, bb, auditMode, actionSecs, minSettleHands } = parsed.data;
     if (bb < sb) return reply.code(400).send({ error: 'big blind must be >= small blind' });
     const id = randomBytes(6).toString('hex');
     const joinCode = newJoinCode();
     db.prepare(
-      `INSERT INTO rooms (id, name, join_code, host_id, banker_id, sb, bb, audit_mode, action_secs, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, name, joinCode, req.userId, req.userId, sb, bb, auditMode ?? 'private', actionSecs ?? null, Date.now());
+      `INSERT INTO rooms (id, name, join_code, host_id, banker_id, sb, bb, audit_mode, action_secs, min_settle_hands, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, name, joinCode, req.userId, req.userId, sb, bb, auditMode ?? 'private', actionSecs ?? null, minSettleHands ?? 0, Date.now());
     db.prepare('INSERT INTO room_players (room_id, user_id) VALUES (?, ?)').run(id, req.userId);
     return roomJson(db, getRoom(db, id)!);
   });
@@ -272,12 +277,19 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
 
   app.put('/api/rooms/:id/settings', authed, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const parsed = z.object({ actionSecs: actionSecsSchema }).safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'turn time must be 0 (no limit) or 5-180 seconds' });
+    const parsed = z
+      .object({ actionSecs: actionSecsSchema.optional(), minSettleHands: minSettleSchema.optional() })
+      .safeParse(req.body);
+    if (!parsed.success)
+      return reply.code(400).send({ error: 'turn time must be 0 (no limit) or 5-180 seconds' });
     const room = getRoom(db, id);
     if (!room) return reply.code(404).send({ error: 'no such room' });
-    if (room.host_id !== req.userId) return reply.code(403).send({ error: 'host only' });
-    db.prepare('UPDATE rooms SET action_secs = ? WHERE id = ?').run(parsed.data.actionSecs, id);
+    if (room.host_id !== req.userId && !canBank(room, req.userId))
+      return reply.code(403).send({ error: 'host or banker only' });
+    if (parsed.data.actionSecs !== undefined)
+      db.prepare('UPDATE rooms SET action_secs = ? WHERE id = ?').run(parsed.data.actionSecs, id);
+    if (parsed.data.minSettleHands !== undefined)
+      db.prepare('UPDATE rooms SET min_settle_hands = ? WHERE id = ?').run(parsed.data.minSettleHands, id);
     roomEvents.emit('changed', id);
     return { ok: true };
   });

@@ -65,6 +65,8 @@ interface HandView {
   /** Paid-peek offers waiting for my answer, and reveals only I can see. */
   peekOffers: { offerId: string; fromUserId: number; fromName: string; amount: number }[];
   peekResults: Record<number, CardId[]>;
+  /** When the server will deal the next hand by itself (host online). */
+  autoDealAt: number | null;
 }
 
 export const emptyHand: HandView = {
@@ -85,6 +87,7 @@ export const emptyHand: HandView = {
   preAction: null,
   peekOffers: [],
   peekResults: {},
+  autoDealAt: null,
 };
 
 interface Store {

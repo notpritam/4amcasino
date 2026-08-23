@@ -32,13 +32,14 @@ export const api = {
   login: (username: string, authKey: string) => req('/api/login', { username, authKey }),
   me: () => req('/api/me'),
   myRooms: () => req('/api/my-rooms'),
-  createRoom: (name: string, sb: number, bb: number, auditMode?: string, actionSecs?: number) =>
+  createRoom: (name: string, sb: number, bb: number, auditMode?: string, actionSecs?: number, minSettleHands?: number) =>
     req('/api/rooms', {
       name,
       sb,
       bb,
       ...(auditMode ? { auditMode } : {}),
-      ...(actionSecs ? { actionSecs } : {}),
+      ...(actionSecs !== undefined ? { actionSecs } : {}),
+      ...(minSettleHands ? { minSettleHands } : {}),
     }),
   joinRoom: (joinCode: string) => req('/api/rooms/join', { joinCode }),
   getRoom: (id: string) => req(`/api/rooms/${id}`),
@@ -61,6 +62,8 @@ export const api = {
   leaderboard: () => req('/api/leaderboard'),
   roomLeaderboard: (roomId: string) => req(`/api/rooms/${roomId}/leaderboard`),
   userProfile: (userId: number) => req(`/api/users/${userId}/profile`),
+  setMinSettleHands: (roomId: string, minSettleHands: number) =>
+    req(`/api/rooms/${roomId}/settings`, { minSettleHands }, 'PUT'),
   roomSettings: (roomId: string, actionSecs: number) =>
     req(`/api/rooms/${roomId}/settings`, { actionSecs }, 'PUT'),
 };

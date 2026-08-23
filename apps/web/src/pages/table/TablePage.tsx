@@ -936,7 +936,7 @@ export function TablePage() {
         ) : standings.length === 0 ? (
           <p className="text-sm text-slate-500">No completed hands yet. Deal one and check back.</p>
         ) : (
-          <LeaderboardTable rows={standings} />
+          <LeaderboardTable rows={standings} minHands={room.room.minSettleHands} />
         )}
       </Dialog>
 

@@ -237,7 +237,7 @@ let clients: TestClient[] = [];
 
 beforeEach(async () => {
   ctx = createApp(':memory:');
-  attachHub(ctx.app, ctx.db, { cryptoTimeoutMs: 1500, actionTimeoutMs: 1500 });
+  attachHub(ctx.app, ctx.db, { cryptoTimeoutMs: 1500, actionTimeoutMs: 1500, autoDealMs: 800 });
   await ctx.app.listen({ port: 0 });
   const addr = ctx.app.server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${addr.port}`;
@@ -397,6 +397,18 @@ describe('full hand integration', () => {
     expect(ledger.verified.ok).toBe(true);
     expect(ledger.entries.filter((e: any) => e.kind === 'peek')).toHaveLength(2);
   });
+
+  it('the next hand deals itself while the host stays online', async () => {
+    const { players, host } = await setupRoom(['host', 'bob'], ['fold-first', 'passive']);
+    host.send({ t: 'start_hand' });
+    await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null)));
+    const firstHandId = players[0]!.handEnd!.handId;
+    // nobody clicks anything: the server deals again on its own
+    await Promise.all(
+      players.map((p) => p.waitFor(() => p.handEnd !== null && p.handEnd.handId !== firstHandId, 15000)),
+    );
+    expect(players[0]!.handEnd!.handId).not.toBe(firstHandId);
+  }, 20000);
 
   it('a sitting-out player is skipped when the next hand is dealt', async () => {
     const { players, host } = await setupRoom(['host', 'bob', 'carol']);
