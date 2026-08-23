@@ -270,3 +270,83 @@ describe('banker revert', () => {
     expect(twice.json().error).toContain('already reverted');
   });
 });
+
+describe('backup banker', () => {
+  it('a co-banker can approve buys and revert purchases; only the banker appoints one', async () => {
+    const host = await user('mainbank');
+    const alice = await user('cobank');
+    const bob = await user('buyer');
+    const room = (
+      await ctx.app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: auth(host.token),
+        payload: { name: 'CoBank', sb: 10, bb: 20 },
+      })
+    ).json();
+    for (const u of [alice, bob]) {
+      await ctx.app.inject({
+        method: 'POST',
+        url: '/api/rooms/join',
+        headers: auth(u.token),
+        payload: { joinCode: room.joinCode },
+      });
+    }
+
+    // only the main banker can appoint
+    const sneaky = await ctx.app.inject({
+      method: 'PUT',
+      url: `/api/rooms/${room.id}/co-banker`,
+      headers: auth(alice.token),
+      payload: { userId: alice.userId },
+    });
+    expect(sneaky.statusCode).toBe(403);
+    const appoint = await ctx.app.inject({
+      method: 'PUT',
+      url: `/api/rooms/${room.id}/co-banker`,
+      headers: auth(host.token),
+      payload: { userId: alice.userId },
+    });
+    expect(appoint.statusCode).toBe(200);
+
+    // co-banker approves a buy while the main banker is away
+    const buyReq = (
+      await ctx.app.inject({
+        method: 'POST',
+        url: `/api/rooms/${room.id}/buy`,
+        headers: auth(bob.token),
+        payload: { amount: 700 },
+      })
+    ).json();
+    const approved = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/approve`,
+      headers: auth(alice.token),
+      payload: { requestId: buyReq.id, approve: true },
+    });
+    expect(approved.statusCode).toBe(200);
+    let state = (
+      await ctx.app.inject({ method: 'GET', url: `/api/rooms/${room.id}`, headers: auth(bob.token) })
+    ).json();
+    expect(state.players.find((p: any) => p.username === 'buyer').stack).toBe(700);
+    expect(state.coBankerId).toBe(alice.userId);
+
+    // and can revert it too
+    const ledger = (
+      await ctx.app.inject({ method: 'GET', url: `/api/rooms/${room.id}/ledger`, headers: auth(alice.token) })
+    ).json();
+    const purchase = ledger.entries.find((e: any) => e.kind === 'purchase');
+    const reverted = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/revert`,
+      headers: auth(alice.token),
+      payload: { entryId: purchase.id },
+    });
+    expect(reverted.statusCode).toBe(200);
+    state = (
+      await ctx.app.inject({ method: 'GET', url: `/api/rooms/${room.id}`, headers: auth(bob.token) })
+    ).json();
+    expect(state.players.find((p: any) => p.username === 'buyer').stack).toBe(0);
+    expect(verifyLedger(ctx.db, room.id).ok).toBe(true);
+  });
+});

@@ -25,6 +25,7 @@ export function LedgerPage() {
   const [verified, setVerified] = useState<{ ok: boolean } | null>(null);
   const [standings, setStandings] = useState<LeaderboardRow[]>([]);
   const [bankerId, setBankerId] = useState<number | null>(null);
+  const [coBankerId, setCoBankerId] = useState<number | null>(null);
   const [revertErr, setRevertErr] = useState<string | null>(null);
   const myUserId = useStore((s) => s.auth.userId);
 
@@ -34,7 +35,10 @@ export function LedgerPage() {
       setVerified(r.verified);
     });
     api.roomLeaderboard(roomId!).then((r) => setStandings(r.rows)).catch(() => {});
-    api.room(roomId!).then((r) => setBankerId(r.bankerId)).catch(() => {});
+    api.room(roomId!).then((r) => {
+      setBankerId(r.bankerId);
+      setCoBankerId(r.coBankerId ?? null);
+    }).catch(() => {});
   };
   useEffect(load, [roomId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -62,7 +66,7 @@ export function LedgerPage() {
   }
   // purchases already compensated by a revert entry (revert.ref = purchase hash)
   const revertedHashes = new Set(entries.filter((e) => e.kind === 'revert').map((e) => e.ref));
-  const amBanker = myUserId !== null && myUserId === bankerId;
+  const amBanker = myUserId !== null && (myUserId === bankerId || myUserId === coBankerId);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">

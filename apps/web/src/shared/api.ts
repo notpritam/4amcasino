@@ -49,6 +49,8 @@ export const api = {
     req(`/api/rooms/${roomId}/approve`, { requestId, approve }),
   room: (id: string) => req(`/api/rooms/${id}`),
   revertPurchase: (roomId: string, entryId: number) => req(`/api/rooms/${roomId}/revert`, { entryId }),
+  setCoBanker: (roomId: string, userId: number | null) =>
+    req(`/api/rooms/${roomId}/co-banker`, { userId }, 'PUT'),
   ledger: (roomId: string) => req(`/api/rooms/${roomId}/ledger`),
   hands: (roomId: string) => req(`/api/rooms/${roomId}/hands`),
   hand: (roomId: string, handId: string) => req(`/api/rooms/${roomId}/hands/${handId}`),

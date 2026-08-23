@@ -185,6 +185,7 @@ export class GameRoom {
         auditMode: room.audit_mode,
         actionTimeoutMs: room.action_secs !== null ? room.action_secs * 1000 : this.opts.actionTimeoutMs,
         actionSecs: room.action_secs,
+        coBankerId: room.co_banker_id,
       },
       players,
       handActive: this.hand !== null,

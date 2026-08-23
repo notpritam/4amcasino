@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { ArrowLeft, ChatCircle, DotsThreeVertical, Microphone, MicrophoneSlash, Moon, Sun, Timer, X } from '@phosphor-icons/react';
+import { ArrowLeft, ChatCircle, DotsThreeVertical, Microphone, MicrophoneSlash, Moon, ShareNetwork, Sun, Timer, X } from '@phosphor-icons/react';
 import NumberFlow from '@number-flow/react';
 import confetti from 'canvas-confetti';
-import { HAND_CATEGORY_NAMES, bestFive, describeScore, handCategory } from '@4am/shared';
+import { HAND_CATEGORY_NAMES, bestFive, describeScore, evaluate7, handCategory } from '@4am/shared';
 import { answerPeek, bindGameClient, offerPeek, setSitOut, sit } from '../../shared/gameClient.ts';
 import { wsClient } from '../../shared/ws.ts';
 import { useStore } from '../../shared/store.ts';
@@ -20,6 +20,8 @@ import { ChatPanel } from '../../widgets/table/ChatPanel.tsx';
 import { MobileTable } from '../../widgets/table/MobileTable.tsx';
 import { BankControls } from '../../widgets/table/BankControls.tsx';
 import { BrokeBuyInDialog } from '../../features/bank/BrokeBuyInDialog.tsx';
+import { ShareHandDialog } from '../../features/share/ShareHandDialog.tsx';
+import type { ShareData } from '../../features/share/shareCard.ts';
 
 function useNow(tickMs = 500): number {
   const [now, setNow] = useState(Date.now());
@@ -62,6 +64,7 @@ export function TablePage() {
   };
   const [peekAmtStr, setPeekAmtStr] = useState('');
   const [peekSent, setPeekSent] = useState<Record<number, boolean>>({});
+  const [shareOpen, setShareOpen] = useState(false);
   const [floats, setFloats] = useState<FloatingReaction[]>([]);
   const floatId = useRef(0);
   const lastChatLen = useRef(0);
@@ -360,12 +363,35 @@ export function TablePage() {
       tied.length > 1
         ? `Split pot: ${tied.map((r) => nameOf(r.seat)).join(' and ')} tie with ${describeScore(top.score)}.`
         : runnerUp
-          ? `${nameOf(top.seat)} wins with ${describeScore(top.score)} against ${nameOf(runnerUp.seat)}'s ${describeScore(runnerUp.score)}.`
+          ? `${nameOf(top.seat)} wins with ${describeScore(top.score)} against ${nameOf(runnerUp.seat)}'s ${describeScore(runnerUp.score).replace(/^a /, '')}.`
           : `${nameOf(top.seat)} wins with ${describeScore(top.score)}.`;
     const winningFive =
       hand.board.length === 5 ? bestFive([...top.cards, ...hand.board]) : null;
     return { headline, winningFive };
   })();
+
+  const shareData: ShareData | null =
+    hand.result && !hand.abort && reasoning
+      ? {
+          roomName: room.room.name,
+          headline: reasoning.headline,
+          board: hand.board,
+          rows: [...hand.result.deltas]
+            .filter((d) => d.delta !== 0)
+            .sort((a, b) => b.delta - a.delta)
+            .map((d) => {
+              const reveal = hand.showdown?.reveals.find((r) => r.seat === d.seat);
+              const cards = reveal?.cards ?? hand.shown[d.seat] ?? null;
+              const label = reveal
+                ? describeScore(reveal.score)
+                : cards && hand.board.length === 5
+                  ? describeScore(evaluate7([...cards, ...hand.board]))
+                  : null;
+              return { name: seatName(d.seat), cards, label, delta: d.delta };
+            }),
+          winningFive: reasoning.winningFive,
+        }
+      : null;
 
   const resultBanner = showResult && (
     <motion.div initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }}>
@@ -428,6 +454,11 @@ export function TablePage() {
                   {fmt(d.delta)}
                 </span>
               ))}
+            {shareData && (
+              <Button variant="ghost" onClick={() => setShareOpen(true)}>
+                <ShareNetwork size={16} /> Share
+              </Button>
+            )}
           </div>
           </div>
         )}
@@ -865,6 +896,7 @@ export function TablePage() {
         open={amBroke && !brokeDismissed}
         onClose={() => setBrokeDismissed(true)}
       />
+      <ShareHandDialog open={shareOpen} onClose={() => setShareOpen(false)} data={shareData} />
 
       {/* connection state */}
       {room && !wsConnected && (

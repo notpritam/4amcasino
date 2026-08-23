@@ -16,7 +16,13 @@ export interface RoomRow {
   bb: number;
   audit_mode: string;
   action_secs: number | null;
+  co_banker_id: number | null;
   created_at: number;
+}
+
+/** The main banker and the backup banker both hold banking powers. */
+export function canBank(room: RoomRow, userId: number): boolean {
+  return room.banker_id === userId || room.co_banker_id === userId;
 }
 
 /** Emits ('changed', roomId) when REST mutations alter room membership or stacks. */
@@ -85,6 +91,7 @@ function roomJson(db: DB, room: RoomRow) {
     bb: room.bb,
     auditMode: room.audit_mode,
     actionSecs: room.action_secs,
+    coBankerId: room.co_banker_id,
     players: roomPlayers(db, room.id),
   };
 }
@@ -148,7 +155,7 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     const { id } = req.params as { id: string };
     const room = getRoom(db, id);
     if (!room) return reply.code(404).send({ error: 'no such room' });
-    if (room.banker_id !== req.userId) return reply.code(403).send({ error: 'banker only' });
+    if (!canBank(room, req.userId)) return reply.code(403).send({ error: 'banker only' });
     const rows = db
       .prepare(
         `SELECT br.id, br.user_id as userId, u.username, br.amount, br.note, br.ts
@@ -167,7 +174,7 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
     const room = getRoom(db, id);
     if (!room) return reply.code(404).send({ error: 'no such room' });
-    if (room.banker_id !== req.userId) return reply.code(403).send({ error: 'banker only' });
+    if (!canBank(room, req.userId)) return reply.code(403).send({ error: 'banker only' });
     const request = db
       .prepare("SELECT * FROM buy_requests WHERE id = ? AND room_id = ? AND status = 'pending'")
       .get(parsed.data.requestId, id) as
@@ -201,6 +208,22 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     return { ok: true };
   });
 
+  // the main banker names (or clears) a backup banker with the same powers
+  app.put('/api/rooms/:id/co-banker', authed, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = z.object({ userId: z.number().int().nullable() }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+    const room = getRoom(db, id);
+    if (!room) return reply.code(404).send({ error: 'no such room' });
+    if (room.banker_id !== req.userId)
+      return reply.code(403).send({ error: 'only the main banker can pick a backup' });
+    if (parsed.data.userId !== null && !isMember(db, id, parsed.data.userId))
+      return reply.code(400).send({ error: 'the backup banker must be a room member' });
+    db.prepare('UPDATE rooms SET co_banker_id = ? WHERE id = ?').run(parsed.data.userId, id);
+    roomEvents.emit('changed', id);
+    return { ok: true };
+  });
+
   // banker reverses a specific earlier purchase with a compensating ledger entry
   app.post('/api/rooms/:id/revert', authed, async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -208,7 +231,7 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
     const room = getRoom(db, id);
     if (!room) return reply.code(404).send({ error: 'no such room' });
-    if (room.banker_id !== req.userId) return reply.code(403).send({ error: 'banker only' });
+    if (!canBank(room, req.userId)) return reply.code(403).send({ error: 'banker only' });
     const entry = db
       .prepare('SELECT * FROM ledger WHERE id = ? AND room_id = ?')
       .get(parsed.data.entryId, id) as

@@ -23,7 +23,8 @@ export function BankControls({ roomId }: { roomId: string }) {
   const [note, setNote] = useState('');
   const [sent, setSent] = useState(false);
   const [requests, setRequests] = useState<BuyRequest[]>([]);
-  const isBanker = room?.room.bankerId === userId;
+  const isMainBanker = room?.room.bankerId === userId;
+  const isBanker = isMainBanker || room?.room.coBankerId === userId;
 
   useEffect(() => {
     if (!isBanker) return;
@@ -106,6 +107,27 @@ export function BankControls({ roomId }: { roomId: string }) {
       </Dialog>
 
       <Dialog open={inboxOpen} onClose={() => setInboxOpen(false)} title="Pending purchases">
+        {isMainBanker && (
+          <label className="mb-4 block text-sm">
+            <span className="mb-1 block text-slate-500">
+              Backup banker (same powers, so the bank keeps working when you are away)
+            </span>
+            <select
+              value={room?.room.coBankerId ?? ''}
+              onChange={(e) => void api.setCoBanker(roomId, e.target.value ? +e.target.value : null)}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+            >
+              <option value="">None</option>
+              {room?.players
+                .filter((p) => p.userId !== userId)
+                .map((p) => (
+                  <option key={p.userId} value={p.userId}>
+                    {p.displayName}
+                  </option>
+                ))}
+            </select>
+          </label>
+        )}
         {requests.length === 0 ? (
           <p className="text-sm text-slate-500">Nothing waiting for approval.</p>
         ) : (

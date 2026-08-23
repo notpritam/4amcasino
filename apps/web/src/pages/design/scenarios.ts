@@ -44,6 +44,7 @@ const mockRoom = {
     auditMode: 'private',
     actionTimeoutMs: 30_000,
     actionSecs: 30,
+    coBankerId: null,
   },
   players: CAST.map((p) => ({
     ...p,
