@@ -214,3 +214,42 @@ export function nextStreet(prev: BettingState): BettingState {
   st.toAct = st.needToAct[0] ?? null;
   return st;
 }
+
+export function computePots(seats: SeatInHand[]): { amount: number; eligible: number[] }[] {
+  const levels = [...new Set(seats.map((s) => s.total).filter((t) => t > 0))].sort((a, b) => a - b);
+  const pots: { amount: number; eligible: number[] }[] = [];
+  let prev = 0;
+  for (const level of levels) {
+    const amount = seats.reduce((sum, s) => sum + Math.max(0, Math.min(s.total, level) - prev), 0);
+    const eligible = seats.filter((s) => !s.folded && s.total >= level).map((s) => s.seat);
+    const last = pots[pots.length - 1];
+    if (last && last.eligible.length === eligible.length && last.eligible.every((e, i) => e === eligible[i])) {
+      last.amount += amount;
+    } else {
+      pots.push({ amount, eligible });
+    }
+    prev = level;
+  }
+  return pots;
+}
+
+export function awardPots(
+  pots: { amount: number; eligible: number[] }[],
+  scores: Map<number, number>,
+  seatOrder: number[],
+): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const pot of pots) {
+    const scored = pot.eligible.filter((s) => scores.has(s));
+    if (scored.length === 0) continue; // no eligible shown-down hand (cannot happen in a legal hand)
+    const best = Math.max(...scored.map((s) => scores.get(s)!));
+    const winners = seatOrder.filter((s) => scored.includes(s) && scores.get(s) === best);
+    const share = Math.floor(pot.amount / winners.length);
+    let odd = pot.amount - share * winners.length;
+    for (const w of winners) {
+      out.set(w, (out.get(w) ?? 0) + share + (odd > 0 ? 1 : 0));
+      if (odd > 0) odd--;
+    }
+  }
+  return out;
+}

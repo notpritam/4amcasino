@@ -5,6 +5,8 @@ import {
   nextStreet,
   startHand,
   streetClosed,
+  computePots,
+  awardPots,
 } from '../src/betting.js';
 
 const seats3 = [
@@ -159,5 +161,68 @@ describe('incomplete all-in raise', () => {
     st = applyAction(st, 2, { type: 'call' });
     const la0 = legalActions(st)!;
     expect(la0).toMatchObject({ seat: 0, canRaise: false, callAmount: 10 });
+  });
+});
+
+const potSeat = (seat: number, total: number, folded = false) => ({
+  seat,
+  stack: 0,
+  committed: 0,
+  total,
+  folded,
+  allIn: false,
+  lastActedAt: null,
+});
+
+describe('computePots', () => {
+  it('single pot when everyone matched', () => {
+    expect(computePots([potSeat(0, 100), potSeat(1, 100), potSeat(2, 100)])).toEqual([
+      { amount: 300, eligible: [0, 1, 2] },
+    ]);
+  });
+  it('side pots for two different all-ins', () => {
+    expect(computePots([potSeat(0, 50), potSeat(1, 200), potSeat(2, 500), potSeat(3, 500)])).toEqual([
+      { amount: 200, eligible: [0, 1, 2, 3] },
+      { amount: 450, eligible: [1, 2, 3] },
+      { amount: 600, eligible: [2, 3] },
+    ]);
+  });
+  it('folded chips stay in the pot but folded seats are ineligible', () => {
+    expect(computePots([potSeat(0, 100), potSeat(1, 100, true), potSeat(2, 100)])).toEqual([
+      { amount: 300, eligible: [0, 2] },
+    ]);
+  });
+});
+
+describe('awardPots', () => {
+  it('splits ties and gives odd chip to earliest in order', () => {
+    const pots = [{ amount: 101, eligible: [0, 1] }];
+    const scores = new Map([
+      [0, 5000],
+      [1, 5000],
+    ]);
+    expect(awardPots(pots, scores, [1, 0])).toEqual(
+      new Map([
+        [1, 51],
+        [0, 50],
+      ]),
+    );
+  });
+  it('side pot goes to best eligible even if overall best is ineligible', () => {
+    const pots = [
+      { amount: 150, eligible: [0, 1, 2] },
+      { amount: 200, eligible: [1, 2] },
+    ];
+    const scores = new Map([
+      [0, 9000],
+      [1, 4000],
+      [2, 3000],
+    ]);
+    expect(awardPots(pots, scores, [0, 1, 2])).toEqual(
+      new Map([
+        [0, 150],
+        [1, 200],
+      ]),
+    );
   });
 });
