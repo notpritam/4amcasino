@@ -15,6 +15,8 @@ import {
 import type { PlayerAction, ServerMsg } from '@4am/shared';
 import { useStore } from './store.ts';
 import { wsClient } from './ws.ts';
+import { voice } from './voice.ts';
+import { beep } from './prefs.ts';
 
 const lookup = cardLookup();
 
@@ -57,8 +59,8 @@ export function startHand(): void {
   wsClient.send({ t: 'start_hand' });
 }
 
-export function sendChat(text: string): void {
-  wsClient.send({ t: 'chat', text });
+export function sendChat(text: string, kind: 'text' | 'sticker' | 'phrase' = 'text'): void {
+  wsClient.send({ t: 'chat', text, kind });
 }
 
 function handle(msg: ServerMsg): void {
@@ -66,10 +68,19 @@ function handle(msg: ServerMsg): void {
   switch (msg.t) {
     case 'room_state':
       store.setRoom(msg);
+      voice.syncPeers(msg.players);
       return;
     case 'chat':
-      store.pushChat({ from: msg.from, text: msg.text, ts: msg.ts });
+      store.pushChat({ from: msg.from, userId: msg.userId, text: msg.text, kind: msg.kind, ts: msg.ts });
       return;
+    case 'rtc':
+      void voice.handleRtc(msg.from, msg.data);
+      return;
+    case 'voice_state': {
+      const { voice: v } = useStore.getState();
+      store.patchVoice({ mutedByUser: { ...v.mutedByUser, [msg.userId]: msg.muted } });
+      return;
+    }
     case 'error':
       store.pushError(msg.message);
       return;
@@ -131,6 +142,11 @@ function handle(msg: ServerMsg): void {
     case 'betting_state': {
       const prev = useStore.getState().hand;
       const streetChanged = prev.betting?.street !== msg.state.street;
+      const myUserId = useStore.getState().auth.userId;
+      const mySeat = prev.seats.find((s) => s.userId === myUserId)?.seat;
+      if (mySeat !== undefined && msg.state.toAct === mySeat && prev.betting?.toAct !== mySeat) {
+        beep(880); // your turn
+      }
       store.patchHand({
         betting: msg.state,
         actionSeq: msg.actionSeq,

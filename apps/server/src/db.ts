@@ -82,6 +82,7 @@ function migrate(db: DB): void {
   ensureColumn(db, 'users', 'card_back', "TEXT NOT NULL DEFAULT 'indigo'");
   ensureColumn(db, 'users', 'four_color', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'users', 'theme', "TEXT NOT NULL DEFAULT 'light'");
+  ensureColumn(db, 'users', 'quick_phrases', 'TEXT');
   ensureColumn(db, 'rooms', 'action_secs', 'INTEGER');
 }
 

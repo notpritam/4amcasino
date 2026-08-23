@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import NumberFlow from '@number-flow/react';
 import { legalActions } from '@4am/shared';
 import { act, startHand } from '../../shared/gameClient.ts';
 import { useStore } from '../../shared/store.ts';
-import { fmt } from '../../shared/lib/cn.ts';
+import { cn, fmt } from '../../shared/lib/cn.ts';
 import { Button } from '../../shared/ui/index.tsx';
 
-export function ActionBar({ mySeat, isHost }: { mySeat: number | null; isHost: boolean }) {
+export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; isHost: boolean; urgent: boolean }) {
   const hand = useStore((s) => s.hand);
   const room = useStore((s) => s.room);
   const [raiseTo, setRaiseTo] = useState(0);
@@ -17,43 +18,84 @@ export function ActionBar({ mySeat, isHost }: { mySeat: number | null; isHost: b
   const me = st?.seats.find((s) => s.seat === mySeat);
   const balance =
     me && !handOver ? me.stack : (room?.players.find((p) => p.seat === mySeat)?.stack ?? 0);
+  const pot = st ? st.seats.reduce((s, x) => s + x.total, 0) : 0;
 
   useEffect(() => {
     if (myTurn && la) setRaiseTo(la.minRaiseTo);
   }, [myTurn, la?.minRaiseTo]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handIdle = !hand.handId || hand.result !== null || hand.abort !== null;
+  const handIdle = !hand.handId || handOver;
+  const sb = room?.room.sb ?? 1;
+
+  /** Sensible raise-to for a fraction of the pot (pot counted after our call). */
+  const potRaise = (frac: number): number => {
+    if (!la || !st) return 0;
+    const target = st.currentBet + Math.round((pot + la.callAmount) * frac);
+    const snapped = Math.round(target / sb) * sb;
+    return Math.min(Math.max(snapped, la.minRaiseTo), la.maxRaiseTo);
+  };
+
+  const quicks = la && st
+    ? [
+        { label: 'Min', value: la.minRaiseTo },
+        { label: '⅓ pot', value: potRaise(1 / 3) },
+        { label: '½ pot', value: potRaise(1 / 2) },
+        { label: '¾ pot', value: potRaise(3 / 4) },
+        { label: 'Pot', value: potRaise(1) },
+        { label: 'All-in', value: la.maxRaiseTo },
+      ]
+    : [];
 
   return (
-    <div className="rounded-2xl bg-indigo-600 p-4 text-white shadow-lg">
+    <div className={cn('rounded-2xl bg-indigo-600 p-4 text-white shadow-lg', myTurn && urgent && 'animate-urgent')}>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-        <div className="min-w-28">
+        <div className="min-w-24">
           <div className="text-xs uppercase tracking-wide text-indigo-200">Your bet</div>
-          <div className="font-display text-2xl font-bold">{fmt(me?.committed ?? 0)}</div>
+          <div className="font-display text-2xl font-bold">
+            <NumberFlow value={me?.committed ?? 0} />
+          </div>
         </div>
 
         {myTurn && la ? (
           <>
             {la.canRaise && (
-              <div className="flex min-w-64 flex-1 items-center gap-3">
-                <span className="font-display text-sm">{fmt(la.minRaiseTo)}</span>
-                <input
-                  type="range"
-                  min={la.minRaiseTo}
-                  max={la.maxRaiseTo}
-                  step={room?.room.sb ?? 1}
-                  value={raiseTo}
-                  onChange={(e) => setRaiseTo(+e.target.value)}
-                  className="h-2 flex-1 cursor-pointer appearance-none rounded-full bg-indigo-400 accent-white"
-                  aria-label="Raise amount"
-                />
-                <span className="font-display text-sm">All-in</span>
+              <div className="flex min-w-72 flex-1 flex-col gap-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {quicks.map((q) => (
+                    <button
+                      key={q.label}
+                      onClick={() => setRaiseTo(q.value)}
+                      className={cn(
+                        'rounded-full px-3 py-1 text-xs font-semibold transition-colors',
+                        raiseTo === q.value
+                          ? 'bg-white text-indigo-700'
+                          : 'bg-white/15 text-white hover:bg-white/25',
+                      )}
+                    >
+                      {q.label} · {fmt(q.value)}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="font-display text-sm">{fmt(la.minRaiseTo)}</span>
+                  <input
+                    type="range"
+                    min={la.minRaiseTo}
+                    max={la.maxRaiseTo}
+                    step={sb}
+                    value={raiseTo}
+                    onChange={(e) => setRaiseTo(+e.target.value)}
+                    className="h-2 flex-1 cursor-pointer appearance-none rounded-full bg-indigo-400 accent-white"
+                    aria-label="Raise amount"
+                  />
+                  <span className="font-display text-sm">{fmt(la.maxRaiseTo)}</span>
+                </div>
               </div>
             )}
             <div className="flex items-center gap-2">
               <Button
                 variant="secondary"
-                className="border-0 bg-white/15 text-white hover:bg-white/25"
+                className="border-0 bg-white/15 text-white hover:bg-white/25 dark:bg-white/15 dark:text-white dark:hover:bg-white/25"
                 onClick={() => act({ type: 'fold' })}
               >
                 Fold
@@ -67,7 +109,7 @@ export function ActionBar({ mySeat, isHost }: { mySeat: number | null; isHost: b
               {la.canRaise && (
                 <Button
                   variant="secondary"
-                  className="border-0 bg-white text-indigo-700 hover:bg-indigo-50"
+                  className="border-0 bg-white text-indigo-700 hover:bg-indigo-50 dark:bg-white dark:text-indigo-700 dark:hover:bg-indigo-50"
                   onClick={() =>
                     act(
                       st!.currentBet === 0
@@ -88,20 +130,26 @@ export function ActionBar({ mySeat, isHost }: { mySeat: number | null; isHost: b
                 ? 'Deal when everyone is seated.'
                 : 'Waiting for the host to deal.'
               : st
-                ? `Waiting for seat ${st.toAct ?? '—'}…`
+                ? `Waiting for seat ${st.toAct !== null ? st.toAct + 1 : '—'}…`
                 : 'Shuffling — every player is encrypting the deck…'}
           </div>
         )}
 
         {handIdle && isHost && (
-          <Button variant="secondary" className="border-0 bg-white text-indigo-700" onClick={startHand}>
+          <Button
+            variant="secondary"
+            className="border-0 bg-white text-indigo-700 dark:bg-white dark:text-indigo-700"
+            onClick={startHand}
+          >
             Start hand
           </Button>
         )}
 
         <div className="ml-auto text-right">
           <div className="text-xs uppercase tracking-wide text-indigo-200">Your balance</div>
-          <div className="font-display text-2xl font-bold">{fmt(balance)}</div>
+          <div className="font-display text-2xl font-bold">
+            <NumberFlow value={balance} />
+          </div>
         </div>
       </div>
     </div>

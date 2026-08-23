@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-display: 'Space Grotesk', 'Inter', ui-sans-serif, system-ui, sans-serif;
@@ -8,16 +10,58 @@
 body {
   @apply bg-slate-100 text-slate-900 font-sans antialiased;
 }
+.dark body {
+  @apply bg-slate-950 text-slate-100;
+}
 
-/* signature: the 4AM card back — indigo night grid with a crescent */
+/* card backs — the 4AM night grid with a crescent, in four colorways */
 .card-back {
-  background-color: theme('colors.indigo.500');
   background-image:
     radial-gradient(circle at 68% 26%, rgba(255, 255, 255, 0.55) 0 12%, transparent 13%),
-    radial-gradient(circle at 74% 22%, theme('colors.indigo.500') 0 12%, transparent 13%),
+    radial-gradient(circle at 74% 22%, var(--back-color) 0 12%, transparent 13%),
     repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.07) 0 2px, transparent 2px 8px),
     repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.07) 0 2px, transparent 2px 8px);
+  background-color: var(--back-color);
 }
+.card-back-indigo { --back-color: #6366f1; }
+.card-back-crimson { --back-color: #e11d48; }
+.card-back-emerald { --back-color: #059669; }
+.card-back-slate { --back-color: #475569; }
+
+/* interaction */
+@keyframes deal-in {
+  from { opacity: 0; transform: translateY(-14px) scale(0.85) rotate(-4deg); }
+  to { opacity: 1; transform: none; }
+}
+.animate-deal { animation: deal-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+
+@keyframes pot-bump {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+.animate-pot { animation: pot-bump 0.4s ease-out; }
+
+@keyframes urgent-flash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.7); }
+  50% { box-shadow: 0 0 0 6px rgba(225, 29, 72, 0); }
+}
+.animate-urgent { animation: urgent-flash 0.9s ease-out infinite; }
+
+@keyframes float-up {
+  0% { opacity: 0; transform: translateY(24px) scale(0.6); }
+  15% { opacity: 1; transform: translateY(0) scale(1.15); }
+  30% { transform: scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-70px) scale(1.05); }
+}
+.animate-float { animation: float-up 2.4s ease-out both; }
+
+@keyframes winner-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.0); }
+  50% { box-shadow: 0 0 18px 4px rgba(16, 185, 129, 0.55); }
+}
+.animate-winner { animation: winner-glow 1.2s ease-in-out 2; }
 
 @media (prefers-reduced-motion: reduce) {
   * {

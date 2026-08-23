@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { verifyHandTranscript, type TranscriptEntry } from '@4am/mental-poker';
 import { api } from '../../shared/api.ts';
 import { Badge, Button, Dialog, Panel, Spinner } from '../../shared/ui/index.tsx';
 
@@ -12,7 +13,7 @@ interface HandRef {
 interface HandDetail {
   handId: string;
   head: string;
-  entries: { seq: number; type: string; from: string; payload: unknown; sig: string }[];
+  entries: TranscriptEntry[];
 }
 
 export function HandsPage() {
@@ -79,8 +80,21 @@ export function HandsPage() {
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Badge tone="slate">{detail.entries.length} entries</Badge>
+              {(() => {
+                const v = verifyHandTranscript(detail.handId, detail.entries, detail.head);
+                return v.ok ? (
+                  <Badge tone="emerald">✓ verified in your browser</Badge>
+                ) : (
+                  <Badge tone="rose">TAMPERED — {v.reason ?? 'invalid'} at entry {v.badSeq}</Badge>
+                );
+              })()}
               <span className="font-mono text-xs text-slate-400">head {detail.head.slice(0, 16)}…</span>
             </div>
+            <Link to={`/room/${roomId}/replay/${detail.handId}`}>
+              <Button variant="secondary" className="w-full">
+                ▶ Watch replay
+              </Button>
+            </Link>
             <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg bg-slate-50 p-3">
               {detail.entries.map((e) => (
                 <div key={e.seq} className="flex gap-2 text-xs">

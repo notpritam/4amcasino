@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../shared/api.ts';
 import { useStore } from '../../shared/store.ts';
 import { Badge, Button, Dialog, Input, Panel } from '../../shared/ui/index.tsx';
+import { Avatar } from '../../entities/user/Avatar.tsx';
+import { ProfileDialog } from '../../features/profile/ProfileDialog.tsx';
 
 interface RoomSummary {
   id: string;
@@ -20,9 +22,13 @@ export function LobbyPage() {
   const [name, setName] = useState('');
   const [sb, setSb] = useState(10);
   const [bb, setBb] = useState(20);
+  const [actionSecs, setActionSecs] = useState(45);
   const [strictAudit, setStrictAudit] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const username = useStore((s) => s.auth.username);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const auth = useStore((s) => s.auth);
+  const prefs = useStore((s) => s.prefs);
+  const username = auth.username;
   const logout = useStore((s) => s.logout);
   const nav = useNavigate();
 
@@ -33,7 +39,7 @@ export function LobbyPage() {
   async function create(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const room = await api.createRoom(name, sb, bb, strictAudit ? 'strict-audit' : undefined);
+      const room = await api.createRoom(name, sb, bb, strictAudit ? 'strict-audit' : undefined, actionSecs);
       nav(`/room/${room.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'could not create room');
@@ -53,15 +59,29 @@ export function LobbyPage() {
 
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <header className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-bold">4AM Casino</h1>
-          <p className="text-sm text-slate-500">Signed in as {username}</p>
+      <header className="mb-8 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setProfileOpen(true)} aria-label="Edit profile">
+            <Avatar userId={auth.userId ?? 0} name={prefs.displayName || username || '?'} version={prefs.avatarVersion} />
+          </button>
+          <div>
+            <h1 className="font-display text-2xl font-bold">4AM Casino</h1>
+            <p className="text-sm text-slate-500">Signed in as {prefs.displayName || username}</p>
+          </div>
         </div>
-        <Button variant="ghost" onClick={logout}>
-          Log out
-        </Button>
+        <div className="flex items-center gap-2">
+          <Link to="/leaderboard">
+            <Button variant="secondary">🏆 Leaderboard</Button>
+          </Link>
+          <Button variant="secondary" onClick={() => setProfileOpen(true)}>
+            Edit profile
+          </Button>
+          <Button variant="ghost" onClick={logout}>
+            Log out
+          </Button>
+        </div>
       </header>
+      <ProfileDialog open={profileOpen} onClose={() => setProfileOpen(false)} />
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2">
         <Panel>
@@ -124,7 +144,21 @@ export function LobbyPage() {
               <Input type="number" min={1} value={bb} onChange={(e) => setBb(+e.target.value)} />
             </label>
           </div>
-          <label className="flex items-start gap-2 text-sm text-slate-600">
+          <label className="block text-sm">
+            <span className="mb-1 block text-slate-500">Turn timer</span>
+            <select
+              value={actionSecs}
+              onChange={(e) => setActionSecs(+e.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+            >
+              {[15, 30, 45, 60, 90, 120].map((s) => (
+                <option key={s} value={s}>
+                  {s} seconds per decision
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
             <input
               type="checkbox"
               checked={strictAudit}

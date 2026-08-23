@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../../shared/api.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
 import { Badge, Panel, Spinner } from '../../shared/ui/index.tsx';
+import { LeaderboardTable, type LeaderboardRow } from '../leaderboard/LeaderboardPage.tsx';
 
 interface Entry {
   id: number;
@@ -21,12 +22,14 @@ export function LedgerPage() {
   const { id: roomId } = useParams<{ id: string }>();
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [verified, setVerified] = useState<{ ok: boolean } | null>(null);
+  const [standings, setStandings] = useState<LeaderboardRow[]>([]);
 
   useEffect(() => {
     api.ledger(roomId!).then((r) => {
       setEntries(r.entries);
       setVerified(r.verified);
     });
+    api.roomLeaderboard(roomId!).then((r) => setStandings(r.rows)).catch(() => {});
   }, [roomId]);
 
   if (!entries) {
@@ -56,6 +59,11 @@ export function LedgerPage() {
             <Badge tone="rose">TAMPERED — hashes do not match</Badge>
           ))}
       </header>
+
+      <Panel>
+        <h2 className="mb-3 font-display font-semibold">Table standings</h2>
+        <LeaderboardTable rows={standings} />
+      </Panel>
 
       <Panel>
         <h2 className="mb-3 font-display font-semibold">Bought from the bank (to settle up)</h2>

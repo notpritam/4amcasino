@@ -10,9 +10,33 @@ type HandAbortMsg = Extract<ServerMsg, { t: 'hand_abort' }>;
 
 export interface ChatMsg {
   from: string;
+  userId: number;
   text: string;
+  kind: 'text' | 'sticker' | 'phrase';
   ts: number;
 }
+
+export interface Prefs {
+  displayName: string;
+  bio: string;
+  hasAvatar: boolean;
+  avatarVersion: number;
+  cardBack: 'indigo' | 'crimson' | 'emerald' | 'slate';
+  fourColor: boolean;
+  theme: 'light' | 'dark';
+  quickPhrases: string[];
+}
+
+export const defaultPrefs: Prefs = {
+  displayName: '',
+  bio: '',
+  hasAvatar: false,
+  avatarVersion: 0,
+  cardBack: 'indigo',
+  fourColor: false,
+  theme: 'light',
+  quickPhrases: [],
+};
 
 export interface AuthState {
   token: string | null;
@@ -71,6 +95,12 @@ interface Store {
 
   wsConnected: boolean;
   setWsConnected: (v: boolean) => void;
+
+  prefs: Prefs;
+  setPrefs: (p: Partial<Prefs>) => void;
+
+  voice: { joined: boolean; muted: boolean; mutedByUser: Record<number, boolean>; speakingByUser: Record<number, boolean> };
+  patchVoice: (v: Partial<Store['voice']>) => void;
 }
 
 export const useStore = create<Store>()(
@@ -101,10 +131,25 @@ export const useStore = create<Store>()(
 
       wsConnected: false,
       setWsConnected: (wsConnected) => set({ wsConnected }),
+
+      prefs: defaultPrefs,
+      setPrefs: (p) => set((s) => ({ prefs: { ...s.prefs, ...p } })),
+
+      voice: { joined: false, muted: false, mutedByUser: {}, speakingByUser: {} },
+      patchVoice: (v) => set((s) => ({ voice: { ...s.voice, ...v } })),
     }),
     {
       name: '4am-auth',
-      partialize: (s) => ({ auth: s.auth }),
+      partialize: (s) => ({ auth: s.auth, prefs: s.prefs }),
+      merge: (persisted, current) => {
+        const p = persisted as Partial<Store> | undefined;
+        return {
+          ...current,
+          ...(p ?? {}),
+          // new pref fields must survive rehydration from an older stored shape
+          prefs: { ...defaultPrefs, ...(p?.prefs ?? {}) },
+        };
+      },
     },
   ),
 );

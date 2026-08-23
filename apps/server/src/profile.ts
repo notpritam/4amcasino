@@ -15,6 +15,7 @@ const profileSchema = z.object({
   cardBack: z.enum(CARD_BACKS).optional(),
   fourColor: z.boolean().optional(),
   theme: z.enum(['light', 'dark']).optional(),
+  quickPhrases: z.array(z.string().trim().min(1).max(60)).max(8).optional(),
 });
 
 const avatarSchema = z.object({
@@ -35,7 +36,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
   app.get('/api/profile', authed, async (req) => {
     const row = db
       .prepare(
-        'SELECT id, username, display_name, bio, avatar_version, card_back, four_color, theme, avatar IS NOT NULL as hasAvatar FROM users WHERE id = ?',
+        'SELECT id, username, display_name, bio, avatar_version, card_back, four_color, theme, quick_phrases, avatar IS NOT NULL as hasAvatar FROM users WHERE id = ?',
       )
       .get(req.userId) as {
       id: number;
@@ -46,6 +47,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       card_back: string;
       four_color: number;
       theme: string;
+      quick_phrases: string | null;
       hasAvatar: number;
     };
     return {
@@ -58,15 +60,21 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       cardBack: row.card_back,
       fourColor: !!row.four_color,
       theme: row.theme,
+      quickPhrases: row.quick_phrases ? (JSON.parse(row.quick_phrases) as string[]) : [],
     };
   });
 
   app.put('/api/profile', authed, async (req, reply) => {
     const parsed = profileSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid profile' });
-    const { displayName, bio, cardBack, fourColor, theme } = parsed.data;
+    const { displayName, bio, cardBack, fourColor, theme, quickPhrases } = parsed.data;
     if (theme !== undefined)
       db.prepare('UPDATE users SET theme = ? WHERE id = ?').run(theme, req.userId);
+    if (quickPhrases !== undefined)
+      db.prepare('UPDATE users SET quick_phrases = ? WHERE id = ?').run(
+        JSON.stringify(quickPhrases),
+        req.userId,
+      );
     if (displayName !== undefined)
       db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(displayName, req.userId);
     if (bio !== undefined) db.prepare('UPDATE users SET bio = ? WHERE id = ?').run(bio, req.userId);

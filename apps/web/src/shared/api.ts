@@ -21,8 +21,14 @@ export const api = {
   login: (username: string, authKey: string) => req('/api/login', { username, authKey }),
   me: () => req('/api/me'),
   myRooms: () => req('/api/my-rooms'),
-  createRoom: (name: string, sb: number, bb: number, auditMode?: string) =>
-    req('/api/rooms', { name, sb, bb, ...(auditMode ? { auditMode } : {}) }),
+  createRoom: (name: string, sb: number, bb: number, auditMode?: string, actionSecs?: number) =>
+    req('/api/rooms', {
+      name,
+      sb,
+      bb,
+      ...(auditMode ? { auditMode } : {}),
+      ...(actionSecs ? { actionSecs } : {}),
+    }),
   joinRoom: (joinCode: string) => req('/api/rooms/join', { joinCode }),
   getRoom: (id: string) => req(`/api/rooms/${id}`),
   buy: (roomId: string, amount: number, note?: string) =>
@@ -33,4 +39,13 @@ export const api = {
   ledger: (roomId: string) => req(`/api/rooms/${roomId}/ledger`),
   hands: (roomId: string) => req(`/api/rooms/${roomId}/hands`),
   hand: (roomId: string, handId: string) => req(`/api/rooms/${roomId}/hands/${handId}`),
+  profile: () => req('/api/profile'),
+  updateProfile: (p: Record<string, unknown>) => req('/api/profile', p, 'PUT'),
+  uploadAvatar: (image: string) => req('/api/profile/avatar', { image }, 'PUT'),
+  deleteAvatar: () => req('/api/profile/avatar', undefined, 'DELETE'),
+  leaderboard: () => req('/api/leaderboard'),
+  roomLeaderboard: (roomId: string) => req(`/api/rooms/${roomId}/leaderboard`),
+  userProfile: (userId: number) => req(`/api/users/${userId}/profile`),
+  roomSettings: (roomId: string, actionSecs: number) =>
+    req(`/api/rooms/${roomId}/settings`, { actionSecs }, 'PUT'),
 };

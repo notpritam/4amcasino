@@ -808,6 +808,10 @@ class Hand {
       board,
       awards: [...awards.entries()].map(([seat, amount]) => ({ seat, amount })),
       deltas,
+      reveals:
+        showdownMsg && showdownMsg.t === 'showdown'
+          ? showdownMsg.reveals.map((r) => ({ seat: r.seat, cards: r.cards }))
+          : [],
     });
     if (showdownMsg) this.room.broadcast(showdownMsg);
 
