@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Microphone, MicrophoneSlash, Timer } from '@phosphor-icons/react';
+import { ChatCircle, Microphone, MicrophoneSlash, Timer, X } from '@phosphor-icons/react';
 import NumberFlow from '@number-flow/react';
 import confetti from 'canvas-confetti';
 import { HAND_CATEGORY_NAMES, handCategory } from '@4am/shared';
@@ -17,6 +17,7 @@ import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
 import { PlayerRow, YouRow, type SeatView } from '../../widgets/table/players.tsx';
 import { ActionBar } from '../../widgets/table/ActionBar.tsx';
 import { ChatPanel } from '../../widgets/table/ChatPanel.tsx';
+import { MobileTable } from '../../widgets/table/MobileTable.tsx';
 import { BankControls } from '../../widgets/table/BankControls.tsx';
 
 function useNow(tickMs = 500): number {
@@ -45,6 +46,7 @@ export function TablePage() {
   const dismissError = useStore((s) => s.dismissError);
   const resetHand = useStore((s) => s.resetHand);
   const [resultDismissed, setResultDismissed] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [floats, setFloats] = useState<FloatingReaction[]>([]);
   const floatId = useRef(0);
   const lastChatLen = useRef(0);
@@ -156,6 +158,84 @@ export function TablePage() {
   const secs = remaining !== null ? Math.max(0, Math.ceil(remaining / 1000)) : null;
   const showResult = (hand.result !== null || hand.abort !== null) && !resultDismissed;
 
+  const mobileStatus = !handLive
+    ? null
+    : hand.betting
+      ? hand.betting.toAct !== null && hand.betting.toAct !== mySeat
+        ? `Waiting for ${seatViews.find((s) => s.seat === hand.betting!.toAct)?.displayName ?? 'player'}…`
+        : null
+      : 'Shuffling the encrypted deck…';
+
+  const resultBanner = showResult && (
+    <motion.div initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }}>
+      <Panel className="relative">
+        <button
+          onClick={() => {
+            setResultDismissed(true);
+            resetHand();
+          }}
+          aria-label="Dismiss result"
+          className="absolute right-3 top-3 rounded-md p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+        >
+          <X size={16} />
+        </button>
+        {hand.abort ? (
+          <div className="text-sm">
+            <span className="font-semibold text-rose-600">Hand aborted:</span> {hand.abort.reason}
+            {hand.abort.blamedSeat !== null &&
+              `. Caused by seat ${hand.abort.blamedSeat + 1}; stacks rolled back.`}
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <span className="font-display font-semibold">
+              {hand.showdown ? 'Showdown' : 'Everyone folded'}
+            </span>
+            {hand.showdown?.reveals.map((r) => (
+              <span key={r.seat} className="flex items-center gap-1.5 text-sm">
+                <span className="text-slate-500">
+                  {seatViews.find((s) => s.seat === r.seat)?.displayName}
+                </span>
+                <Badge tone="slate">{HAND_CATEGORY_NAMES[handCategory(r.score)]}</Badge>
+              </span>
+            ))}
+            {hand.result?.deltas
+              .filter((d) => d.delta !== 0)
+              .map((d) => (
+                <span
+                  key={d.seat}
+                  className={cn(
+                    'font-display text-sm font-bold',
+                    d.delta > 0 ? 'text-emerald-600' : 'text-rose-600',
+                  )}
+                >
+                  {seatViews.find((s) => s.seat === d.seat)?.displayName} {d.delta > 0 ? '+' : ''}
+                  {fmt(d.delta)}
+                </span>
+              ))}
+          </div>
+        )}
+      </Panel>
+    </motion.div>
+  );
+
+  const seatPicker = (
+    <Panel>
+      <div className="mb-3 text-sm font-medium text-slate-600 dark:text-slate-300">Pick a seat</div>
+      <div className="flex flex-wrap gap-2">
+        {Array.from({ length: 9 }, (_, i) => (
+          <Button
+            key={i}
+            variant="secondary"
+            disabled={takenSeats.has(i) || handLive}
+            onClick={() => sit(i)}
+          >
+            Seat {i + 1}
+          </Button>
+        ))}
+      </div>
+    </Panel>
+  );
+
   return (
     <div className="mx-auto flex min-h-screen max-w-7xl flex-col gap-4 p-4">
       <header className="flex flex-wrap items-center gap-3">
@@ -182,7 +262,7 @@ export function TablePage() {
           </span>
         )}
         {isHost && (
-          <label className="flex items-center gap-1.5 text-xs text-slate-500">
+          <label className="hidden items-center gap-1.5 text-xs text-slate-500 md:flex">
             turn time
             <select
               value={room.room.actionSecs ?? 45}
@@ -231,7 +311,43 @@ export function TablePage() {
         </div>
       </header>
 
-      <div className="grid flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+      {/* phone layout (Offsuit-style) */}
+      <div className="flex flex-col gap-3 md:hidden">
+        <MobileTable
+          opponents={opponents}
+          me={me}
+          mySeat={mySeat}
+          isHost={!!isHost}
+          myCards={hand.myCards}
+          board={hand.board}
+          pot={pot}
+          urgent={urgent}
+          statusText={mobileStatus}
+        />
+        {resultBanner}
+        {!me && seatPicker}
+        <button
+          onClick={() => setChatOpen(true)}
+          aria-label="Open chat"
+          className="fixed bottom-5 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg active:scale-95 md:hidden"
+        >
+          <ChatCircle size={22} weight="fill" />
+        </button>
+        {chatOpen && (
+          <div className="fixed inset-0 z-40 flex flex-col bg-slate-100 p-3 md:hidden dark:bg-slate-950">
+            <div className="mb-2 flex justify-end">
+              <Button variant="secondary" onClick={() => setChatOpen(false)}>
+                <X size={16} /> Close
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <ChatPanel />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="hidden flex-1 gap-4 md:grid lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex flex-col gap-4">
           <div className="grid gap-4 md:grid-cols-[280px_minmax(0,1fr)]">
             {/* opponents */}
@@ -248,7 +364,7 @@ export function TablePage() {
             </div>
 
             {/* board */}
-            <div className="relative flex min-h-[440px] flex-col items-center justify-center gap-6 rounded-3xl bg-slate-200/50 p-6 ring-1 ring-slate-200 dark:bg-slate-900/60 dark:ring-slate-800">
+            <div className="relative flex min-h-[320px] flex-col items-center justify-center gap-6 rounded-3xl bg-slate-200/50 p-4 ring-1 ring-slate-200 md:min-h-[440px] md:p-6 dark:bg-slate-900/60 dark:ring-slate-800">
               {/* floating sticker reactions */}
               {floats.map((f) => (
                 <span
@@ -262,14 +378,14 @@ export function TablePage() {
               <div className="rounded-xl bg-indigo-600 px-6 py-2 font-display text-xl font-bold text-white shadow">
                 POT <NumberFlow value={pot} />
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-1.5 md:gap-2">
                 {[0, 1, 2, 3, 4].map((i) =>
                   hand.board[i] !== undefined ? (
                     <PlayingCard key={`${i}-${hand.board[i]}`} card={hand.board[i]} size="lg" deal />
                   ) : (
                     <div
                       key={i}
-                      className="h-32 w-[5.6rem] rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700"
+                      className="h-20 w-14 rounded-lg border-2 border-dashed border-slate-300 md:h-32 md:w-[5.6rem] md:rounded-2xl dark:border-slate-700"
                     />
                   ),
                 )}
@@ -283,78 +399,10 @@ export function TablePage() {
           </div>
 
           {/* non-blocking hand result */}
-          {showResult && (
-            <motion.div initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }}>
-            <Panel className="relative">
-              <button
-                onClick={() => {
-                  setResultDismissed(true);
-                  resetHand();
-                }}
-                aria-label="Dismiss result"
-                className="absolute right-3 top-3 rounded-md p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                ✕
-              </button>
-              {hand.abort ? (
-                <div className="text-sm">
-                  <span className="font-semibold text-rose-600">Hand aborted:</span> {hand.abort.reason}
-                  {hand.abort.blamedSeat !== null &&
-                    `. Caused by seat ${hand.abort.blamedSeat + 1}; stacks rolled back.`}
-                </div>
-              ) : (
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-                  <span className="font-display font-semibold">
-                    {hand.showdown ? 'Showdown' : 'Everyone folded'}
-                  </span>
-                  {hand.showdown?.reveals.map((r) => (
-                    <span key={r.seat} className="flex items-center gap-1.5 text-sm">
-                      <span className="text-slate-500">
-                        {seatViews.find((s) => s.seat === r.seat)?.displayName}
-                      </span>
-                      <Badge tone="slate">{HAND_CATEGORY_NAMES[handCategory(r.score)]}</Badge>
-                    </span>
-                  ))}
-                  {hand.result?.deltas
-                    .filter((d) => d.delta !== 0)
-                    .map((d) => (
-                      <span
-                        key={d.seat}
-                        className={cn(
-                          'font-display text-sm font-bold',
-                          d.delta > 0 ? 'text-emerald-600' : 'text-rose-600',
-                        )}
-                      >
-                        {seatViews.find((s) => s.seat === d.seat)?.displayName} {d.delta > 0 ? '+' : ''}
-                        {fmt(d.delta)}
-                      </span>
-                    ))}
-                </div>
-              )}
-            </Panel>
-            </motion.div>
-          )}
+          {resultBanner}
 
           {/* you + actions */}
-          {me ? (
-            <YouRow p={me} cards={hand.myCards} urgent={urgent} />
-          ) : (
-            <Panel>
-              <div className="mb-3 text-sm font-medium text-slate-600 dark:text-slate-300">Pick a seat</div>
-              <div className="flex flex-wrap gap-2">
-                {Array.from({ length: 9 }, (_, i) => (
-                  <Button
-                    key={i}
-                    variant="secondary"
-                    disabled={takenSeats.has(i) || handLive}
-                    onClick={() => sit(i)}
-                  >
-                    Seat {i + 1}
-                  </Button>
-                ))}
-              </div>
-            </Panel>
-          )}
+          {me ? <YouRow p={me} cards={hand.myCards} urgent={urgent} /> : seatPicker}
           <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} />
         </div>
 

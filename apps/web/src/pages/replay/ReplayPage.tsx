@@ -84,7 +84,7 @@ export function ReplayPage() {
             step.board[i] !== undefined ? (
               <PlayingCard key={`${i}-${step.board[i]}`} card={step.board[i]} size="md" deal />
             ) : (
-              <div key={i} className="h-24 w-[4.2rem] rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700" />
+              <div key={i} className="h-20 w-14 rounded-lg border-2 border-dashed border-slate-300 md:h-24 md:w-[4.2rem] md:rounded-xl dark:border-slate-700" />
             ),
           )}
         </div>

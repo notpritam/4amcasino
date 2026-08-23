@@ -9,10 +9,19 @@ const sizes = {
   xs: 'h-10 w-7 rounded-md text-[0.55rem]',
   sm: 'h-14 w-10 rounded-lg text-xs',
   md: 'h-24 w-[4.2rem] rounded-xl text-base',
-  lg: 'h-32 w-[5.6rem] rounded-2xl text-lg',
+  // responsive: phones get a board that fits five across
+  lg: 'h-20 w-14 rounded-lg text-sm md:h-32 md:w-[5.6rem] md:rounded-2xl md:text-lg',
+  // Offsuit-style huge mobile hole cards
+  xl: 'h-36 w-24 rounded-2xl text-2xl',
 } as const;
 
-const centerSizes = { xs: 'text-sm', sm: 'text-lg', md: 'text-3xl', lg: 'text-5xl' } as const;
+const centerSizes = {
+  xs: 'text-sm',
+  sm: 'text-lg',
+  md: 'text-3xl',
+  lg: 'text-2xl md:text-5xl',
+  xl: 'text-5xl',
+} as const;
 
 // standard: hearts/diamonds red; four-color deck: diamonds blue, clubs green
 const twoColor = ['text-slate-800', 'text-rose-600', 'text-rose-600', 'text-slate-800'];
@@ -72,10 +81,12 @@ export function PlayingCard({
           {glyph}
         </div>
       )}
-      <div className="absolute bottom-0.5 right-1 rotate-180 font-display font-bold leading-tight">
-        {rank}
-        <div className="-mt-0.5">{glyph}</div>
-      </div>
+      {size !== 'xl' && (
+        <div className="absolute bottom-0.5 right-1 rotate-180 font-display font-bold leading-tight">
+          {rank}
+          <div className="-mt-0.5">{glyph}</div>
+        </div>
+      )}
     </motion.div>
   );
 }
