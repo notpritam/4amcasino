@@ -33,7 +33,7 @@ async function main(): Promise<void> {
         await app.close();
         process.exit(0);
       })();
-      setTimeout(() => process.exit(0), 8000).unref();
+      setTimeout(() => process.exit(0), 3000).unref();
     });
   }
 }

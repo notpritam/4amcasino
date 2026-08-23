@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --sourcemap --outfile=dist/index.js --external:fastify --external:@fastify/cors --external:@fastify/static --external:better-sqlite3 --external:mongodb --external:ws --external:zod",
+    "start": "node --enable-source-maps scripts/start.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
-    "@types/ws": "^8.5.0"
+    "@types/ws": "^8.5.0",
+    "esbuild": "^0.25.0"
   }
 }

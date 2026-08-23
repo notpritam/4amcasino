@@ -1,15 +1,32 @@
 import { useStore } from './store.ts';
 
+/** Fetch with retries on 502/503/504 and network failure, GETs only. Redeploys
+ *  take the server down for a few seconds; reads ride the gap out instead of
+ *  erroring, while writes stay single-shot so nothing money-shaped repeats. */
+async function send(path: string, method: string, body?: unknown): Promise<Response> {
+  const tries = method === 'GET' ? 4 : 1;
+  for (let attempt = 1; ; attempt++) {
+    const token = useStore.getState().auth.token;
+    try {
+      const res = await fetch(path, {
+        method,
+        headers: {
+          'content-type': 'application/json',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      if (attempt === tries || ![502, 503, 504].includes(res.status)) return res;
+    } catch (err) {
+      if (attempt === tries) throw err;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1200 * attempt));
+  }
+}
+
 async function req(path: string, body?: unknown, method?: string): Promise<any> {
   const token = useStore.getState().auth.token;
-  const res = await fetch(path, {
-    method: method ?? (body === undefined ? 'GET' : 'POST'),
-    headers: {
-      'content-type': 'application/json',
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const res = await send(path, method ?? (body === undefined ? 'GET' : 'POST'), body);
   const json = await res.json().catch(() => ({}));
   if (
     res.status === 401 &&

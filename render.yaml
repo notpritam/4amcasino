@@ -3,9 +3,15 @@ services:
     name: 4amcasino
     runtime: node
     plan: starter
+    # the web build also emits the prebuilt server bundle (apps/server/dist),
+    # so start boots plain node in <1s instead of compiling TS with tsx.
+    # disk-attached services can't overlap old and new instances, so a deploy
+    # always has a small gap - fast boot + fast shutdown keep it to seconds,
+    # and the web client retries reads / reconnects sockets through it.
     buildCommand: npm install --include=dev && npm run build --workspace @4am/web
     startCommand: npm run start --workspace @4am/server
     healthCheckPath: /api/health
+    maxShutdownDelaySeconds: 10
     envVars:
       - key: NODE_VERSION
         value: 22.16.0

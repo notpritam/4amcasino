@@ -23,7 +23,7 @@ export function createApp(
   storageInfo?: () => Record<string, unknown>,
 ): { app: FastifyInstance; db: DB } {
   const db = openDb(dbPath);
-  const app = Fastify();
+  const app = Fastify({ forceCloseConnections: true });
   void app.register(cors, { origin: true });
 
   app.addHook('onClose', async () => {

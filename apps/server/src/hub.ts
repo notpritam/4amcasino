@@ -45,6 +45,9 @@ export function attachHub(
   app.addHook('onClose', async () => {
     roomEvents.off('changed', onRoomChanged);
     for (const room of rooms.values()) room.shutdown();
+    // wss.close() alone waits for clients to hang up, which stalls shutdown
+    // (and stretches the deploy gap) - drop them; the web app auto-reconnects
+    for (const client of wss.clients) client.terminate();
     wss.close();
   });
 
