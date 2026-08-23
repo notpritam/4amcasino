@@ -62,6 +62,9 @@ interface HandView {
   abort: HandAbortMsg | null;
   /** Armed before your turn; the game client fires it the moment you are to act. */
   preAction: 'check-fold' | 'check' | 'call-any' | null;
+  /** Paid-peek offers waiting for my answer, and reveals only I can see. */
+  peekOffers: { offerId: string; fromUserId: number; fromName: string; amount: number }[];
+  peekResults: Record<number, CardId[]>;
 }
 
 export const emptyHand: HandView = {
@@ -80,6 +83,8 @@ export const emptyHand: HandView = {
   result: null,
   abort: null,
   preAction: null,
+  peekOffers: [],
+  peekResults: {},
 };
 
 interface Store {

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { CaretDown, ChartBar, PaintBrush, ShieldCheck, SignOut, UserCircle } from '@phosphor-icons/react';
+import { CaretDown, ChartBar, Moon, PaintBrush, ShieldCheck, SignOut, Sun, UserCircle } from '@phosphor-icons/react';
+import { api } from '../../shared/api.ts';
 import { useStore } from '../../shared/store.ts';
 import { cn } from '../../shared/lib/cn.ts';
 import { Avatar } from '../../entities/user/Avatar.tsx';
@@ -15,6 +16,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const auth = useStore((s) => s.auth);
   const prefs = useStore((s) => s.prefs);
   const logout = useStore((s) => s.logout);
+  const setPrefs = useStore((s) => s.setPrefs);
+  const toggleTheme = () => {
+    const theme = prefs.theme === 'dark' ? 'light' : 'dark';
+    setPrefs({ theme });
+    void api.updateProfile({ theme }).catch(() => {});
+  };
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const loc = useLocation();
@@ -48,7 +55,15 @@ export function AppShell({ children }: { children: ReactNode }) {
             {navLink('/lobby', 'Lobby')}
             {navLink('/leaderboard', 'Leaderboard')}
           </nav>
-          <div className="relative ml-auto">
+          <button
+            onClick={toggleTheme}
+            aria-label="Toggle dark mode"
+            title="Toggle dark mode"
+            className="ml-auto rounded-full p-2 text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            {prefs.theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+          <div className="relative">
             <button
               onClick={() => setMenuOpen((v) => !v)}
               aria-label="Account menu"

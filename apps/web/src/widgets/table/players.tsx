@@ -21,6 +21,7 @@ export interface SeatView {
   allIn: boolean;
   inHand: boolean;
   broke: boolean;
+  sittingOut: boolean;
   connected: boolean;
   speaking: boolean;
   voiceMuted: boolean;
@@ -101,6 +102,8 @@ export function PlayerRow({ p, urgent }: { p: SeatView; urgent: boolean }) {
       <div className="flex flex-col items-end gap-1">
         {p.broke ? (
           <Badge tone="rose">OUT OF CHIPS</Badge>
+        ) : p.sittingOut ? (
+          <Badge tone="slate">SITTING OUT</Badge>
         ) : p.lastAction ? (
           actionChip(p.lastAction)
         ) : p.allIn ? (
@@ -153,7 +156,13 @@ export function YouRow({ p, cards, urgent }: { p: SeatView; cards: CardId[]; urg
         </div>
       </div>
       <div className="ml-2">
-        {p.broke ? <Badge tone="rose">OUT OF CHIPS</Badge> : p.lastAction && actionChip(p.lastAction)}
+        {p.broke ? (
+          <Badge tone="rose">OUT OF CHIPS</Badge>
+        ) : p.sittingOut ? (
+          <Badge tone="slate">SITTING OUT</Badge>
+        ) : (
+          p.lastAction && actionChip(p.lastAction)
+        )}
       </div>
       <div className="ml-auto flex gap-2">
         {p.inHand && (cards.length > 0 || !p.folded) ? (

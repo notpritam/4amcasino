@@ -82,6 +82,11 @@ function OpponentColumn({ p, urgent }: { p: SeatView; urgent: boolean }) {
         <NumberFlow value={p.stack} />
       </div>
       <div className="h-6">
+        {p.sittingOut && !p.broke && (
+          <span className="rounded-full bg-white/10 px-1.5 py-px text-[0.55rem] font-bold uppercase text-white/50">
+            away
+          </span>
+        )}
         {p.broke && (
           <span className="rounded-full bg-rose-500/20 px-1.5 py-px text-[0.55rem] font-bold uppercase text-rose-300">
             out
@@ -294,6 +299,7 @@ export function MobileTable({
   pot,
   urgent,
   statusText,
+  dimBoard,
 }: {
   opponents: SeatView[];
   me: SeatView | undefined;
@@ -304,6 +310,7 @@ export function MobileTable({
   pot: number;
   urgent: boolean;
   statusText: string | null;
+  dimBoard: boolean;
 }) {
   const myCommitted = useStore(
     (s) => s.hand.betting?.seats.find((x) => x.seat === mySeat)?.committed ?? 0,
@@ -322,7 +329,7 @@ export function MobileTable({
       </div>
 
       {/* board */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-3">
+      <div className={cn('flex flex-1 flex-col items-center justify-center gap-3', dimBoard && 'opacity-40 saturate-50')}>
         <div className="flex gap-1.5">
           {[0, 1, 2, 3, 4].map((i) =>
             board[i] !== undefined ? (

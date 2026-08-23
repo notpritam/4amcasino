@@ -190,3 +190,83 @@ describe('bank flow', () => {
     expect(verifyLedger(ctx.db, room.id).ok).toBe(false);
   });
 });
+
+describe('banker revert', () => {
+  it('reverts one specific purchase with a compensating entry, exactly once', async () => {
+    const host = await user('banker');
+    const alice = await user('al');
+    const room = (
+      await ctx.app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: auth(host.token),
+        payload: { name: 'Revert Test', sb: 10, bb: 20 },
+      })
+    ).json();
+    await ctx.app.inject({
+      method: 'POST',
+      url: '/api/rooms/join',
+      headers: auth(alice.token),
+      payload: { joinCode: room.joinCode },
+    });
+    // alice buys twice by mistake
+    for (let i = 0; i < 2; i++) {
+      const req = (
+        await ctx.app.inject({
+          method: 'POST',
+          url: `/api/rooms/${room.id}/buy`,
+          headers: auth(alice.token),
+          payload: { amount: 500 },
+        })
+      ).json();
+      await ctx.app.inject({
+        method: 'POST',
+        url: `/api/rooms/${room.id}/approve`,
+        headers: auth(host.token),
+        payload: { requestId: req.id, approve: true },
+      });
+    }
+    let state = (
+      await ctx.app.inject({ method: 'GET', url: `/api/rooms/${room.id}`, headers: auth(alice.token) })
+    ).json();
+    expect(state.players.find((p: any) => p.username === 'al').stack).toBe(1000);
+
+    const ledger = (
+      await ctx.app.inject({ method: 'GET', url: `/api/rooms/${room.id}/ledger`, headers: auth(host.token) })
+    ).json();
+    const purchase = ledger.entries.find((e: any) => e.kind === 'purchase');
+
+    // only the banker may revert
+    const notBanker = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/revert`,
+      headers: auth(alice.token),
+      payload: { entryId: purchase.id },
+    });
+    expect(notBanker.statusCode).toBe(403);
+
+    const ok = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/revert`,
+      headers: auth(host.token),
+      payload: { entryId: purchase.id },
+    });
+    expect(ok.statusCode).toBe(200);
+
+    state = (
+      await ctx.app.inject({ method: 'GET', url: `/api/rooms/${room.id}`, headers: auth(alice.token) })
+    ).json();
+    expect(state.players.find((p: any) => p.username === 'al').stack).toBe(500);
+
+    // the chain still verifies and the same purchase cannot be reverted twice
+    expect(verifyLedger(ctx.db, room.id).ok).toBe(true);
+    const twice = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/revert`,
+      headers: auth(host.token),
+      payload: { entryId: purchase.id },
+    });
+    expect(twice.statusCode).toBe(400);
+    expect(twice.json().error).toContain('already reverted');
+  });
+});

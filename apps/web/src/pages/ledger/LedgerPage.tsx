@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../../shared/api.ts';
+import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
-import { Badge, Panel, Spinner } from '../../shared/ui/index.tsx';
+import { Badge, Button, Panel, Spinner } from '../../shared/ui/index.tsx';
 import { LeaderboardTable, type LeaderboardRow } from '../leaderboard/LeaderboardPage.tsx';
 
 interface Entry {
@@ -23,14 +24,29 @@ export function LedgerPage() {
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [verified, setVerified] = useState<{ ok: boolean } | null>(null);
   const [standings, setStandings] = useState<LeaderboardRow[]>([]);
+  const [bankerId, setBankerId] = useState<number | null>(null);
+  const [revertErr, setRevertErr] = useState<string | null>(null);
+  const myUserId = useStore((s) => s.auth.userId);
 
-  useEffect(() => {
+  const load = () => {
     api.ledger(roomId!).then((r) => {
       setEntries(r.entries);
       setVerified(r.verified);
     });
     api.roomLeaderboard(roomId!).then((r) => setStandings(r.rows)).catch(() => {});
-  }, [roomId]);
+    api.room(roomId!).then((r) => setBankerId(r.bankerId)).catch(() => {});
+  };
+  useEffect(load, [roomId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function revert(entryId: number) {
+    setRevertErr(null);
+    try {
+      await api.revertPurchase(roomId!, entryId);
+      load();
+    } catch (err) {
+      setRevertErr(err instanceof Error ? err.message : 'could not revert');
+    }
+  }
 
   if (!entries) {
     return (
@@ -44,6 +60,9 @@ export function LedgerPage() {
   for (const e of entries) {
     if (e.kind === 'purchase') totals.set(e.username, (totals.get(e.username) ?? 0) + e.delta);
   }
+  // purchases already compensated by a revert entry (revert.ref = purchase hash)
+  const revertedHashes = new Set(entries.filter((e) => e.kind === 'revert').map((e) => e.ref));
+  const amBanker = myUserId !== null && myUserId === bankerId;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
@@ -81,6 +100,7 @@ export function LedgerPage() {
         )}
       </Panel>
 
+      {revertErr && <p className="text-sm text-rose-600">Could not revert: {revertErr}</p>}
       <Panel className="overflow-x-auto p-0">
         <table className="w-full text-sm">
           <thead>
@@ -91,6 +111,7 @@ export function LedgerPage() {
               <th className="px-4 py-3 text-right">Delta</th>
               <th className="px-4 py-3">Note / ref</th>
               <th className="px-4 py-3">Hash</th>
+              {amBanker && <th className="px-4 py-3" />}
             </tr>
           </thead>
           <tbody>
@@ -118,11 +139,23 @@ export function LedgerPage() {
                 <td className="px-4 py-2.5 font-mono text-xs text-slate-400">
                   {e.entryHash.slice(0, 10)}
                 </td>
+                {amBanker && (
+                  <td className="px-4 py-2.5 text-right">
+                    {e.kind === 'purchase' &&
+                      (revertedHashes.has(e.entryHash) ? (
+                        <Badge tone="slate">reverted</Badge>
+                      ) : (
+                        <Button variant="ghost" onClick={() => void revert(e.id)}>
+                          Revert
+                        </Button>
+                      ))}
+                  </td>
+                )}
               </tr>
             ))}
             {entries.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={amBanker ? 7 : 6} className="px-4 py-6 text-center text-slate-400">
                   The ledger is empty. Buy points to start.
                 </td>
               </tr>

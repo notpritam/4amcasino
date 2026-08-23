@@ -61,12 +61,46 @@ interface Chain {
   remaining: number[]; // seats yet to apply their unmask, in order
 }
 
+interface SnapshotSeat {
+  userId: number;
+  pubkey: string;
+  commit: Point;
+  cards: { deckIndex: number; point: Point }[];
+}
+
 interface ShowSnapshot {
   handId: string;
-  bySeat: Map<
-    number,
-    { userId: number; pubkey: string; commit: Point; cards: { deckIndex: number; point: Point }[] }
-  >;
+  bySeat: Map<number, SnapshotSeat>;
+  revealedSeats: Set<number>;
+}
+
+type Share = { deckIndex: number; out: string; proof: { A1: string; A2: string; z: string } };
+
+/** Verifies a player's DLEQ unmask shares against a finished hand's snapshot. */
+function verifySnapshotShares(
+  entry: SnapshotSeat,
+  shares: Share[],
+  lookup: ReturnType<typeof cardLookup>,
+): CardId[] | null {
+  const points = new Map(entry.cards.map((c) => [c.deckIndex, c.point]));
+  const cards: CardId[] = [];
+  const seen = new Set<number>();
+  for (const sh of shares) {
+    const pIn = points.get(sh.deckIndex);
+    if (!pIn || seen.has(sh.deckIndex)) return null;
+    seen.add(sh.deckIndex);
+    let out: Point;
+    try {
+      out = pointFromHex(sh.out);
+    } catch {
+      return null;
+    }
+    if (!verifyUnmask(entry.commit, pIn, out, sh.proof)) return null;
+    const card = recoverCard(out, lookup);
+    if (card === null) return null;
+    cards.push(card);
+  }
+  return cards;
 }
 
 export class GameRoom {
@@ -77,6 +111,7 @@ export class GameRoom {
   private shown = new Map<number, CardId[]>();
   private shownHandId: string | null = null;
   private lastHandShow: ShowSnapshot | null = null;
+  private peekOffers = new Map<string, { handId: string; fromUserId: number; targetSeat: number; amount: number }>();
   private lookup = cardLookup();
 
   constructor(
@@ -222,6 +257,18 @@ export class GameRoom {
         if (this.hand && this.hand.id === msg.handId) return this.hand.onMessage(userId, msg);
         return this.onPostHandShow(userId, msg);
       }
+      case 'sit_out': {
+        this.db
+          .prepare('UPDATE room_players SET sitting_out = ? WHERE room_id = ? AND user_id = ?')
+          .run(msg.sittingOut ? 1 : 0, this.roomId, userId);
+        this.broadcastRoomState();
+        return;
+      }
+      case 'peek_offer':
+        return this.onPeekOffer(userId, msg);
+      case 'peek_accept':
+      case 'peek_decline':
+        return this.onPeekAnswer(userId, msg);
       default:
         return;
     }
@@ -259,6 +306,7 @@ export class GameRoom {
     };
     this.shown.clear();
     this.shownHandId = null;
+    this.peekOffers.clear();
     this.hand = new Hand(this, this.db, room.id, handSeats, button, room.sb, room.bb, room.audit_mode, this.serverId, handOpts, () => {
       this.lastButton = button;
       this.lastHandShow = this.hand?.showSnapshot() ?? null;
@@ -291,27 +339,118 @@ export class GameRoom {
     if (this.shownHandId === msg.handId && this.shown.has(seat)) return;
     if (!verifyContent(v.pubkey, msg.handId, 'show_cards', signedBody(msg), msg.sig))
       return this.send(userId, { t: 'error', message: 'bad signature' });
-    const points = new Map(v.cards.map((c) => [c.deckIndex, c.point]));
-    const cards: CardId[] = [];
-    const seen = new Set<number>();
-    for (const sh of msg.shares) {
-      const pIn = points.get(sh.deckIndex);
-      if (!pIn || seen.has(sh.deckIndex))
-        return this.send(userId, { t: 'error', message: 'invalid card reveal' });
-      seen.add(sh.deckIndex);
-      let out: Point;
-      try {
-        out = pointFromHex(sh.out);
-      } catch {
-        return this.send(userId, { t: 'error', message: 'invalid card reveal' });
-      }
-      if (!verifyUnmask(v.commit, pIn, out, sh.proof))
-        return this.send(userId, { t: 'error', message: 'invalid card reveal' });
-      const card = recoverCard(out, this.lookup);
-      if (card === null) return this.send(userId, { t: 'error', message: 'invalid card reveal' });
-      cards.push(card);
-    }
+    const cards = verifySnapshotShares(v, msg.shares, this.lookup);
+    if (!cards) return this.send(userId, { t: 'error', message: 'invalid card reveal' });
     this.recordShow(msg.handId, seat, cards);
+  }
+
+  /** A paid request to privately see someone's cards from the last hand. */
+  private onPeekOffer(userId: number, msg: Extract<ClientMsg, { t: 'peek_offer' }>): void {
+    const snap = this.lastHandShow;
+    if (this.hand || !snap || snap.handId !== msg.handId)
+      return this.send(userId, { t: 'error', message: 'peek offers only work between hands' });
+    const target = snap.bySeat.get(msg.targetSeat);
+    if (!target) return this.send(userId, { t: 'error', message: 'that player was not in the last hand' });
+    if (target.userId === userId)
+      return this.send(userId, { t: 'error', message: 'those are your own cards' });
+    if (snap.revealedSeats.has(msg.targetSeat) || (this.shownHandId === msg.handId && this.shown.has(msg.targetSeat)))
+      return this.send(userId, { t: 'error', message: 'those cards are already public' });
+    const buyer = this.db
+      .prepare(
+        `SELECT rp.stack, COALESCE(u.display_name, u.username) as name
+         FROM room_players rp JOIN users u ON u.id = rp.user_id
+         WHERE rp.room_id = ? AND rp.user_id = ?`,
+      )
+      .get(this.roomId, userId) as { stack: number; name: string } | undefined;
+    if (!buyer) return;
+    if (buyer.stack < msg.amount)
+      return this.send(userId, { t: 'error', message: 'not enough chips for that offer' });
+    const offerId = randomBytes(6).toString('hex');
+    this.peekOffers.set(offerId, {
+      handId: msg.handId,
+      fromUserId: userId,
+      targetSeat: msg.targetSeat,
+      amount: msg.amount,
+    });
+    this.send(target.userId, {
+      t: 'peek_offer',
+      offerId,
+      handId: msg.handId,
+      fromUserId: userId,
+      fromName: buyer.name,
+      targetSeat: msg.targetSeat,
+      amount: msg.amount,
+    });
+  }
+
+  private onPeekAnswer(
+    userId: number,
+    msg: Extract<ClientMsg, { t: 'peek_accept' } | { t: 'peek_decline' }>,
+  ): void {
+    const offer = this.peekOffers.get(msg.offerId);
+    if (!offer || offer.handId !== msg.handId)
+      return this.send(userId, { t: 'error', message: 'that offer is gone' });
+    const snap = this.lastHandShow;
+    const target = snap?.bySeat.get(offer.targetSeat);
+    if (!snap || !target || target.userId !== userId)
+      return this.send(userId, { t: 'error', message: 'that offer is not yours to answer' });
+    this.peekOffers.delete(msg.offerId);
+    if (msg.t === 'peek_decline') {
+      this.send(offer.fromUserId, {
+        t: 'peek_result',
+        offerId: msg.offerId,
+        handId: offer.handId,
+        targetSeat: offer.targetSeat,
+        status: 'declined',
+        amount: offer.amount,
+      });
+      return;
+    }
+    if (this.hand) return this.send(userId, { t: 'error', message: 'a new hand already started' });
+    if (!verifyContent(target.pubkey, offer.handId, 'peek_accept', signedBody(msg), msg.sig))
+      return this.send(userId, { t: 'error', message: 'bad signature' });
+    const cards = verifySnapshotShares(target, msg.shares, this.lookup);
+    if (!cards) return this.send(userId, { t: 'error', message: 'invalid card reveal' });
+    const buyerRow = this.db
+      .prepare('SELECT stack FROM room_players WHERE room_id = ? AND user_id = ?')
+      .get(this.roomId, offer.fromUserId) as { stack: number } | undefined;
+    if (!buyerRow || buyerRow.stack < offer.amount)
+      return this.send(userId, { t: 'error', message: 'the buyer no longer has enough chips' });
+    const apply = this.db.transaction(() => {
+      appendLedger(this.db, {
+        roomId: this.roomId,
+        userId: offer.fromUserId,
+        delta: -offer.amount,
+        kind: 'peek',
+        ref: offer.handId,
+        note: `paid to see seat ${offer.targetSeat + 1}'s cards`,
+      });
+      appendLedger(this.db, {
+        roomId: this.roomId,
+        userId,
+        delta: offer.amount,
+        kind: 'peek',
+        ref: offer.handId,
+        note: `showed cards privately`,
+      });
+      this.db
+        .prepare('UPDATE room_players SET stack = stack - ? WHERE room_id = ? AND user_id = ?')
+        .run(offer.amount, this.roomId, offer.fromUserId);
+      this.db
+        .prepare('UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?')
+        .run(offer.amount, this.roomId, userId);
+    });
+    apply();
+    this.send(offer.fromUserId, {
+      t: 'peek_result',
+      offerId: msg.offerId,
+      handId: offer.handId,
+      targetSeat: offer.targetSeat,
+      status: 'accepted',
+      amount: offer.amount,
+      cards,
+    });
+    this.broadcastRoomState();
   }
 }
 
@@ -618,17 +757,8 @@ class Hand {
   }
 
   /** What GameRoom needs to keep verifying shows after this hand is gone. */
-  showSnapshot(): {
-    handId: string;
-    bySeat: Map<
-      number,
-      { userId: number; pubkey: string; commit: Point; cards: { deckIndex: number; point: Point }[] }
-    >;
-  } {
-    const bySeat = new Map<
-      number,
-      { userId: number; pubkey: string; commit: Point; cards: { deckIndex: number; point: Point }[] }
-    >();
+  showSnapshot(): ShowSnapshot {
+    const bySeat = new Map<number, SnapshotSeat>();
     for (let k = 0; k < this.n; k++) {
       const s = this.seats[k]!;
       const commit = this.commits.get(s.seat);
@@ -638,7 +768,7 @@ class Hand {
         .map((i) => ({ deckIndex: i, point: this.holeFinal.get(i)! }));
       if (cards.length) bySeat.set(s.seat, { userId: s.userId, pubkey: s.pubkey, commit, cards });
     }
-    return { handId: this.id, bySeat };
+    return { handId: this.id, bySeat, revealedSeats: new Set(this.reveals.keys()) };
   }
 
   // ---------- commit + shuffle ----------

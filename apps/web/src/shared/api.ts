@@ -47,6 +47,8 @@ export const api = {
   requests: (roomId: string) => req(`/api/rooms/${roomId}/requests`),
   approve: (roomId: string, requestId: number, approve: boolean) =>
     req(`/api/rooms/${roomId}/approve`, { requestId, approve }),
+  room: (id: string) => req(`/api/rooms/${id}`),
+  revertPurchase: (roomId: string, entryId: number) => req(`/api/rooms/${roomId}/revert`, { entryId }),
   ledger: (roomId: string) => req(`/api/rooms/${roomId}/ledger`),
   hands: (roomId: string) => req(`/api/rooms/${roomId}/hands`),
   hand: (roomId: string, handId: string) => req(`/api/rooms/${roomId}/hands/${handId}`),

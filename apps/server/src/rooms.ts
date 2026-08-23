@@ -194,6 +194,52 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     return { ok: true };
   });
 
+  // banker reverses a specific earlier purchase with a compensating ledger entry
+  app.post('/api/rooms/:id/revert', authed, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = z.object({ entryId: z.number().int() }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+    const room = getRoom(db, id);
+    if (!room) return reply.code(404).send({ error: 'no such room' });
+    if (room.banker_id !== req.userId) return reply.code(403).send({ error: 'banker only' });
+    const entry = db
+      .prepare('SELECT * FROM ledger WHERE id = ? AND room_id = ?')
+      .get(parsed.data.entryId, id) as
+      | { id: number; user_id: number; delta: number; kind: string; entry_hash: string }
+      | undefined;
+    if (!entry) return reply.code(404).send({ error: 'no such ledger entry' });
+    if (entry.kind !== 'purchase')
+      return reply.code(400).send({ error: 'only purchases can be reverted' });
+    const already = db
+      .prepare("SELECT 1 FROM ledger WHERE room_id = ? AND kind = 'revert' AND ref = ?")
+      .get(id, entry.entry_hash);
+    if (already) return reply.code(400).send({ error: 'that purchase was already reverted' });
+    const player = db
+      .prepare('SELECT stack FROM room_players WHERE room_id = ? AND user_id = ?')
+      .get(id, entry.user_id) as { stack: number } | undefined;
+    if (!player || player.stack < entry.delta)
+      return reply.code(400).send({ error: 'the player no longer has enough chips to revert this' });
+    const apply = db.transaction(() => {
+      appendLedger(db, {
+        roomId: id,
+        userId: entry.user_id,
+        delta: -entry.delta,
+        kind: 'revert',
+        approvedBy: req.userId,
+        ref: entry.entry_hash,
+        note: `revert of purchase #${entry.id}`,
+      });
+      db.prepare('UPDATE room_players SET stack = stack - ? WHERE room_id = ? AND user_id = ?').run(
+        entry.delta,
+        id,
+        entry.user_id,
+      );
+    });
+    apply();
+    roomEvents.emit('changed', id);
+    return { ok: true };
+  });
+
   app.put('/api/rooms/:id/settings', authed, async (req, reply) => {
     const { id } = req.params as { id: string };
     const parsed = z.object({ actionSecs: actionSecsSchema }).safeParse(req.body);

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { ArrowLeft, ChatCircle, DotsThreeVertical, Microphone, MicrophoneSlash, Timer, X } from '@phosphor-icons/react';
+import { ArrowLeft, ChatCircle, DotsThreeVertical, Microphone, MicrophoneSlash, Moon, Sun, Timer, X } from '@phosphor-icons/react';
 import NumberFlow from '@number-flow/react';
 import confetti from 'canvas-confetti';
 import { HAND_CATEGORY_NAMES, bestFive, describeScore, handCategory } from '@4am/shared';
-import { bindGameClient, sit } from '../../shared/gameClient.ts';
+import { answerPeek, bindGameClient, offerPeek, setSitOut, sit } from '../../shared/gameClient.ts';
 import { wsClient } from '../../shared/ws.ts';
 import { useStore } from '../../shared/store.ts';
 import { api } from '../../shared/api.ts';
@@ -53,6 +53,15 @@ export function TablePage() {
   const wsConnected = useStore((s) => s.wsConnected);
   const [chatOpen, setChatOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const prefs = useStore((s) => s.prefs);
+  const setPrefs = useStore((s) => s.setPrefs);
+  const toggleTheme = () => {
+    const theme = prefs.theme === 'dark' ? 'light' : 'dark';
+    setPrefs({ theme });
+    void api.updateProfile({ theme }).catch(() => {});
+  };
+  const [peekAmtStr, setPeekAmtStr] = useState('');
+  const [peekSent, setPeekSent] = useState<Record<number, boolean>>({});
   const [floats, setFloats] = useState<FloatingReaction[]>([]);
   const floatId = useRef(0);
   const lastChatLen = useRef(0);
@@ -122,6 +131,10 @@ export function TablePage() {
   const remaining = hand.deadline ? hand.deadline - now : null;
   const urgent = handLive && remaining !== null && remaining <= 10_000;
 
+  useEffect(() => {
+    setPeekSent({});
+  }, [hand.handId]);
+
   // re-arm the buy-in prompt whenever the broke state resolves (approval landed / stood up)
   useEffect(() => {
     if (!amBroke) setBrokeDismissed(false);
@@ -160,6 +173,7 @@ export function TablePage() {
           folded: !!engineSeat?.folded,
           allIn: !!engineSeat?.allIn,
           inHand,
+          sittingOut: !!p.sittingOut,
           connected: p.connected,
           speaking: !!voiceState.speakingByUser[p.userId],
           voiceMuted: !!voiceState.mutedByUser[p.userId],
@@ -217,19 +231,110 @@ export function TablePage() {
   const takenSeats = new Set(seatViews.map((s) => s.seat));
   const secs = remaining !== null ? Math.max(0, Math.ceil(remaining / 1000)) : null;
   const showResult = (hand.result !== null || hand.abort !== null) && !resultDismissed;
+  const notInHand = handLive && mySeat !== null && !hand.seats.some((s) => s.seat === mySeat);
+  const meSittingOut = !!room.players.find((p) => p.userId === auth.userId)?.sittingOut;
+  const seatName = (seat: number) =>
+    seatViews.find((s) => s.seat === seat)?.displayName ?? `Seat ${seat + 1}`;
 
   const disconnectedInHand = handLive
     ? seatViews.filter((s) => s.inHand && !s.folded && !s.connected).map((s) => s.displayName)
     : [];
   const mobileStatus = !handLive
     ? null
-    : disconnectedInHand.length > 0
+    : mySeat !== null && !hand.seats.some((s) => s.seat === mySeat)
+      ? 'You are not in this hand. You will be dealt in at the next deal.'
+      : disconnectedInHand.length > 0
       ? `${disconnectedInHand.join(', ')} lost connection. Holding the hand for them to rejoin…`
       : hand.betting
         ? hand.betting.toAct !== null && hand.betting.toAct !== mySeat
           ? `Waiting for ${seatViews.find((s) => s.seat === hand.betting!.toAct)?.displayName ?? 'player'}…`
           : null
         : 'Shuffling the encrypted deck…';
+
+  const peekAmt = Math.max(1, parseInt(peekAmtStr, 10) || room.room.bb * 5);
+  const peekEligible =
+    hand.result && !hand.abort
+      ? seatViews.filter(
+          (v) => v.inHand && v.seat !== mySeat && !v.revealed && !hand.peekResults[v.seat],
+        )
+      : [];
+  const peekReveals = Object.entries(hand.peekResults);
+  const hasPeekContent =
+    hand.peekOffers.length > 0 || peekReveals.length > 0 || (showResult && peekEligible.length > 0 && mySeat !== null);
+
+  const peekBody = (dark: boolean) => (
+    <div className="space-y-2.5">
+      {hand.peekOffers.map((o) => (
+        <div key={o.offerId} className="flex flex-wrap items-center gap-2 text-sm">
+          <span>
+            <b>{o.fromName}</b> offers <b className="font-display">{fmt(o.amount)}</b> to privately
+            see the cards you just had.
+          </span>
+          <Button
+            variant="success"
+            disabled={hand.myCardPoints.length === 0}
+            onClick={() => answerPeek(o.offerId, true)}
+          >
+            Accept {fmt(o.amount)}
+          </Button>
+          <Button variant="secondary" onClick={() => answerPeek(o.offerId, false)}>
+            Decline
+          </Button>
+        </div>
+      ))}
+      {peekReveals.map(([seat, cards]) => (
+        <div key={seat} className="flex flex-wrap items-center gap-2 text-sm">
+          <span>
+            <b>{seatName(+seat)}</b> had
+          </span>
+          {cards.map((c) => (
+            <PlayingCard key={c} card={c} size="xs" />
+          ))}
+          <span className={dark ? 'text-white/50' : 'text-slate-400'}>only you can see this</span>
+        </div>
+      ))}
+      {showResult && peekEligible.length > 0 && mySeat !== null && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className={dark ? 'text-white/60' : 'text-slate-500'}>Pay to peek at</span>
+          {peekEligible.map((v) => (
+            <Button
+              key={v.seat}
+              variant="secondary"
+              disabled={!!peekSent[v.seat] || (myRoomStack ?? 0) < peekAmt}
+              onClick={() => {
+                setPeekSent((m) => ({ ...m, [v.seat]: true }));
+                offerPeek(v.seat, peekAmt);
+              }}
+            >
+              {peekSent[v.seat] ? `Asked ${v.displayName}` : v.displayName}
+            </Button>
+          ))}
+          <input
+            type="number"
+            min={1}
+            value={peekAmtStr}
+            placeholder={String(room.room.bb * 5)}
+            onChange={(e) => setPeekAmtStr(e.target.value)}
+            aria-label="Peek offer amount"
+            className={cn(
+              'w-24 rounded-lg border px-2.5 py-1.5 font-display text-sm',
+              dark
+                ? 'border-white/20 bg-slate-800 text-white'
+                : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800',
+            )}
+          />
+          <span className={dark ? 'text-white/40' : 'text-slate-400'}>
+            chips, paid only if they agree to show you
+          </span>
+        </div>
+      )}
+    </div>
+  );
+
+  const peekPanel = hasPeekContent && <Panel>{peekBody(false)}</Panel>;
+  const mobilePeekPanel = hasPeekContent && (
+    <div className="rounded-2xl bg-white/10 p-3.5 text-sm text-white">{peekBody(true)}</div>
+  );
 
   // the reasoning behind the result: who won, with what, over what
   const reasoning = (() => {
@@ -503,11 +608,13 @@ export function TablePage() {
           pot={pot}
           urgent={urgent}
           statusText={mobileStatus}
+          dimBoard={notInHand}
         />
 
-        {(showResult || !me) && (
+        {(showResult || !me || hasPeekContent) && (
           <div className="space-y-3 px-4 pb-6">
             {mobileResult}
+            {mobilePeekPanel}
             {!me && mobileSeatPicker}
           </div>
         )}
@@ -536,6 +643,16 @@ export function TablePage() {
                     Hands
                   </Button>
                 </Link>
+              </div>
+              <div className="flex gap-2">
+                {mySeat !== null && (
+                  <Button variant="secondary" className="flex-1" onClick={() => setSitOut(!meSittingOut)}>
+                    {meSittingOut ? 'Deal me back in' : 'Sit out next hands'}
+                  </Button>
+                )}
+                <Button variant="secondary" className="flex-1" onClick={toggleTheme}>
+                  {prefs.theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                </Button>
               </div>
               {isHost && (
                 <label className="flex items-center justify-between text-sm text-white/70">
@@ -618,6 +735,23 @@ export function TablePage() {
           </label>
         )}
         <div className="ml-auto flex items-center gap-2">
+          {mySeat !== null && (
+            <Button
+              variant="ghost"
+              onClick={() => setSitOut(!meSittingOut)}
+              title={handLive ? 'applies from the next hand' : undefined}
+            >
+              {meSittingOut ? 'Deal me in' : 'Sit out'}
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            onClick={toggleTheme}
+            title="Toggle dark mode"
+            aria-label="Toggle dark mode"
+          >
+            {prefs.theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </Button>
           <Button
             variant={voiceState.joined ? (voiceState.muted ? 'danger' : 'success') : 'secondary'}
             onClick={() => (voiceState.joined ? voice.toggleMute() : void voice.join())}
@@ -666,7 +800,12 @@ export function TablePage() {
             </div>
 
             {/* board */}
-            <div className="relative flex min-h-[320px] flex-col items-center justify-center gap-6 rounded-3xl bg-slate-200/50 p-4 ring-1 ring-slate-200 md:min-h-[440px] md:p-6 dark:bg-slate-900/60 dark:ring-slate-800">
+            <div
+              className={cn(
+                'relative flex min-h-[320px] flex-col items-center justify-center gap-6 rounded-3xl bg-slate-200/50 p-4 ring-1 ring-slate-200 md:min-h-[440px] md:p-6 dark:bg-slate-900/60 dark:ring-slate-800',
+                notInHand && 'opacity-60 saturate-50',
+              )}
+            >
               {/* floating sticker reactions */}
               {floats.map((f) => (
                 <span
@@ -697,11 +836,17 @@ export function TablePage() {
                   {mySeat === null ? 'Pick a seat to play.' : 'No hand in progress.'}
                 </p>
               )}
+              {notInHand && (
+                <p className="rounded-full bg-white/80 px-4 py-1.5 text-sm font-semibold text-slate-600 shadow dark:bg-slate-800/90 dark:text-slate-300">
+                  You are not in this hand. You will be dealt in at the next deal.
+                </p>
+              )}
             </div>
           </div>
 
           {/* non-blocking hand result */}
           {resultBanner}
+          {peekPanel}
 
           {/* you + actions */}
           {me ? <YouRow p={me} cards={hand.myCards} urgent={urgent} /> : seatPicker}

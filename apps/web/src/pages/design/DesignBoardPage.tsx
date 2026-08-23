@@ -58,6 +58,7 @@ function seatVariant(over: Partial<SeatView>): SeatView {
     allIn: false,
     inHand: true,
     broke: false,
+    sittingOut: false,
     connected: true,
     speaking: false,
     voiceMuted: false,
@@ -352,6 +353,7 @@ export function DesignBoardPage() {
                 pot={pot}
                 urgent={urgent}
                 statusText={scenario === 'waiting' ? 'Waiting for Ishaan…' : null}
+                dimBoard={false}
               />
             </div>
             <div className="h-[600px] w-[390px] shrink-0 overflow-hidden rounded-[2.5rem] p-2 shadow-2xl ring-4 ring-slate-300 dark:ring-slate-700">

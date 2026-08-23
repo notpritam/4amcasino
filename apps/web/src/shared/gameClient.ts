@@ -48,6 +48,42 @@ export function act(action: PlayerAction): void {
   wsClient.send({ t: 'action', handId, action, sig: signed(handId, 'action', { action }) });
 }
 
+/** Offer chips to privately see a player's cards from the hand that just ended. */
+export function offerPeek(targetSeat: number, amount: number): void {
+  const handId = useStore.getState().hand.handId;
+  if (!handId) return;
+  wsClient.send({ t: 'peek_offer', handId, targetSeat, amount });
+}
+
+/** Answer a paid-peek offer. Accepting proves the reveal with the hand key. */
+export function answerPeek(offerId: string, accept: boolean): void {
+  const { hand } = useStore.getState();
+  if (!hand.handId) return;
+  useStore.getState().patchHand({ peekOffers: hand.peekOffers.filter((o) => o.offerId !== offerId) });
+  if (!accept) {
+    wsClient.send({ t: 'peek_decline', handId: hand.handId, offerId });
+    return;
+  }
+  if (hand.myCardPoints.length === 0) return;
+  const k = handKeyFor(hand.handId);
+  const shares = hand.myCardPoints.map(({ deckIndex, point }) => {
+    const { out, proof } = proveUnmask(k, pointFromHex(point));
+    return { deckIndex, out: pointHex(out), proof };
+  });
+  wsClient.send({
+    t: 'peek_accept',
+    handId: hand.handId,
+    offerId,
+    shares,
+    sig: signed(hand.handId, 'peek_accept', { offerId, shares }),
+  });
+}
+
+/** Sit out upcoming hands (or come back in). Takes effect at the next deal. */
+export function setSitOut(sittingOut: boolean): void {
+  wsClient.send({ t: 'sit_out', sittingOut });
+}
+
 /** Voluntarily reveal your hole cards to the table (after folding, or once the hand is over). */
 export function showMyCards(): void {
   const { hand } = useStore.getState();
@@ -228,6 +264,31 @@ function handle(msg: ServerMsg): void {
       store.patchHand({
         lastActions: { ...hand.lastActions, [msg.seat]: { ...msg.action, auto: msg.auto } },
       });
+      return;
+    }
+
+    case 'peek_offer': {
+      const h = useStore.getState().hand;
+      if (h.handId !== msg.handId || h.peekOffers.some((o) => o.offerId === msg.offerId)) return;
+      play('chip');
+      store.patchHand({
+        peekOffers: [
+          ...h.peekOffers,
+          { offerId: msg.offerId, fromUserId: msg.fromUserId, fromName: msg.fromName, amount: msg.amount },
+        ],
+      });
+      return;
+    }
+
+    case 'peek_result': {
+      const h = useStore.getState().hand;
+      if (h.handId !== msg.handId) return;
+      if (msg.status === 'accepted' && msg.cards) {
+        play('flip');
+        store.patchHand({ peekResults: { ...h.peekResults, [msg.targetSeat]: msg.cards } });
+      } else {
+        store.pushError('Your peek offer was declined.');
+      }
       return;
     }
 

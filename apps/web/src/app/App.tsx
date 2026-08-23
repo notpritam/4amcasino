@@ -24,9 +24,11 @@ export function App() {
   const token = useStore((s) => s.auth.token);
   const theme = useStore((s) => s.prefs.theme);
   useEffect(() => {
-    applyTheme(theme); // persisted prefs apply instantly on load
-    if (token) void loadPrefs(); // then refresh from the server
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+    applyTheme(theme); // applies on load and every toggle
+  }, [theme]);
+  useEffect(() => {
+    if (token) void loadPrefs(); // refresh prefs from the server
+  }, [token]);
 
   return (
     <BrowserRouter>

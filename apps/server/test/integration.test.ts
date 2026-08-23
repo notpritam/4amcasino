@@ -39,6 +39,8 @@ class TestClient {
   myCardPoints: { deckIndex: number; point: string }[] = [];
   board: CardId[] = [];
   cardsShown: { seat: number; cards: CardId[] }[] = [];
+  peekOffers: { offerId: string; fromUserId: number; amount: number }[] = [];
+  peekResults: { targetSeat: number; status: string; cards?: CardId[] }[] = [];
   sawShowdown = false;
   handEnd: Extract<ServerMsg, { t: 'hand_end' }> | null = null;
   handAbort: Extract<ServerMsg, { t: 'hand_abort' }> | null = null;
@@ -107,6 +109,20 @@ class TestClient {
     this.send({ t: 'show_cards', handId: this.handId, shares, sig: this.signed('show_cards', { shares }) });
   }
 
+  acceptPeek(offerId: string): void {
+    const shares = this.myCardPoints.map(({ deckIndex, point }) => {
+      const { out, proof } = proveUnmask(this.handKey!, pointFromHex(point));
+      return { deckIndex, out: pointHex(out), proof };
+    });
+    this.send({
+      t: 'peek_accept',
+      handId: this.handId,
+      offerId,
+      shares,
+      sig: this.signed('peek_accept', { offerId, shares }),
+    });
+  }
+
   handle(msg: ServerMsg): void {
     switch (msg.t) {
       case 'hand_start': {
@@ -160,6 +176,14 @@ class TestClient {
       }
       case 'cards_shown': {
         this.cardsShown.push({ seat: msg.seat, cards: msg.cards });
+        break;
+      }
+      case 'peek_offer': {
+        this.peekOffers.push({ offerId: msg.offerId, fromUserId: msg.fromUserId, amount: msg.amount });
+        break;
+      }
+      case 'peek_result': {
+        this.peekResults.push({ targetSeat: msg.targetSeat, status: msg.status, cards: msg.cards });
         break;
       }
       case 'betting_state': {
@@ -339,6 +363,49 @@ describe('full hand integration', () => {
     expect(players[2]!.cardsShown[0]!.cards.slice().sort()).toEqual(host.myCards.slice().sort());
     await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null)));
     expect(players[0]!.handAbort).toBeNull();
+  });
+
+  it('a paid peek reveals cards only to the buyer and moves the chips', async () => {
+    const { players, room, host } = await setupRoom(
+      ['host', 'bob', 'carol'],
+      ['fold-first', 'fold-first', 'passive'],
+    );
+    const [h, bob, carol] = players as [TestClient, TestClient, TestClient];
+    host.send({ t: 'start_hand' });
+    await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null)));
+
+    // carol (won by folds) pays 100 to see host's mucked cards
+    carol.send({ t: 'peek_offer', handId: carol.handId, targetSeat: h.seat, amount: 100 });
+    await h.waitFor(() => h.peekOffers.length > 0);
+    expect(h.peekOffers[0]!.amount).toBe(100);
+    h.acceptPeek(h.peekOffers[0]!.offerId);
+    await carol.waitFor(() => carol.peekResults.length > 0);
+
+    const result = carol.peekResults[0]!;
+    expect(result.status).toBe('accepted');
+    expect(result.cards!.slice().sort()).toEqual(h.myCards.slice().sort());
+    // the reveal went only to the buyer
+    expect(bob.peekResults).toHaveLength(0);
+    expect(bob.cardsShown).toHaveLength(0);
+
+    // chips moved: carol paid host 100 on top of the blind results
+    const state = await host.api(`/api/rooms/${room.id}`);
+    const stack = (name: string) => state.players.find((p: any) => p.username === name).stack;
+    expect(stack('host')).toBe(1100); // folded for free, then sold a look for 100
+    expect(stack('carol')).toBe(910); // won the 10 blind, paid 100
+    const ledger = await host.api(`/api/rooms/${room.id}/ledger`);
+    expect(ledger.verified.ok).toBe(true);
+    expect(ledger.entries.filter((e: any) => e.kind === 'peek')).toHaveLength(2);
+  });
+
+  it('a sitting-out player is skipped when the next hand is dealt', async () => {
+    const { players, host } = await setupRoom(['host', 'bob', 'carol']);
+    players[2]!.send({ t: 'sit_out', sittingOut: true });
+    await new Promise((r) => setTimeout(r, 100));
+    host.send({ t: 'start_hand' });
+    await Promise.all(players.slice(0, 2).map((p) => p.waitFor(() => p.handEnd !== null)));
+    const seats = players[0]!.handEnd!.stacks.map((s) => s.seat).sort();
+    expect(seats).toEqual([0, 1]);
   });
 
   it('the fold winner can voluntarily show cards after the hand ends', async () => {

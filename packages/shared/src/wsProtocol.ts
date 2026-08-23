@@ -38,6 +38,24 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
       .max(2),
     sig: hex(128),
   }),
+  z.object({ t: z.literal('sit_out'), sittingOut: z.boolean() }),
+  z.object({
+    t: z.literal('peek_offer'),
+    handId: z.string(),
+    targetSeat: z.number().int().min(0).max(8),
+    amount: z.number().int().positive(),
+  }),
+  z.object({
+    t: z.literal('peek_accept'),
+    handId: z.string(),
+    offerId: z.string(),
+    shares: z
+      .array(z.object({ deckIndex: z.number().int().min(0).max(51), out: hex(64), proof: dleqProofSchema }))
+      .min(1)
+      .max(2),
+    sig: hex(128),
+  }),
+  z.object({ t: z.literal('peek_decline'), handId: z.string(), offerId: z.string() }),
   z.object({
     t: z.literal('chat'),
     text: z.string().min(1).max(500),
@@ -63,6 +81,8 @@ export function signedBody(msg: ClientMsg): unknown {
       return { key: msg.key };
     case 'show_cards':
       return { shares: msg.shares };
+    case 'peek_accept':
+      return { offerId: msg.offerId, shares: msg.shares };
     default:
       return null;
   }
@@ -127,6 +147,16 @@ export type ServerMsg =
     }
   | { t: 'hand_end'; handId: string; head: string; stacks: { seat: number; stack: number }[]; deltas: { seat: number; delta: number }[] }
   | { t: 'cards_shown'; handId: string; seat: number; cards: CardId[] }
+  | { t: 'peek_offer'; offerId: string; handId: string; fromUserId: number; fromName: string; targetSeat: number; amount: number }
+  | {
+      t: 'peek_result';
+      offerId: string;
+      handId: string;
+      targetSeat: number;
+      status: 'accepted' | 'declined';
+      amount: number;
+      cards?: CardId[];
+    }
   | { t: 'hand_abort'; handId: string; reason: string; blamedSeat: number | null }
   | { t: 'need_keys'; handId: string }
   | { t: 'transcript_entry'; handId: string; seq: number; type: string; from: string; head: string };
