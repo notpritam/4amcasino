@@ -84,6 +84,7 @@ interface Store {
   setRoom: (r: RoomStateMsg | null) => void;
   chat: ChatMsg[];
   pushChat: (m: ChatMsg) => void;
+  setChat: (msgs: ChatMsg[]) => void;
 
   hand: HandView;
   patchHand: (p: Partial<HandView>) => void;
@@ -120,6 +121,7 @@ export const useStore = create<Store>()(
       setRoom: (room) => set({ room }),
       chat: [],
       pushChat: (m) => set((s) => ({ chat: [...s.chat.slice(-199), m] })),
+      setChat: (chat) => set({ chat }),
 
       hand: emptyHand,
       patchHand: (p) => set((s) => ({ hand: { ...s.hand, ...p } })),

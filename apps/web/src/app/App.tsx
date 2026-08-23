@@ -10,6 +10,7 @@ import { HandsPage } from '../pages/hands/HandsPage.tsx';
 import { LeaderboardPage } from '../pages/leaderboard/LeaderboardPage.tsx';
 import { PlayerPage } from '../pages/player/PlayerPage.tsx';
 import { ReplayPage } from '../pages/replay/ReplayPage.tsx';
+import { DesignBoardPage } from '../pages/design/DesignBoardPage.tsx';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const token = useStore((s) => s.auth.token);
@@ -85,6 +86,7 @@ export function App() {
             </RequireAuth>
           }
         />
+        <Route path="/design" element={<DesignBoardPage />} />
         <Route path="*" element={<Navigate to="/lobby" replace />} />
       </Routes>
     </BrowserRouter>
