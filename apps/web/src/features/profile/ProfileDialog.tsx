@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { api } from '../../shared/api.ts';
-import { applyTheme, setSoundsEnabled, soundsEnabled } from '../../shared/prefs.ts';
+import { applyTheme } from '../../shared/prefs.ts';
+import { play, setSoundVolume, setSoundsEnabled, soundVolume, soundsEnabled } from '../../shared/sounds.ts';
 import { useStore, type Prefs } from '../../shared/store.ts';
 import { cn } from '../../shared/lib/cn.ts';
 import { Button, Dialog, Input } from '../../shared/ui/index.tsx';
@@ -29,6 +30,7 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [bio, setBio] = useState(prefs.bio);
   const [phrasesText, setPhrasesText] = useState(prefs.quickPhrases.join('\n'));
   const [sounds, setSounds] = useState(soundsEnabled());
+  const [volume, setVolume] = useState(soundVolume());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -169,10 +171,42 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
             Dark theme
           </label>
           <label className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
-            <input type="checkbox" checked={sounds} onChange={(e) => setSounds(e.target.checked)} />
-            Turn sounds
+            <input
+              type="checkbox"
+              checked={sounds}
+              onChange={(e) => {
+                setSounds(e.target.checked);
+                setSoundsEnabled(e.target.checked);
+                if (e.target.checked) play('chip');
+              }}
+            />
+            Game sounds
           </label>
         </div>
+
+        {sounds && (
+          <div className="flex items-center gap-3 text-sm text-slate-600 dark:text-slate-300">
+            <span className="text-slate-500">Volume</span>
+            <input
+              type="range"
+              min={0.05}
+              max={1}
+              step={0.05}
+              value={volume}
+              onChange={(e) => {
+                const v = +e.target.value;
+                setVolume(v);
+                setSoundVolume(v);
+              }}
+              onPointerUp={() => play('chip')}
+              className="flex-1 accent-indigo-600"
+              aria-label="Sound volume"
+            />
+            <Button variant="ghost" onClick={() => play('win')}>
+              Test
+            </Button>
+          </div>
+        )}
 
         {error && <p className="text-sm text-rose-600">{error}</p>}
         <Button className="w-full" onClick={() => void save()} disabled={saving}>

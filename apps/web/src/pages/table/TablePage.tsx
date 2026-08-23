@@ -9,7 +9,7 @@ import { wsClient } from '../../shared/ws.ts';
 import { useStore } from '../../shared/store.ts';
 import { api } from '../../shared/api.ts';
 import { voice } from '../../shared/voice.ts';
-import { beep } from '../../shared/prefs.ts';
+import { play } from '../../shared/sounds.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
 import { Badge, Button, Panel, Spinner } from '../../shared/ui/index.tsx';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
@@ -104,7 +104,7 @@ export function TablePage() {
     const key = `${hand.handId}:${hand.deadline}`;
     if (urgent && hand.betting?.toAct === mySeat && beepedUrgent.current !== key) {
       beepedUrgent.current = key;
-      beep(1200, 0.12);
+      play('urgent');
     }
   }, [urgent, hand.betting?.toAct, hand.deadline, hand.handId, mySeat]);
 

@@ -16,7 +16,7 @@ import type { PlayerAction, ServerMsg } from '@4am/shared';
 import { useStore } from './store.ts';
 import { wsClient } from './ws.ts';
 import { voice } from './voice.ts';
-import { beep } from './prefs.ts';
+import { play } from './sounds.ts';
 
 const lookup = cardLookup();
 
@@ -93,6 +93,7 @@ function handle(msg: ServerMsg): void {
         buttonSeat: msg.buttonSeat,
       });
       if (mySeat === null) return; // spectator
+      play('shuffle');
       const k = handKeyFor(msg.handId);
       const commit = pointHex(handKeyCommit(k));
       wsClient.send({
@@ -129,13 +130,17 @@ function handle(msg: ServerMsg): void {
         store.pushError('could not decode a dealt card — the hand will abort');
         return;
       }
+      play('deal');
       store.patchHand({ myCards: [...useStore.getState().hand.myCards, card] });
       return;
     }
 
     case 'board_open': {
       const { hand } = useStore.getState();
-      if (!hand.board.includes(msg.card)) store.patchHand({ board: [...hand.board, msg.card] });
+      if (!hand.board.includes(msg.card)) {
+        play('flip');
+        store.patchHand({ board: [...hand.board, msg.card] });
+      }
       return;
     }
 
@@ -145,7 +150,7 @@ function handle(msg: ServerMsg): void {
       const myUserId = useStore.getState().auth.userId;
       const mySeat = prev.seats.find((s) => s.userId === myUserId)?.seat;
       if (mySeat !== undefined && msg.state.toAct === mySeat && prev.betting?.toAct !== mySeat) {
-        beep(880); // your turn
+        play('turn');
       }
       store.patchHand({
         betting: msg.state,
@@ -159,6 +164,8 @@ function handle(msg: ServerMsg): void {
 
     case 'action_applied': {
       const { hand } = useStore.getState();
+      const soundFor = { fold: 'muck', check: 'knock', call: 'chip', bet: 'chip', raise: 'chip' } as const;
+      play(soundFor[msg.action.type]);
       store.patchHand({
         lastActions: { ...hand.lastActions, [msg.seat]: { ...msg.action, auto: msg.auto } },
       });
@@ -170,6 +177,9 @@ function handle(msg: ServerMsg): void {
       return;
 
     case 'hand_end': {
+      const mySeat = mySeatIn(useStore.getState().hand.seats);
+      const myDelta = msg.deltas.find((d) => d.seat === mySeat)?.delta ?? 0;
+      play(myDelta > 0 ? 'win' : 'end');
       store.patchHand({ result: msg, deadline: null });
       sessionStorage.removeItem(`4am/handkey/${msg.handId}`);
       return;

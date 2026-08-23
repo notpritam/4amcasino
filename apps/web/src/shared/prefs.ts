@@ -25,28 +25,4 @@ export async function loadPrefs(): Promise<void> {
   }
 }
 
-export function soundsEnabled(): boolean {
-  return localStorage.getItem('4am-sounds') !== 'off';
-}
-export function setSoundsEnabled(on: boolean): void {
-  localStorage.setItem('4am-sounds', on ? 'on' : 'off');
-}
-
-let audioCtx: AudioContext | null = null;
-
-/** Tiny attention beep (your turn / clock running out). */
-export function beep(freq = 880, duration = 0.09, volume = 0.04): void {
-  if (!soundsEnabled()) return;
-  try {
-    audioCtx ??= new AudioContext();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.frequency.value = freq;
-    gain.gain.value = volume;
-    osc.connect(gain).connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + duration);
-  } catch {
-    /* audio blocked until user interacts - fine */
-  }
-}
+export { soundsEnabled, setSoundsEnabled, soundVolume, setSoundVolume } from './sounds.ts';
