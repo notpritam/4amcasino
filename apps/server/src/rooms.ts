@@ -52,10 +52,16 @@ export function roomPlayers(db: DB, roomId: string) {
     .prepare(
       `SELECT rp.user_id as userId, u.username, COALESCE(u.display_name, u.username) as displayName,
               u.avatar_version as avatarVersion, u.pubkey as publicKey, rp.seat, rp.stack,
-              rp.sitting_out as sittingOut
-       FROM room_players rp JOIN users u ON u.id = rp.user_id WHERE rp.room_id = ? ORDER BY rp.seat`,
+              rp.sitting_out as sittingOut, COALESCE(b.total, 0) as totalBought
+       FROM room_players rp
+       JOIN users u ON u.id = rp.user_id
+       LEFT JOIN (
+         SELECT user_id, SUM(delta) as total FROM ledger
+         WHERE room_id = ? AND kind IN ('purchase', 'revert') GROUP BY user_id
+       ) b ON b.user_id = rp.user_id
+       WHERE rp.room_id = ? ORDER BY rp.seat`,
     )
-    .all(roomId) as {
+    .all(roomId, roomId) as {
     userId: number;
     username: string;
     displayName: string;
@@ -64,6 +70,7 @@ export function roomPlayers(db: DB, roomId: string) {
     seat: number | null;
     stack: number;
     sittingOut: number;
+    totalBought: number;
   }[];
 }
 

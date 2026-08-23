@@ -170,6 +170,7 @@ export class GameRoom {
       stack: p.stack,
       sittingOut: !!p.sittingOut,
       connected: this.sockets.has(p.userId),
+      totalBought: p.totalBought,
     }));
     this.broadcast({
       t: 'room_state',

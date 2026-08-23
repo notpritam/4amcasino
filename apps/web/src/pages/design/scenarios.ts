@@ -51,6 +51,7 @@ const mockRoom = {
     stack: p.seat === MY_SEAT ? 1980 : 1500 + p.seat * 137,
     sittingOut: false,
     connected: p.username !== 'arjun', // one disconnected player, for the dimmed state
+    totalBought: 2000,
   })),
   handActive: true,
 };

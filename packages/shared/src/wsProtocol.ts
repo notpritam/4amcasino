@@ -108,6 +108,8 @@ export interface RoomStatePlayer {
   stack: number;
   sittingOut: boolean;
   connected: boolean;
+  /** Net chips bought from the bank in this room (purchases minus reverts). */
+  totalBought: number;
 }
 
 export type ServerMsg =

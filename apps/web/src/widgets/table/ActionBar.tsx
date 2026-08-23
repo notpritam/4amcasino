@@ -23,8 +23,11 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
   const handOver = hand.result !== null || hand.abort !== null;
   const myTurn = la !== null && la.seat === mySeat && !handOver;
   const me = st?.seats.find((s) => s.seat === mySeat);
-  const balance =
-    me && !handOver ? me.stack : (room?.players.find((p) => p.seat === mySeat)?.stack ?? 0);
+  const roomMe = room?.players.find((p) => p.seat === mySeat);
+  const balance = me && !handOver ? me.stack : (roomMe?.stack ?? 0);
+  // session position vs what was bought from the bank (stable during a hand)
+  const bought = roomMe?.totalBought ?? 0;
+  const net = (roomMe?.stack ?? 0) - bought;
   const pot = st ? st.seats.reduce((s, x) => s + x.total, 0) : 0;
 
   useEffect(() => {
@@ -246,6 +249,14 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
           <div className={cn('font-display text-2xl font-bold', balance === 0 && 'text-rose-300')}>
             <NumberFlow value={balance} />
           </div>
+          {bought > 0 && (
+            <div className="text-xs text-indigo-200">
+              bought {fmt(bought)} ·{' '}
+              <span className={cn('font-display font-bold', net >= 0 ? 'text-emerald-300' : 'text-rose-300')}>
+                {net >= 0 ? `up ${fmt(net)}` : `down ${fmt(-net)}`}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>

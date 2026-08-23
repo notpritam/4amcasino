@@ -315,6 +315,9 @@ export function MobileTable({
   const myCommitted = useStore(
     (s) => s.hand.betting?.seats.find((x) => x.seat === mySeat)?.committed ?? 0,
   );
+  const roomMe = useStore((s) => s.room?.players.find((p) => p.seat === mySeat));
+  const bought = roomMe?.totalBought ?? 0;
+  const net = (roomMe?.stack ?? 0) - bought;
   const strength = me && me.inHand ? strengthLabel(myCards, board) : null;
 
   return (
@@ -389,6 +392,14 @@ export function MobileTable({
             <span className={cn('font-display text-lg font-bold', me.broke && 'text-rose-400')}>
               <NumberFlow value={me.stack} />
             </span>
+            {bought > 0 && (
+              <span className="text-[0.6rem] text-white/50">
+                in {fmt(bought)} ·{' '}
+                <span className={net >= 0 ? 'text-emerald-300' : 'text-rose-300'}>
+                  {net >= 0 ? `+${fmt(net)}` : `-${fmt(-net)}`}
+                </span>
+              </span>
+            )}
           </div>
         )}
       </div>
