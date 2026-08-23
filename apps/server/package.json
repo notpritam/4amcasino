@@ -9,17 +9,18 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@4am/shared": "*",
     "@4am/mental-poker": "*",
-    "fastify": "^5.0.0",
+    "@4am/shared": "*",
     "@fastify/cors": "^10.0.0",
-    "ws": "^8.18.0",
+    "@fastify/static": "^8.3.0",
     "better-sqlite3": "^11.3.0",
+    "fastify": "^5.0.0",
+    "ws": "^8.18.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "tsx": "^4.19.0",
+    "@types/better-sqlite3": "^7.6.0",
     "@types/ws": "^8.5.0",
-    "@types/better-sqlite3": "^7.6.0"
+    "tsx": "^4.19.0"
   }
 }

@@ -179,6 +179,39 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     return { ok: true };
   });
 
+  app.get('/api/my-rooms', authed, async (req) => {
+    const rows = db
+      .prepare(
+        `SELECT r.id, r.name, r.join_code as joinCode, r.sb, r.bb,
+                (SELECT COUNT(*) FROM room_players rp2 WHERE rp2.room_id = r.id) as playerCount
+         FROM rooms r JOIN room_players rp ON rp.room_id = r.id
+         WHERE rp.user_id = ? ORDER BY r.created_at DESC`,
+      )
+      .all(req.userId);
+    return { rooms: rows };
+  });
+
+  app.get('/api/rooms/:id/hands', authed, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!getRoom(db, id)) return reply.code(404).send({ error: 'no such room' });
+    if (!isMember(db, id, req.userId)) return reply.code(403).send({ error: 'not a member' });
+    const hands = db
+      .prepare('SELECT hand_id as handId, head, ts FROM transcripts WHERE room_id = ? ORDER BY ts DESC')
+      .all(id);
+    return { hands };
+  });
+
+  app.get('/api/rooms/:id/hands/:handId', authed, async (req, reply) => {
+    const { id, handId } = req.params as { id: string; handId: string };
+    if (!getRoom(db, id)) return reply.code(404).send({ error: 'no such room' });
+    if (!isMember(db, id, req.userId)) return reply.code(403).send({ error: 'not a member' });
+    const row = db
+      .prepare('SELECT hand_id as handId, head, entries, ts FROM transcripts WHERE room_id = ? AND hand_id = ?')
+      .get(id, handId) as { handId: string; head: string; entries: string; ts: number } | undefined;
+    if (!row) return reply.code(404).send({ error: 'no such hand' });
+    return { handId: row.handId, head: row.head, ts: row.ts, entries: JSON.parse(row.entries) };
+  });
+
   app.get('/api/rooms/:id/ledger', authed, async (req, reply) => {
     const { id } = req.params as { id: string };
     const room = getRoom(db, id);

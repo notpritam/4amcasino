@@ -121,6 +121,7 @@ export class GameRoom {
         sb: room.sb,
         bb: room.bb,
         auditMode: room.audit_mode,
+        actionTimeoutMs: this.opts.actionTimeoutMs,
       },
       players,
       handActive: this.hand !== null,
@@ -593,6 +594,7 @@ class Hand {
       actionSeq: this.actionSeq,
       state: this.betting!,
       board: this.currentBoard(),
+      deadline: Date.now() + this.opts.actionTimeoutMs,
     });
   }
 
