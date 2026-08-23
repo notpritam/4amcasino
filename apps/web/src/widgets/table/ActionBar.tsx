@@ -126,9 +126,11 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
         ) : (
           <div className="flex-1 text-sm text-indigo-100">
             {handIdle
-              ? isHost
-                ? 'Deal when everyone is seated.'
-                : 'Waiting for the host to deal.'
+              ? balance === 0
+                ? 'You are out of chips. Buy points from the bank (top right) to keep playing.'
+                : isHost
+                  ? 'Deal when everyone is seated.'
+                  : 'Waiting for the host to deal.'
               : st
                 ? `Waiting for ${
                     room?.players.find((p) => p.seat === st.toAct)?.displayName ??
@@ -150,7 +152,7 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
 
         <div className="ml-auto text-right">
           <div className="text-xs uppercase tracking-wide text-indigo-200">Your balance</div>
-          <div className="font-display text-2xl font-bold">
+          <div className={cn('font-display text-2xl font-bold', balance === 0 && 'text-rose-300')}>
             <NumberFlow value={balance} />
           </div>
         </div>

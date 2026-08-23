@@ -37,7 +37,13 @@ function OpponentColumn({ p, urgent }: { p: SeatView; urgent: boolean }) {
     (s) => s.hand.betting?.seats.find((x) => x.seat === p.seat)?.committed ?? 0,
   );
   return (
-    <div className={cn('flex w-16 shrink-0 flex-col items-center gap-1', (p.folded || !p.connected) && 'opacity-40')}>
+    <div
+      className={cn(
+        'flex w-16 shrink-0 flex-col items-center gap-1',
+        (p.folded || !p.connected) && 'opacity-40',
+        p.broke && 'opacity-50 saturate-50',
+      )}
+    >
       <div className="relative">
         <Avatar
           userId={p.userId}
@@ -70,10 +76,15 @@ function OpponentColumn({ p, urgent }: { p: SeatView; urgent: boolean }) {
         )}
       </div>
       <div className="max-w-full truncate text-xs font-medium text-white/80">{p.displayName}</div>
-      <div className="font-display text-sm font-bold text-white">
+      <div className={cn('font-display text-sm font-bold', p.broke ? 'text-rose-400' : 'text-white')}>
         <NumberFlow value={p.stack} />
       </div>
       <div className="h-6">
+        {p.broke && (
+          <span className="rounded-full bg-rose-500/20 px-1.5 py-px text-[0.55rem] font-bold uppercase text-rose-300">
+            out
+          </span>
+        )}
         {engineCommitted > 0 && (
           <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-white/10 px-1.5 font-display text-xs font-bold text-amber-300">
             {fmt(engineCommitted)}
@@ -106,7 +117,15 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
   const ghost =
     'flex-1 rounded-full border border-white/25 px-4 py-3 text-center text-sm font-semibold text-white active:scale-[0.98]';
 
+  const myStack = room?.players.find((pl) => pl.seat === mySeat)?.stack ?? 0;
   if (handIdle) {
+    if (mySeat !== null && myStack === 0) {
+      return (
+        <p className="py-2 text-center text-sm font-semibold text-rose-300">
+          You are out of chips. Buy points from the bank (menu, top right).
+        </p>
+      );
+    }
     return isHost ? (
       <button onClick={startHand} className="w-full rounded-full bg-white py-3 text-sm font-bold text-slate-900 active:scale-[0.98]">
         Start hand
@@ -281,7 +300,7 @@ export function MobileTable({
           >
             {strength && <span className="text-xs font-semibold text-white/80">{strength}</span>}
             <Avatar userId={me.userId} name={me.displayName} version={me.avatarVersion} size="sm" speaking={me.speaking} />
-            <span className="font-display text-lg font-bold">
+            <span className={cn('font-display text-lg font-bold', me.broke && 'text-rose-400')}>
               <NumberFlow value={me.stack} />
             </span>
           </div>

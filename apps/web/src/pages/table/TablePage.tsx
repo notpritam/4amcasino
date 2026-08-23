@@ -19,6 +19,7 @@ import { ActionBar } from '../../widgets/table/ActionBar.tsx';
 import { ChatPanel } from '../../widgets/table/ChatPanel.tsx';
 import { MobileTable } from '../../widgets/table/MobileTable.tsx';
 import { BankControls } from '../../widgets/table/BankControls.tsx';
+import { BrokeBuyInDialog } from '../../features/bank/BrokeBuyInDialog.tsx';
 
 function useNow(tickMs = 500): number {
   const [now, setNow] = useState(Date.now());
@@ -47,6 +48,7 @@ export function TablePage() {
   const resetHand = useStore((s) => s.resetHand);
   const [resultDismissed, setResultDismissed] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [brokeDismissed, setBrokeDismissed] = useState(false);
   const [joinSlow, setJoinSlow] = useState(false);
   const wsConnected = useStore((s) => s.wsConnected);
   const [chatOpen, setChatOpen] = useState(false);
@@ -115,8 +117,15 @@ export function TablePage() {
   const mySeat = room?.players.find((p) => p.userId === auth.userId)?.seat ?? null;
   const isHost = room?.room.hostId === auth.userId;
   const handLive = hand.handId !== null && !hand.result && !hand.abort;
+  const myRoomStack = room?.players.find((p) => p.userId === auth.userId)?.stack ?? null;
+  const amBroke = mySeat !== null && myRoomStack === 0 && !handLive;
   const remaining = hand.deadline ? hand.deadline - now : null;
   const urgent = handLive && remaining !== null && remaining <= 10_000;
+
+  // re-arm the buy-in prompt whenever the broke state resolves (approval landed / stood up)
+  useEffect(() => {
+    if (!amBroke) setBrokeDismissed(false);
+  }, [amBroke]);
 
   // urgency beep, once per deadline, when it's your turn
   useEffect(() => {
@@ -137,13 +146,15 @@ export function TablePage() {
         const inHand = hand.handId !== null && !hand.abort && hand.seats.some((s) => s.seat === p.seat);
         const reveal = hand.showdown?.reveals.find((r) => r.seat === p.seat);
         const won = !!hand.result && (hand.result.deltas.find((d) => d.seat === p.seat)?.delta ?? 0) > 0;
+        const stackShown = engineSeat && handLive ? engineSeat.stack : p.stack;
         return {
           seat: p.seat!,
           userId: p.userId,
           username: p.username,
           displayName: p.displayName,
           avatarVersion: p.avatarVersion,
-          stack: engineSeat && handLive ? engineSeat.stack : p.stack,
+          stack: stackShown,
+          broke: stackShown === 0 && !(handLive && inHand),
           isButton: inHand && hand.buttonSeat === p.seat,
           isToAct: handLive && hand.betting?.toAct === p.seat,
           folded: !!engineSeat?.folded,
@@ -635,6 +646,12 @@ export function TablePage() {
       </div>
 
       </div>
+
+      <BrokeBuyInDialog
+        roomId={roomId!}
+        open={amBroke && !brokeDismissed}
+        onClose={() => setBrokeDismissed(true)}
+      />
 
       {/* connection state */}
       {room && !wsConnected && (

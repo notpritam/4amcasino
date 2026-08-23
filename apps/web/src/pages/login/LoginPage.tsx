@@ -11,7 +11,8 @@ export function LoginPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<'idle' | 'deriving' | 'submitting' | 'success'>('idle');
+  const busy = phase !== 'idle';
   const [expired] = useState(() => new URLSearchParams(window.location.search).has('expired'));
   const [error, setError] = useState<string | null>(null);
   const setAuth = useStore((s) => s.setAuth);
@@ -20,22 +21,23 @@ export function LoginPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setBusy(true);
+    setPhase('deriving');
     try {
       // scrypt is intentionally slow; yield a frame so the spinner paints first
       await new Promise((r) => setTimeout(r, 30));
       const authKey = deriveAuthKey(username, password);
       const identity = deriveIdentity(username, password);
+      setPhase('submitting');
       const res =
         mode === 'register'
           ? await api.register(username, authKey, identity.publicKey)
           : await api.login(username, authKey);
       setAuth({ token: res.token, userId: res.userId, username, identity });
-      nav('/lobby');
+      setPhase('success');
+      setTimeout(() => nav('/lobby'), 650);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'something went wrong');
-    } finally {
-      setBusy(false);
+      setPhase('idle');
     }
   }
 
@@ -77,6 +79,7 @@ export function LoginPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoComplete="username"
+              disabled={busy}
               required
               minLength={2}
               pattern="[a-zA-Z0-9_]+"
@@ -87,12 +90,31 @@ export function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              disabled={busy}
               required
               minLength={6}
             />
             {error && <p className="text-sm text-rose-600">{error}</p>}
-            <Button type="submit" className="w-full" disabled={busy}>
-              {busy ? <Spinner label="Deriving keys…" /> : mode === 'login' ? 'Log in' : 'Create account'}
+            <Button
+              type="submit"
+              className={phase === 'success' ? 'w-full bg-emerald-500 hover:bg-emerald-500' : 'w-full'}
+              disabled={busy}
+            >
+              {phase === 'deriving' ? (
+                <Spinner label="Deriving your keys…" />
+              ) : phase === 'submitting' ? (
+                <Spinner label={mode === 'register' ? 'Creating account…' : 'Signing in…'} />
+              ) : phase === 'success' ? (
+                mode === 'register' ? (
+                  '✓ Account created. Dealing you in…'
+                ) : (
+                  '✓ Signed in. Dealing you in…'
+                )
+              ) : mode === 'login' ? (
+                'Log in'
+              ) : (
+                'Create account'
+              )}
             </Button>
           </form>
           <p className="mt-3 text-xs leading-relaxed text-slate-400">

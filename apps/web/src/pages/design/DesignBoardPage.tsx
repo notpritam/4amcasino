@@ -57,6 +57,7 @@ function seatVariant(over: Partial<SeatView>): SeatView {
     folded: false,
     allIn: false,
     inHand: true,
+    broke: false,
     connected: true,
     speaking: false,
     voiceMuted: false,
@@ -279,6 +280,10 @@ export function DesignBoardPage() {
             <PlayerRow p={seatVariant({ won: true, displayName: 'Winner', revealed: [cardFromName('9c'), cardFromName('9d')] })} urgent={false} />
             <PlayerRow p={seatVariant({ voiceMuted: true, speaking: false, displayName: 'Muted' })} urgent={false} />
             <PlayerRow p={seatVariant({ connected: false, displayName: 'Disconnected' })} urgent={false} />
+            <PlayerRow
+              p={seatVariant({ broke: true, stack: 0, inHand: false, displayName: 'Out of chips' })}
+              urgent={false}
+            />
           </div>
         </Section>
 

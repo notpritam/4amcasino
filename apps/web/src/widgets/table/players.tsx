@@ -20,6 +20,7 @@ export interface SeatView {
   folded: boolean;
   allIn: boolean;
   inHand: boolean;
+  broke: boolean;
   connected: boolean;
   speaking: boolean;
   voiceMuted: boolean;
@@ -66,6 +67,7 @@ export function PlayerRow({ p, urgent }: { p: SeatView; urgent: boolean }) {
         p.isToAct && urgent && 'ring-rose-500 animate-urgent',
         p.won && 'animate-winner',
         (p.folded || !p.connected) && 'opacity-50',
+        p.broke && 'opacity-60 saturate-50',
       )}
     >
       {p.isToAct && <TurnProgress />}
@@ -87,12 +89,23 @@ export function PlayerRow({ p, urgent }: { p: SeatView; urgent: boolean }) {
         <Link to={`/players/${p.userId}`} className="block truncate text-sm font-semibold hover:underline">
           {p.displayName}
         </Link>
-        <div className="font-display text-xs text-slate-500 dark:text-slate-400">
+        <div
+          className={cn(
+            'font-display text-xs',
+            p.broke ? 'font-bold text-rose-500' : 'text-slate-500 dark:text-slate-400',
+          )}
+        >
           <NumberFlow value={p.stack} />
         </div>
       </div>
       <div className="flex flex-col items-end gap-1">
-        {p.lastAction ? actionChip(p.lastAction) : p.allIn ? <Badge tone="indigo">ALL-IN</Badge> : null}
+        {p.broke ? (
+          <Badge tone="rose">OUT OF CHIPS</Badge>
+        ) : p.lastAction ? (
+          actionChip(p.lastAction)
+        ) : p.allIn ? (
+          <Badge tone="indigo">ALL-IN</Badge>
+        ) : null}
       </div>
       {p.inHand && !p.folded && (
         <div className="flex gap-1">
@@ -130,11 +143,18 @@ export function YouRow({ p, cards, urgent }: { p: SeatView; cards: CardId[]; urg
         <div className="text-sm font-semibold">
           You{p.isButton && <span className="ml-2 text-xs text-slate-400">(dealer)</span>}
         </div>
-        <div className="font-display text-sm text-slate-500 dark:text-slate-400">
+        <div
+          className={cn(
+            'font-display text-sm',
+            p.broke ? 'font-bold text-rose-500' : 'text-slate-500 dark:text-slate-400',
+          )}
+        >
           <NumberFlow value={p.stack} />
         </div>
       </div>
-      <div className="ml-2">{p.lastAction && actionChip(p.lastAction)}</div>
+      <div className="ml-2">
+        {p.broke ? <Badge tone="rose">OUT OF CHIPS</Badge> : p.lastAction && actionChip(p.lastAction)}
+      </div>
       <div className="ml-auto flex gap-2">
         {p.inHand && !p.folded ? (
           cards.length ? (

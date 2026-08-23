@@ -197,6 +197,7 @@ export function buildSeatViews(scenario: ScenarioName, urgentFlag: boolean): Sea
       displayName: p.displayName,
       avatarVersion: 0,
       stack: es?.stack ?? 1500 + p.seat * 137,
+      broke: false,
       isButton: st.buttonSeat === p.seat && scenario !== 'idle',
       isToAct: st.betting?.toAct === p.seat && !st.result && !st.abort,
       folded: !!es?.folded,
