@@ -4,7 +4,9 @@ import { useStore } from './store.ts';
  *  take the server down for a few seconds; reads ride the gap out instead of
  *  erroring, while writes stay single-shot so nothing money-shaped repeats. */
 async function send(path: string, method: string, body?: unknown): Promise<Response> {
-  const tries = method === 'GET' ? 4 : 1;
+  // a measured deploy swap is ~1 min (Render detaches and reattaches the
+  // disk), so reads stay patient for about that long before giving up
+  const tries = method === 'GET' ? 12 : 1;
   for (let attempt = 1; ; attempt++) {
     const token = useStore.getState().auth.token;
     try {
@@ -20,7 +22,7 @@ async function send(path: string, method: string, body?: unknown): Promise<Respo
     } catch (err) {
       if (attempt === tries) throw err;
     }
-    await new Promise((resolve) => setTimeout(resolve, 1200 * attempt));
+    await new Promise((resolve) => setTimeout(resolve, Math.min(6000, 1200 * attempt)));
   }
 }
 
