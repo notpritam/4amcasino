@@ -12,6 +12,7 @@ export function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [expired] = useState(() => new URLSearchParams(window.location.search).has('expired'));
   const [error, setError] = useState<string | null>(null);
   const setAuth = useStore((s) => s.setAuth);
   const nav = useNavigate();
@@ -50,6 +51,12 @@ export function LoginPage() {
         <p className="mb-6 text-center text-sm text-slate-500">
           Hold'em with friends. Nobody sees your cards. Not even the house.
         </p>
+        {expired && (
+          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+            Your session expired, most likely because the server restarted. On free hosting the
+            play-money data resets with it, so you may need to register again.
+          </div>
+        )}
         <Panel>
           <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
             {(['login', 'register'] as const).map((m) => (

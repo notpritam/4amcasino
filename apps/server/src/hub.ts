@@ -20,14 +20,19 @@ export function attachHub(
   const rooms = new Map<string, GameRoom>();
 
   app.server.on('upgrade', (req, socket, head) => {
+    // answer with real HTTP before closing, so proxies report 401/404 instead of 502
+    const deny = (status: number, label: string) => {
+      socket.write(`HTTP/1.1 ${status} ${label}\r\nConnection: close\r\n\r\n`);
+      socket.destroy();
+    };
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname !== '/ws') {
-      socket.destroy();
+      deny(404, 'Not Found');
       return;
     }
     const userId = userForToken(db, url.searchParams.get('token') ?? '');
     if (userId === null) {
-      socket.destroy();
+      deny(401, 'Unauthorized');
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => handleConnection(ws, userId));

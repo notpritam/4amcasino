@@ -11,6 +11,17 @@ async function req(path: string, body?: unknown, method?: string): Promise<any> 
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const json = await res.json().catch(() => ({}));
+  if (
+    res.status === 401 &&
+    token &&
+    !path.startsWith('/api/login') &&
+    !path.startsWith('/api/register')
+  ) {
+    // stale session (e.g. the server redeployed and reset its data): sign out cleanly
+    useStore.getState().logout();
+    if (!location.pathname.startsWith('/login')) location.assign('/login?expired=1');
+    throw new Error('session expired');
+  }
   if (!res.ok) throw new Error(json.error ?? `request failed (${res.status})`);
   return json;
 }

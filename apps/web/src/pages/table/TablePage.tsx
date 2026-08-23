@@ -46,6 +46,9 @@ export function TablePage() {
   const dismissError = useStore((s) => s.dismissError);
   const resetHand = useStore((s) => s.resetHand);
   const [resultDismissed, setResultDismissed] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [joinSlow, setJoinSlow] = useState(false);
+  const wsConnected = useStore((s) => s.wsConnected);
   const [chatOpen, setChatOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [floats, setFloats] = useState<FloatingReaction[]>([]);
@@ -57,12 +60,24 @@ export function TablePage() {
   useEffect(() => {
     bindGameClient();
     wsClient.joinRoom(roomId!);
+    // validate membership over REST too: surfaces 401/403/404 instead of hanging
+    api.getRoom(roomId!).catch((e) => setJoinError(e instanceof Error ? e.message : 'could not load room'));
     return () => {
       voice.leave();
       wsClient.leaveRoom();
       useStore.getState().setRoom(null);
     };
   }, [roomId]);
+
+  // if the room never arrives, say so instead of spinning forever
+  useEffect(() => {
+    if (room) {
+      setJoinSlow(false);
+      return;
+    }
+    const t = setTimeout(() => setJoinSlow(true), 10_000);
+    return () => clearTimeout(t);
+  }, [room]);
 
   // floating sticker reactions over the table
   useEffect(() => {
@@ -146,8 +161,40 @@ export function TablePage() {
 
   if (!room) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Spinner label="Joining table…" />
+      <div className="flex min-h-screen flex-col items-center justify-center gap-5 p-6 text-center">
+        {joinError ? (
+          <>
+            <p className="max-w-sm text-sm text-rose-600">Could not join this table: {joinError}.</p>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => location.reload()}>
+                Try again
+              </Button>
+              <Link to="/lobby">
+                <Button>Back to lobby</Button>
+              </Link>
+            </div>
+          </>
+        ) : (
+          <>
+            <Spinner label="Joining table…" />
+            {joinSlow && (
+              <>
+                <p className="max-w-sm text-sm text-slate-500">
+                  Still connecting. On free hosting the server sleeps when idle and can take up to a
+                  minute to wake. Hang tight, or retry.
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="secondary" onClick={() => location.reload()}>
+                    Retry
+                  </Button>
+                  <Link to="/lobby">
+                    <Button variant="ghost">Back to lobby</Button>
+                  </Link>
+                </div>
+              </>
+            )}
+          </>
+        )}
       </div>
     );
   }
@@ -588,6 +635,13 @@ export function TablePage() {
       </div>
 
       </div>
+
+      {/* connection state */}
+      {room && !wsConnected && (
+        <div className="fixed left-1/2 top-3 z-50 -translate-x-1/2 rounded-full bg-amber-500 px-4 py-1.5 text-xs font-semibold text-white shadow-lg">
+          Connection lost. Reconnecting…
+        </div>
+      )}
 
       {/* error toasts */}
       {errors.length > 0 && (
