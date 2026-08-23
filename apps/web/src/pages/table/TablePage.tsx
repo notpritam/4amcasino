@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 import { ArrowLeft, ChatCircle, DotsThreeVertical, Microphone, MicrophoneSlash, Timer, X } from '@phosphor-icons/react';
 import NumberFlow from '@number-flow/react';
 import confetti from 'canvas-confetti';
-import { HAND_CATEGORY_NAMES, handCategory } from '@4am/shared';
+import { HAND_CATEGORY_NAMES, bestFive, describeScore, handCategory } from '@4am/shared';
 import { bindGameClient, sit } from '../../shared/gameClient.ts';
 import { wsClient } from '../../shared/ws.ts';
 import { useStore } from '../../shared/store.ts';
@@ -231,6 +231,37 @@ export function TablePage() {
           : null
         : 'Shuffling the encrypted deck…';
 
+  // the reasoning behind the result: who won, with what, over what
+  const reasoning = (() => {
+    if (!hand.result) return null;
+    const nameOf = (seat: number) =>
+      seatViews.find((s) => s.seat === seat)?.displayName ??
+      hand.seats.find((s) => s.seat === seat)?.username ??
+      `Seat ${seat + 1}`;
+    if (!hand.showdown) {
+      const winner = hand.result.deltas.find((d) => d.delta > 0);
+      if (!winner) return null;
+      return {
+        headline: `${nameOf(winner.seat)} takes the pot. Everyone else folded, so no cards had to be shown.`,
+        winningFive: null,
+      };
+    }
+    const ranked = [...hand.showdown.reveals].sort((a, b) => b.score - a.score);
+    const top = ranked[0];
+    if (!top) return null;
+    const tied = ranked.filter((r) => r.score === top.score);
+    const runnerUp = ranked.find((r) => r.score < top.score);
+    const headline =
+      tied.length > 1
+        ? `Split pot: ${tied.map((r) => nameOf(r.seat)).join(' and ')} tie with ${describeScore(top.score)}.`
+        : runnerUp
+          ? `${nameOf(top.seat)} wins with ${describeScore(top.score)} against ${nameOf(runnerUp.seat)}'s ${describeScore(runnerUp.score)}.`
+          : `${nameOf(top.seat)} wins with ${describeScore(top.score)}.`;
+    const winningFive =
+      hand.board.length === 5 ? bestFive([...top.cards, ...hand.board]) : null;
+    return { headline, winningFive };
+  })();
+
   const resultBanner = showResult && (
     <motion.div initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }}>
       <Panel className="relative">
@@ -254,6 +285,18 @@ export function TablePage() {
               } did not come back in time; all bets were returned.`}
           </div>
         ) : (
+          <div className="space-y-2">
+            {reasoning && <p className="text-sm font-medium">{reasoning.headline}</p>}
+            {reasoning?.winningFive && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs uppercase tracking-wide text-slate-400">Winning five</span>
+                <div className="flex gap-1">
+                  {reasoning.winningFive.map((c) => (
+                    <PlayingCard key={c} card={c} size="xs" />
+                  ))}
+                </div>
+              </div>
+            )}
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <span className="font-display font-semibold">
               {hand.showdown ? 'Showdown' : 'Everyone folded'}
@@ -280,6 +323,7 @@ export function TablePage() {
                   {fmt(d.delta)}
                 </span>
               ))}
+          </div>
           </div>
         )}
       </Panel>
@@ -322,6 +366,18 @@ export function TablePage() {
           {hand.abort.blamedSeat !== null && `. Seat ${hand.abort.blamedSeat + 1}; stacks rolled back.`}
         </span>
       ) : (
+        <div className="space-y-2">
+          {reasoning && <p className="font-medium">{reasoning.headline}</p>}
+          {reasoning?.winningFive && (
+            <div className="flex items-center gap-2">
+              <span className="text-[0.6rem] uppercase tracking-wide text-white/40">Winning five</span>
+              <div className="flex gap-1">
+                {reasoning.winningFive.map((c) => (
+                  <PlayingCard key={c} card={c} size="xs" />
+                ))}
+              </div>
+            </div>
+          )}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
           <span className="font-display font-semibold">
             {hand.showdown ? 'Showdown' : 'Everyone folded'}
@@ -346,6 +402,7 @@ export function TablePage() {
                 {fmt(d.delta)}
               </span>
             ))}
+        </div>
         </div>
       )}
     </div>
