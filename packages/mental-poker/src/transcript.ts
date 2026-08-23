@@ -49,6 +49,13 @@ export class Transcript {
   }
 }
 
+/** Replay the hash chain over entries (no signature checks); returns the head. */
+export function computeHead(entries: TranscriptEntry[]): string {
+  let head = GENESIS;
+  for (const e of entries) head = entryHead(head, e);
+  return head;
+}
+
 export function verifyTranscript(
   entries: TranscriptEntry[],
   pubkeys: Map<string, string>,

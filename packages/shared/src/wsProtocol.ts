@@ -29,7 +29,13 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
   }),
   z.object({ t: z.literal('action'), handId: z.string(), action: playerActionSchema, sig: hex(128) }),
   z.object({ t: z.literal('reveal_key'), handId: z.string(), key: z.string().regex(/^[0-9a-f]+$/), sig: hex(128) }),
-  z.object({ t: z.literal('chat'), text: z.string().min(1).max(500) }),
+  z.object({
+    t: z.literal('chat'),
+    text: z.string().min(1).max(500),
+    kind: z.enum(['text', 'sticker', 'phrase']).optional(),
+  }),
+  z.object({ t: z.literal('rtc'), to: z.number().int(), data: z.unknown() }),
+  z.object({ t: z.literal('voice_state'), muted: z.boolean() }),
 ]);
 export type ClientMsg = z.infer<typeof clientMsgSchema>;
 
@@ -64,6 +70,8 @@ export interface HandSeat {
 export interface RoomStatePlayer {
   userId: number;
   username: string;
+  displayName: string;
+  avatarVersion: number;
   publicKey: string;
   seat: number | null;
   stack: number;
@@ -75,12 +83,14 @@ export type ServerMsg =
   | { t: 'hello'; serverPublicKey: string }
   | {
       t: 'room_state';
-      room: { id: string; name: string; joinCode: string; hostId: number; bankerId: number; sb: number; bb: number; auditMode: string; actionTimeoutMs: number };
+      room: { id: string; name: string; joinCode: string; hostId: number; bankerId: number; sb: number; bb: number; auditMode: string; actionTimeoutMs: number; actionSecs: number | null };
       players: RoomStatePlayer[];
       handActive: boolean;
     }
   | { t: 'error'; message: string }
-  | { t: 'chat'; from: string; text: string; ts: number }
+  | { t: 'chat'; from: string; userId: number; text: string; kind: 'text' | 'sticker' | 'phrase'; ts: number }
+  | { t: 'rtc'; from: number; data: unknown }
+  | { t: 'voice_state'; userId: number; muted: boolean }
   | { t: 'hand_start'; handId: string; seats: HandSeat[]; buttonSeat: number; sb: number; bb: number; auditMode: string }
   | { t: 'key_commit_applied'; handId: string; seat: number; commit: string }
   | { t: 'shuffle_turn'; handId: string; seat: number; deck: string[] }

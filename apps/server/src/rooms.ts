@@ -15,17 +15,21 @@ export interface RoomRow {
   sb: number;
   bb: number;
   audit_mode: string;
+  action_secs: number | null;
   created_at: number;
 }
 
 /** Emits ('changed', roomId) when REST mutations alter room membership or stacks. */
 export const roomEvents = new EventEmitter();
 
+const actionSecsSchema = z.number().int().min(5).max(180);
+
 const createSchema = z.object({
   name: z.string().min(1).max(48),
   sb: z.number().int().positive(),
   bb: z.number().int().positive(),
   auditMode: z.enum(['private', 'strict-audit']).optional(),
+  actionSecs: actionSecsSchema.optional(),
 });
 
 function newJoinCode(): string {
@@ -46,12 +50,16 @@ export function isMember(db: DB, roomId: string, userId: number): boolean {
 export function roomPlayers(db: DB, roomId: string) {
   return db
     .prepare(
-      `SELECT rp.user_id as userId, u.username, u.pubkey as publicKey, rp.seat, rp.stack, rp.sitting_out as sittingOut
+      `SELECT rp.user_id as userId, u.username, COALESCE(u.display_name, u.username) as displayName,
+              u.avatar_version as avatarVersion, u.pubkey as publicKey, rp.seat, rp.stack,
+              rp.sitting_out as sittingOut
        FROM room_players rp JOIN users u ON u.id = rp.user_id WHERE rp.room_id = ? ORDER BY rp.seat`,
     )
     .all(roomId) as {
     userId: number;
     username: string;
+    displayName: string;
+    avatarVersion: number;
     publicKey: string;
     seat: number | null;
     stack: number;
@@ -69,6 +77,7 @@ function roomJson(db: DB, room: RoomRow) {
     sb: room.sb,
     bb: room.bb,
     auditMode: room.audit_mode,
+    actionSecs: room.action_secs,
     players: roomPlayers(db, room.id),
   };
 }
@@ -79,14 +88,14 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
   app.post('/api/rooms', authed, async (req, reply) => {
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
-    const { name, sb, bb, auditMode } = parsed.data;
+    const { name, sb, bb, auditMode, actionSecs } = parsed.data;
     if (bb < sb) return reply.code(400).send({ error: 'big blind must be >= small blind' });
     const id = randomBytes(6).toString('hex');
     const joinCode = newJoinCode();
     db.prepare(
-      `INSERT INTO rooms (id, name, join_code, host_id, banker_id, sb, bb, audit_mode, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, name, joinCode, req.userId, req.userId, sb, bb, auditMode ?? 'private', Date.now());
+      `INSERT INTO rooms (id, name, join_code, host_id, banker_id, sb, bb, audit_mode, action_secs, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, name, joinCode, req.userId, req.userId, sb, bb, auditMode ?? 'private', actionSecs ?? null, Date.now());
     db.prepare('INSERT INTO room_players (room_id, user_id) VALUES (?, ?)').run(id, req.userId);
     return roomJson(db, getRoom(db, id)!);
   });
@@ -181,6 +190,18 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
       }
     });
     apply();
+    roomEvents.emit('changed', id);
+    return { ok: true };
+  });
+
+  app.put('/api/rooms/:id/settings', authed, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = z.object({ actionSecs: actionSecsSchema }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'turn time must be 5-180 seconds' });
+    const room = getRoom(db, id);
+    if (!room) return reply.code(404).send({ error: 'no such room' });
+    if (room.host_id !== req.userId) return reply.code(403).send({ error: 'host only' });
+    db.prepare('UPDATE rooms SET action_secs = ? WHERE id = ?').run(parsed.data.actionSecs, id);
     roomEvents.emit('changed', id);
     return { ok: true };
   });

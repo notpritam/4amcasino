@@ -104,6 +104,8 @@ export class GameRoom {
     const players = roomPlayers(this.db, this.roomId).map((p) => ({
       userId: p.userId,
       username: p.username,
+      displayName: p.displayName,
+      avatarVersion: p.avatarVersion,
       publicKey: p.publicKey,
       seat: p.seat,
       stack: p.stack,
@@ -121,7 +123,8 @@ export class GameRoom {
         sb: room.sb,
         bb: room.bb,
         auditMode: room.audit_mode,
-        actionTimeoutMs: this.opts.actionTimeoutMs,
+        actionTimeoutMs: room.action_secs !== null ? room.action_secs * 1000 : this.opts.actionTimeoutMs,
+        actionSecs: room.action_secs,
       },
       players,
       handActive: this.hand !== null,
@@ -131,10 +134,26 @@ export class GameRoom {
   handleMessage(userId: number, msg: ClientMsg): void {
     switch (msg.t) {
       case 'chat': {
-        const user = this.db.prepare('SELECT username FROM users WHERE id = ?').get(userId) as {
-          username: string;
-        };
-        this.broadcast({ t: 'chat', from: user.username, text: msg.text, ts: Date.now() });
+        const user = this.db
+          .prepare('SELECT COALESCE(display_name, username) as name FROM users WHERE id = ?')
+          .get(userId) as { name: string };
+        this.broadcast({
+          t: 'chat',
+          from: user.name,
+          userId,
+          text: msg.text,
+          kind: msg.kind ?? 'text',
+          ts: Date.now(),
+        });
+        return;
+      }
+      case 'rtc': {
+        // voice-chat signaling: relay verbatim to one room member; server never sees audio
+        this.send(msg.to, { t: 'rtc', from: userId, data: msg.data });
+        return;
+      }
+      case 'voice_state': {
+        this.broadcast({ t: 'voice_state', userId, muted: msg.muted });
         return;
       }
       case 'sit': {
@@ -205,7 +224,12 @@ export class GameRoom {
       pubkey: p.publicKey,
       stack: p.stack,
     }));
-    this.hand = new Hand(this, this.db, room.id, handSeats, button, room.sb, room.bb, room.audit_mode, this.serverId, this.opts, () => {
+    // the host's turn-time setting is read at deal time, so edits apply from the next hand
+    const handOpts: GameOpts = {
+      ...this.opts,
+      actionTimeoutMs: room.action_secs !== null ? room.action_secs * 1000 : this.opts.actionTimeoutMs,
+    };
+    this.hand = new Hand(this, this.db, room.id, handSeats, button, room.sb, room.bb, room.audit_mode, this.serverId, handOpts, () => {
       this.lastButton = button;
       this.hand = null;
       this.broadcastRoomState();

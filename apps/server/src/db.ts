@@ -74,4 +74,20 @@ function migrate(db: DB): void {
       ts INTEGER NOT NULL
     );
   `);
+  ensureColumn(db, 'users', 'display_name', 'TEXT');
+  ensureColumn(db, 'users', 'bio', 'TEXT');
+  ensureColumn(db, 'users', 'avatar', 'BLOB');
+  ensureColumn(db, 'users', 'avatar_mime', 'TEXT');
+  ensureColumn(db, 'users', 'avatar_version', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'users', 'card_back', "TEXT NOT NULL DEFAULT 'indigo'");
+  ensureColumn(db, 'users', 'four_color', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'users', 'theme', "TEXT NOT NULL DEFAULT 'light'");
+  ensureColumn(db, 'rooms', 'action_secs', 'INTEGER');
+}
+
+function ensureColumn(db: DB, table: string, column: string, decl: string): void {
+  const cols = db.pragma(`table_info(${table})`) as { name: string }[];
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+  }
 }

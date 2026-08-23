@@ -79,3 +79,27 @@ describe('transcript', () => {
     expect(res.ok).toBe(false);
   });
 });
+
+describe('verifyHandTranscript (full hand audit)', () => {
+  it('verifies an honest hand and pinpoints tampering', async () => {
+    const { signContent } = await import('../src/dleq.js');
+    const { verifyHandTranscript } = await import('../src/audit.js');
+    const server = genIdentity();
+    const alice = genIdentity();
+    const handId = 'hand-x';
+    const t = new Transcript();
+    const add = (id: { publicKey: string; secretKey: string }, type: string, body: unknown, payload?: unknown) =>
+      t.append({ type, from: id.publicKey, payload: payload ?? body, sig: signContent(id.secretKey, handId, type, body) });
+    add(server, 'hand_start', { seats: [{ seat: 0, pubkey: alice.publicKey }] });
+    add(alice, 'key_commit', { commit: 'aa'.repeat(32) });
+    // action entries sign {action} but store {action, seat}
+    add(alice, 'action', { action: { type: 'check' } }, { action: { type: 'check' }, seat: 0 });
+
+    expect(verifyHandTranscript(handId, t.entries, t.head)).toEqual({ ok: true });
+
+    const forged = t.entries.map((e) => ({ ...e }));
+    forged[2] = { ...forged[2]!, payload: { action: { type: 'raise', amount: 999 }, seat: 0 } };
+    const res = verifyHandTranscript(handId, forged, t.head);
+    expect(res.ok).toBe(false);
+  });
+});

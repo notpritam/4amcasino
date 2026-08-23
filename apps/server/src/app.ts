@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { openDb, type DB } from './db.js';
 import { checkLogin, createSession, createUser, requireUser } from './auth.js';
 import { registerRoomRoutes } from './rooms.js';
+import { registerProfileRoutes } from './profile.js';
 
 const registerSchema = z.object({
   username: z.string().min(2).max(24).regex(/^[a-zA-Z0-9_]+$/),
@@ -60,6 +61,7 @@ export function createApp(dbPath: string): { app: FastifyInstance; db: DB } {
   });
 
   registerRoomRoutes(app, db);
+  registerProfileRoutes(app, db);
 
   // self-host convenience: serve the built web app when it exists
   const webDist = join(dirname(fileURLToPath(import.meta.url)), '../../web/dist');

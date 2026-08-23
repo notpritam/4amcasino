@@ -3,3 +3,4 @@ export * from './protocol.js';
 export * from './identity.js';
 export * from './transcript.js';
 export * from './dleq.js';
+export * from './audit.js';

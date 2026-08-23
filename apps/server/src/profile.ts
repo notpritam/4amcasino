@@ -1,0 +1,204 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import type { DB } from './db.js';
+import { requireUser } from './auth.js';
+import { getRoom, isMember } from './rooms.js';
+
+const MAX_AVATAR_BYTES = 300_000;
+const AVATAR_MIMES = ['image/png', 'image/jpeg', 'image/webp'] as const;
+
+export const CARD_BACKS = ['indigo', 'crimson', 'emerald', 'slate'] as const;
+
+const profileSchema = z.object({
+  displayName: z.string().trim().min(1).max(24).optional(),
+  bio: z.string().trim().max(280).optional(),
+  cardBack: z.enum(CARD_BACKS).optional(),
+  fourColor: z.boolean().optional(),
+  theme: z.enum(['light', 'dark']).optional(),
+});
+
+const avatarSchema = z.object({
+  image: z.string().regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/),
+});
+
+const LEADERBOARD_SQL = `
+  SELECT u.id as userId, u.username, u.display_name as displayName, u.avatar_version as avatarVersion,
+         SUM(l.delta) as net, COUNT(*) as handsPlayed, MAX(l.delta) as biggestWin
+  FROM ledger l JOIN users u ON u.id = l.user_id
+  WHERE l.kind = 'hand-settlement' %ROOM%
+  GROUP BY u.id ORDER BY net DESC, handsPlayed DESC
+`;
+
+export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
+  const authed = { preHandler: requireUser(db) };
+
+  app.get('/api/profile', authed, async (req) => {
+    const row = db
+      .prepare(
+        'SELECT id, username, display_name, bio, avatar_version, card_back, four_color, theme, avatar IS NOT NULL as hasAvatar FROM users WHERE id = ?',
+      )
+      .get(req.userId) as {
+      id: number;
+      username: string;
+      display_name: string | null;
+      bio: string | null;
+      avatar_version: number;
+      card_back: string;
+      four_color: number;
+      theme: string;
+      hasAvatar: number;
+    };
+    return {
+      userId: row.id,
+      username: row.username,
+      displayName: row.display_name ?? row.username,
+      bio: row.bio ?? '',
+      hasAvatar: !!row.hasAvatar,
+      avatarVersion: row.avatar_version,
+      cardBack: row.card_back,
+      fourColor: !!row.four_color,
+      theme: row.theme,
+    };
+  });
+
+  app.put('/api/profile', authed, async (req, reply) => {
+    const parsed = profileSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid profile' });
+    const { displayName, bio, cardBack, fourColor, theme } = parsed.data;
+    if (theme !== undefined)
+      db.prepare('UPDATE users SET theme = ? WHERE id = ?').run(theme, req.userId);
+    if (displayName !== undefined)
+      db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(displayName, req.userId);
+    if (bio !== undefined) db.prepare('UPDATE users SET bio = ? WHERE id = ?').run(bio, req.userId);
+    if (cardBack !== undefined)
+      db.prepare('UPDATE users SET card_back = ? WHERE id = ?').run(cardBack, req.userId);
+    if (fourColor !== undefined)
+      db.prepare('UPDATE users SET four_color = ? WHERE id = ?').run(fourColor ? 1 : 0, req.userId);
+    return { ok: true };
+  });
+
+  app.put('/api/profile/avatar', authed, async (req, reply) => {
+    const parsed = avatarSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'send a png, jpeg, or webp data URL' });
+    const [meta, b64] = parsed.data.image.split(',', 2) as [string, string];
+    const mime = meta.slice(5, meta.indexOf(';'));
+    if (!AVATAR_MIMES.includes(mime as (typeof AVATAR_MIMES)[number]))
+      return reply.code(400).send({ error: 'unsupported image type' });
+    const bytes = Buffer.from(b64, 'base64');
+    if (bytes.length === 0 || bytes.length > MAX_AVATAR_BYTES)
+      return reply.code(400).send({ error: `image must be under ${MAX_AVATAR_BYTES / 1000}KB` });
+    const version = db
+      .prepare(
+        'UPDATE users SET avatar = ?, avatar_mime = ?, avatar_version = avatar_version + 1 WHERE id = ? RETURNING avatar_version',
+      )
+      .get(bytes, mime, req.userId) as { avatar_version: number };
+    return { ok: true, avatarVersion: version.avatar_version };
+  });
+
+  app.delete('/api/profile/avatar', authed, async (req) => {
+    db.prepare(
+      'UPDATE users SET avatar = NULL, avatar_mime = NULL, avatar_version = avatar_version + 1 WHERE id = ?',
+    ).run(req.userId);
+    return { ok: true };
+  });
+
+  // Public on purpose: <img> tags cannot send Authorization headers, and avatars are not secrets.
+  app.get('/api/users/:id/avatar', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const row = db
+      .prepare('SELECT avatar, avatar_mime FROM users WHERE id = ?')
+      .get(Number(id)) as { avatar: Buffer | null; avatar_mime: string | null } | undefined;
+    if (!row?.avatar || !row.avatar_mime) return reply.code(404).send({ error: 'no avatar' });
+    return reply
+      .header('content-type', row.avatar_mime)
+      .header('cache-control', 'public, max-age=31536000, immutable')
+      .send(row.avatar);
+  });
+
+  app.get('/api/users/:id/profile', authed, async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const row = db
+      .prepare(
+        `SELECT id, username, COALESCE(display_name, username) as displayName, bio, avatar_version as avatarVersion,
+                avatar IS NOT NULL as hasAvatar, created_at as createdAt FROM users WHERE id = ?`,
+      )
+      .get(id) as
+      | { id: number; username: string; displayName: string; bio: string | null; avatarVersion: number; hasAvatar: number; createdAt: number }
+      | undefined;
+    if (!row) return reply.code(404).send({ error: 'no such user' });
+
+    const stats = db
+      .prepare(
+        `SELECT COALESCE(SUM(delta),0) as net, COUNT(*) as handsPlayed, COALESCE(MAX(delta),0) as biggestWin
+         FROM ledger WHERE user_id = ? AND kind = 'hand-settlement'`,
+      )
+      .get(id) as { net: number; handsPlayed: number; biggestWin: number };
+
+    // rivals: everyone who shared a settled hand (same ref) — hands together + this user's net in those hands
+    const mine = db
+      .prepare("SELECT ref, delta FROM ledger WHERE user_id = ? AND kind = 'hand-settlement' AND ref IS NOT NULL")
+      .all(id) as { ref: string; delta: number }[];
+    const myDelta = new Map(mine.map((m) => [m.ref, m.delta]));
+    const rivalAgg = new Map<number, { handsTogether: number; netVs: number }>();
+    if (mine.length > 0) {
+      const others = db
+        .prepare(
+          `SELECT DISTINCT user_id as userId, ref FROM ledger
+           WHERE kind = 'hand-settlement' AND user_id != ?
+             AND ref IN (SELECT ref FROM ledger WHERE user_id = ? AND kind = 'hand-settlement')`,
+        )
+        .all(id, id) as { userId: number; ref: string }[];
+      for (const o of others) {
+        const agg = rivalAgg.get(o.userId) ?? { handsTogether: 0, netVs: 0 };
+        agg.handsTogether++;
+        agg.netVs += myDelta.get(o.ref) ?? 0;
+        rivalAgg.set(o.userId, agg);
+      }
+    }
+    const rivals = [...rivalAgg.entries()]
+      .sort((a, b) => b[1].handsTogether - a[1].handsTogether)
+      .slice(0, 10)
+      .map(([userId, agg]) => {
+        const u = db
+          .prepare(
+            'SELECT username, COALESCE(display_name, username) as displayName, avatar_version as avatarVersion FROM users WHERE id = ?',
+          )
+          .get(userId) as { username: string; displayName: string; avatarVersion: number };
+        return { userId, ...u, ...agg };
+      });
+
+    const transactions = db
+      .prepare(
+        `SELECT l.room_id as roomId, r.name as roomName, l.delta, l.kind, l.note, l.ref, l.ts
+         FROM ledger l JOIN rooms r ON r.id = l.room_id
+         WHERE l.user_id = ? ORDER BY l.id DESC LIMIT 100`,
+      )
+      .all(id);
+
+    return {
+      userId: row.id,
+      username: row.username,
+      displayName: row.displayName,
+      bio: row.bio ?? '',
+      avatarVersion: row.avatarVersion,
+      hasAvatar: !!row.hasAvatar,
+      createdAt: row.createdAt,
+      stats,
+      rivals,
+      transactions,
+    };
+  });
+
+  app.get('/api/leaderboard', authed, async () => {
+    const rows = db.prepare(LEADERBOARD_SQL.replace('%ROOM%', '')).all();
+    return { rows };
+  });
+
+  app.get('/api/rooms/:id/leaderboard', authed, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!getRoom(db, id)) return reply.code(404).send({ error: 'no such room' });
+    if (!isMember(db, id, req.userId)) return reply.code(403).send({ error: 'not a member' });
+    const rows = db.prepare(LEADERBOARD_SQL.replace('%ROOM%', 'AND l.room_id = @roomId')).all({ roomId: id });
+    return { rows };
+  });
+}
