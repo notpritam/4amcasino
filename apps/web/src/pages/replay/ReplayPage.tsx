@@ -141,7 +141,7 @@ export function ReplayPage() {
       </div>
 
       {/* controls */}
-      <Panel className="flex items-center gap-3">
+      <Panel className="flex flex-wrap items-center gap-2.5">
         <Button variant="secondary" onClick={() => setIdx(0)} aria-label="restart">
           <SkipBack size={16} weight="fill" />
         </Button>
@@ -160,7 +160,7 @@ export function ReplayPage() {
           max={last}
           value={idx}
           onChange={(e) => setIdx(+e.target.value)}
-          className="flex-1 accent-indigo-600"
+          className="min-w-32 flex-1 accent-indigo-600"
           aria-label="replay position"
         />
         <span className="w-16 text-right text-xs text-slate-400">

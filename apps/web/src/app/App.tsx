@@ -11,6 +11,7 @@ import { LeaderboardPage } from '../pages/leaderboard/LeaderboardPage.tsx';
 import { PlayerPage } from '../pages/player/PlayerPage.tsx';
 import { ReplayPage } from '../pages/replay/ReplayPage.tsx';
 import { DesignBoardPage } from '../pages/design/DesignBoardPage.tsx';
+import { AppShell } from '../widgets/nav/AppShell.tsx';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const token = useStore((s) => s.auth.token);
@@ -34,7 +35,9 @@ export function App() {
           path="/lobby"
           element={
             <RequireAuth>
-              <LobbyPage />
+              <AppShell>
+                <LobbyPage />
+              </AppShell>
             </RequireAuth>
           }
         />
@@ -50,7 +53,9 @@ export function App() {
           path="/room/:id/ledger"
           element={
             <RequireAuth>
-              <LedgerPage />
+              <AppShell>
+                <LedgerPage />
+              </AppShell>
             </RequireAuth>
           }
         />
@@ -58,7 +63,9 @@ export function App() {
           path="/room/:id/hands"
           element={
             <RequireAuth>
-              <HandsPage />
+              <AppShell>
+                <HandsPage />
+              </AppShell>
             </RequireAuth>
           }
         />
@@ -66,7 +73,9 @@ export function App() {
           path="/room/:id/replay/:handId"
           element={
             <RequireAuth>
-              <ReplayPage />
+              <AppShell>
+                <ReplayPage />
+              </AppShell>
             </RequireAuth>
           }
         />
@@ -74,7 +83,9 @@ export function App() {
           path="/leaderboard"
           element={
             <RequireAuth>
-              <LeaderboardPage />
+              <AppShell>
+                <LeaderboardPage />
+              </AppShell>
             </RequireAuth>
           }
         />
@@ -82,7 +93,9 @@ export function App() {
           path="/players/:id"
           element={
             <RequireAuth>
-              <PlayerPage />
+              <AppShell>
+                <PlayerPage />
+              </AppShell>
             </RequireAuth>
           }
         />

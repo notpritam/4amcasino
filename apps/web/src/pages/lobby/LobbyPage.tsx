@@ -3,9 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../shared/api.ts';
 import { useStore } from '../../shared/store.ts';
 import { Badge, Button, Dialog, Input, Panel } from '../../shared/ui/index.tsx';
-import { Trophy } from '@phosphor-icons/react';
-import { Avatar } from '../../entities/user/Avatar.tsx';
-import { ProfileDialog } from '../../features/profile/ProfileDialog.tsx';
 
 interface RoomSummary {
   id: string;
@@ -26,11 +23,8 @@ export function LobbyPage() {
   const [actionSecs, setActionSecs] = useState(45);
   const [strictAudit, setStrictAudit] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const auth = useStore((s) => s.auth);
   const prefs = useStore((s) => s.prefs);
-  const username = auth.username;
-  const logout = useStore((s) => s.logout);
+  const username = useStore((s) => s.auth.username);
   const nav = useNavigate();
 
   useEffect(() => {
@@ -60,30 +54,10 @@ export function LobbyPage() {
 
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <header className="mb-8 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Avatar userId={auth.userId ?? 0} name={prefs.displayName || username || '?'} version={prefs.avatarVersion} />
-          <div>
-            <h1 className="font-display text-2xl font-bold">4AM Casino</h1>
-            <p className="text-sm text-slate-500">Signed in as {prefs.displayName || username}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link to="/leaderboard">
-            <Button variant="secondary">
-              <Trophy size={16} weight="bold" /> Leaderboard
-            </Button>
-          </Link>
-          <Button variant="secondary" onClick={() => setProfileOpen(true)}>
-            <Avatar userId={auth.userId ?? 0} name={prefs.displayName || username || '?'} version={prefs.avatarVersion} size="sm" className="-ml-1 h-5 w-5 text-[0.6rem]" />
-            Edit profile
-          </Button>
-          <Button variant="ghost" onClick={logout}>
-            Log out
-          </Button>
-        </div>
-      </header>
-      <ProfileDialog open={profileOpen} onClose={() => setProfileOpen(false)} />
+      <div className="mb-8">
+        <h1 className="font-display text-2xl font-bold">Good evening, {prefs.displayName || username}</h1>
+        <p className="mt-1 text-sm text-slate-500">Start a table or join one with a code.</p>
+      </div>
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2">
         <Panel>

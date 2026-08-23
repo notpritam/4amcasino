@@ -65,10 +65,7 @@ export function LeaderboardPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-6">
-      <header className="flex items-center gap-3">
-        <Link to="/lobby" className="text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
-          ← Lobby
-        </Link>
+      <header>
         <h1 className="font-display text-xl font-bold">Leaderboard</h1>
       </header>
       <p className="text-sm text-slate-500">

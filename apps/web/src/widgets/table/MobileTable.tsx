@@ -213,7 +213,7 @@ export function MobileTable({
   const strength = me && me.inHand && !me.folded ? strengthLabel(myCards, board) : null;
 
   return (
-    <div className="flex min-h-[calc(100dvh-14rem)] flex-col rounded-3xl bg-slate-950 px-4 pb-4 pt-5 text-white ring-1 ring-slate-800">
+    <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3 text-white">
       {/* opponents */}
       <div className="flex justify-center gap-2 overflow-x-auto pb-1">
         {opponents.length === 0 ? (

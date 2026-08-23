@@ -99,7 +99,7 @@ export function DesignBoardPage() {
     <div className="min-h-screen pb-24">
       {/* control bar */}
       <div className="sticky top-0 z-30 border-b border-slate-200 bg-slate-100/90 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-6 py-3">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 sm:px-6">
           <Link to="/lobby" className="text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
             ← App
           </Link>
@@ -163,7 +163,7 @@ export function DesignBoardPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl space-y-14 px-6 pt-8">
+      <div className="mx-auto max-w-6xl space-y-14 px-4 pt-8 sm:px-6">
         <p className="text-sm text-slate-500">
           Every element below is the real shipped component fed with dummy data. Flip the scenario,
           theme, and deck controls above; approve a section, then move to the next.
@@ -335,7 +335,7 @@ export function DesignBoardPage() {
         </Section>
 
         <Section id="mobile" title="Phone" note="The Offsuit-style table and the chat sheet, framed at 390px.">
-          <div className="flex flex-wrap items-start justify-center gap-8">
+          <div className="flex items-start justify-center gap-8 overflow-x-auto max-lg:justify-start">
             <div className="w-[390px] shrink-0 overflow-hidden rounded-[2.5rem] bg-slate-950 p-2 shadow-2xl ring-4 ring-slate-300 dark:ring-slate-700">
               <MobileTable
                 opponents={opponents}

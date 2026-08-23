@@ -67,10 +67,6 @@ export function PlayerPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
-      <Link to="/lobby" className="text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
-        ← Lobby
-      </Link>
-
       <Panel className="flex items-center gap-5">
         <Avatar userId={p.userId} name={p.displayName} version={p.avatarVersion} size="xl" />
         <div className="min-w-0">

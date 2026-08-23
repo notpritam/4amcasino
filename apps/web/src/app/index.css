@@ -9,6 +9,7 @@
 
 body {
   @apply bg-slate-100 text-slate-900 font-sans antialiased;
+  overflow-x: clip;
 }
 .dark body {
   @apply bg-slate-950 text-slate-100;

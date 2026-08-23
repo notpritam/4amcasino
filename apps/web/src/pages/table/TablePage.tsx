@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { ChatCircle, Microphone, MicrophoneSlash, Timer, X } from '@phosphor-icons/react';
+import { ArrowLeft, ChatCircle, DotsThreeVertical, Microphone, MicrophoneSlash, Timer, X } from '@phosphor-icons/react';
 import NumberFlow from '@number-flow/react';
 import confetti from 'canvas-confetti';
 import { HAND_CATEGORY_NAMES, handCategory } from '@4am/shared';
@@ -47,6 +47,7 @@ export function TablePage() {
   const resetHand = useStore((s) => s.resetHand);
   const [resultDismissed, setResultDismissed] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [floats, setFloats] = useState<FloatingReaction[]>([]);
   const floatId = useRef(0);
   const lastChatLen = useRef(0);
@@ -236,8 +237,219 @@ export function TablePage() {
     </Panel>
   );
 
+  const mobileResult = showResult && (
+    <div className="relative rounded-2xl bg-white/10 p-3.5 pr-9 text-sm text-white">
+      <button
+        onClick={() => {
+          setResultDismissed(true);
+          resetHand();
+        }}
+        aria-label="Dismiss result"
+        className="absolute right-2 top-2 rounded-md p-1 text-white/50 active:bg-white/10"
+      >
+        <X size={14} />
+      </button>
+      {hand.abort ? (
+        <span>
+          <span className="font-semibold text-rose-300">Hand aborted:</span> {hand.abort.reason}
+          {hand.abort.blamedSeat !== null && `. Seat ${hand.abort.blamedSeat + 1}; stacks rolled back.`}
+        </span>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          <span className="font-display font-semibold">
+            {hand.showdown ? 'Showdown' : 'Everyone folded'}
+          </span>
+          {hand.showdown?.reveals.map((r) => (
+            <span key={r.seat} className="rounded-full bg-white/15 px-2 py-0.5 text-xs">
+              {seatViews.find((x) => x.seat === r.seat)?.displayName}:{' '}
+              {HAND_CATEGORY_NAMES[handCategory(r.score)]}
+            </span>
+          ))}
+          {hand.result?.deltas
+            .filter((d) => d.delta !== 0)
+            .map((d) => (
+              <span
+                key={d.seat}
+                className={cn(
+                  'font-display text-xs font-bold',
+                  d.delta > 0 ? 'text-emerald-300' : 'text-rose-300',
+                )}
+              >
+                {seatViews.find((x) => x.seat === d.seat)?.displayName} {d.delta > 0 ? '+' : ''}
+                {fmt(d.delta)}
+              </span>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const mobileSeatPicker = (
+    <div className="rounded-2xl bg-white/5 p-3.5">
+      <div className="mb-2.5 text-sm text-white/70">
+        Pick a seat. Friends join with code{' '}
+        <span className="font-display font-bold text-white">{room.room.joinCode}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {Array.from({ length: 9 }, (_, i) => (
+          <button
+            key={i}
+            disabled={takenSeats.has(i) || handLive}
+            onClick={() => sit(i)}
+            className="rounded-full bg-white/10 py-2 text-sm font-semibold text-white active:scale-[0.98] disabled:opacity-30"
+          >
+            Seat {i + 1}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="mx-auto flex min-h-screen max-w-7xl flex-col gap-4 p-4">
+    <div className="min-h-screen">
+      {/* MOBILE: full-screen Offsuit-style app view */}
+      <div
+        className="flex min-h-[100dvh] flex-col overflow-x-hidden bg-slate-950 text-white md:hidden"
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
+        <div className="flex items-center gap-2 px-4 pt-3">
+          <Link
+            to="/lobby"
+            aria-label="Leave table"
+            className="-ml-1.5 rounded-full p-1.5 text-white/70 active:bg-white/10"
+          >
+            <ArrowLeft size={20} weight="bold" />
+          </Link>
+          <div className="min-w-0">
+            <div className="truncate font-display text-base font-bold leading-tight">{room.room.name}</div>
+            <div className="font-display text-[0.65rem] tracking-widest text-white/40">
+              {room.room.joinCode} · {room.room.sb}/{room.room.bb}
+            </div>
+          </div>
+          <div className="ml-auto flex items-center gap-1.5">
+            {handLive && secs !== null && (
+              <span
+                className={cn(
+                  'rounded-full bg-white/10 px-2.5 py-1 font-display text-sm font-semibold',
+                  urgent && 'animate-urgent bg-rose-500/20 text-rose-300',
+                )}
+              >
+                0:{String(secs).padStart(2, '0')}
+              </span>
+            )}
+            <button
+              onClick={() => (voiceState.joined ? voice.toggleMute() : void voice.join())}
+              aria-label={voiceState.joined ? (voiceState.muted ? 'Unmute' : 'Mute') : 'Join voice chat'}
+              className={cn(
+                'flex h-9 w-9 items-center justify-center rounded-full bg-white/10 active:scale-95',
+                voiceState.joined && !voiceState.muted && 'bg-emerald-500/25 text-emerald-300',
+                voiceState.joined && voiceState.muted && 'bg-rose-500/25 text-rose-300',
+              )}
+            >
+              {voiceState.joined && voiceState.muted ? (
+                <MicrophoneSlash size={17} weight="bold" />
+              ) : (
+                <Microphone size={17} weight={voiceState.joined ? 'bold' : 'regular'} />
+              )}
+            </button>
+            <button
+              onClick={() => setChatOpen(true)}
+              aria-label="Open chat"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 active:scale-95"
+            >
+              <ChatCircle size={17} />
+            </button>
+            <button
+              onClick={() => setMenuOpen(true)}
+              aria-label="Table menu"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 active:scale-95"
+            >
+              <DotsThreeVertical size={19} weight="bold" />
+            </button>
+          </div>
+        </div>
+
+        <MobileTable
+          opponents={opponents}
+          me={me}
+          mySeat={mySeat}
+          isHost={!!isHost}
+          myCards={hand.myCards}
+          board={hand.board}
+          pot={pot}
+          urgent={urgent}
+          statusText={mobileStatus}
+        />
+
+        {(showResult || !me) && (
+          <div className="space-y-3 px-4 pb-6">
+            {mobileResult}
+            {!me && mobileSeatPicker}
+          </div>
+        )}
+
+        {menuOpen && (
+          <div
+            className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60"
+            onClick={() => setMenuOpen(false)}
+          >
+            <div
+              className="space-y-4 rounded-t-3xl bg-slate-900 p-5 pb-8 text-white ring-1 ring-white/10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mx-auto h-1 w-10 rounded-full bg-white/20" />
+              <div className="flex flex-wrap gap-2">
+                <BankControls roomId={roomId!} />
+              </div>
+              <div className="flex gap-2">
+                <Link to={`/room/${roomId}/ledger`} className="flex-1">
+                  <Button variant="secondary" className="w-full">
+                    Ledger
+                  </Button>
+                </Link>
+                <Link to={`/room/${roomId}/hands`} className="flex-1">
+                  <Button variant="secondary" className="w-full">
+                    Hands
+                  </Button>
+                </Link>
+              </div>
+              {isHost && (
+                <label className="flex items-center justify-between text-sm text-white/70">
+                  Turn timer{handLive && ' (next hand)'}
+                  <select
+                    value={room.room.actionSecs ?? 45}
+                    disabled={handLive}
+                    onChange={(e) => void api.roomSettings(roomId!, +e.target.value)}
+                    className="rounded-lg border border-white/20 bg-slate-800 px-2.5 py-1.5 text-white"
+                  >
+                    {[15, 30, 45, 60, 90, 120].map((t) => (
+                      <option key={t} value={t}>
+                        {t}s
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+          </div>
+        )}
+
+        {chatOpen && (
+          <div className="fixed inset-0 z-40 flex flex-col bg-slate-950 p-3">
+            <div className="mb-2 flex justify-end">
+              <Button variant="secondary" onClick={() => setChatOpen(false)}>
+                <X size={16} /> Close
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <ChatPanel />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* DESKTOP */}
+      <div className="mx-auto hidden min-h-screen max-w-7xl flex-col gap-4 p-4 md:flex">
       <header className="flex flex-wrap items-center gap-3">
         <Link to="/lobby" className="text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
           ← Leave table
@@ -311,43 +523,7 @@ export function TablePage() {
         </div>
       </header>
 
-      {/* phone layout (Offsuit-style) */}
-      <div className="flex flex-col gap-3 md:hidden">
-        <MobileTable
-          opponents={opponents}
-          me={me}
-          mySeat={mySeat}
-          isHost={!!isHost}
-          myCards={hand.myCards}
-          board={hand.board}
-          pot={pot}
-          urgent={urgent}
-          statusText={mobileStatus}
-        />
-        {resultBanner}
-        {!me && seatPicker}
-        <button
-          onClick={() => setChatOpen(true)}
-          aria-label="Open chat"
-          className="fixed bottom-5 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg active:scale-95 md:hidden"
-        >
-          <ChatCircle size={22} weight="fill" />
-        </button>
-        {chatOpen && (
-          <div className="fixed inset-0 z-40 flex flex-col bg-slate-100 p-3 md:hidden dark:bg-slate-950">
-            <div className="mb-2 flex justify-end">
-              <Button variant="secondary" onClick={() => setChatOpen(false)}>
-                <X size={16} /> Close
-              </Button>
-            </div>
-            <div className="min-h-0 flex-1">
-              <ChatPanel />
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="hidden flex-1 gap-4 md:grid lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex flex-col gap-4">
           <div className="grid gap-4 md:grid-cols-[280px_minmax(0,1fr)]">
             {/* opponents */}
@@ -409,6 +585,8 @@ export function TablePage() {
         <div className="min-h-80">
           <ChatPanel />
         </div>
+      </div>
+
       </div>
 
       {/* error toasts */}
