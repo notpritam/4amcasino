@@ -16,7 +16,7 @@ export const QUICK_PHRASES = [
   'so lucky 🍀',
 ] as const;
 
-export function ChatPanel() {
+export function ChatPanel({ chrome = true }: { chrome?: boolean }) {
   const chat = useStore((s) => s.chat);
   const room = useStore((s) => s.room);
   const myId = useStore((s) => s.auth.userId);
@@ -41,17 +41,31 @@ export function ChatPanel() {
   }
 
   return (
-    <div className="flex h-full flex-col rounded-2xl bg-white ring-1 ring-slate-200/70 dark:bg-slate-900 dark:ring-slate-700/70">
-      <div className="border-b border-slate-100 px-4 py-3 font-display font-semibold dark:border-slate-800">
-        Chat
-      </div>
+    <div
+      className={cn(
+        'flex h-full flex-col bg-white dark:bg-slate-900',
+        chrome && 'rounded-2xl ring-1 ring-slate-200/70 dark:ring-slate-700/70',
+      )}
+    >
+      {chrome && (
+        <div className="border-b border-slate-100 px-4 py-3 font-display font-semibold dark:border-slate-800">
+          Chat
+        </div>
+      )}
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
-        {chat.length === 0 && <p className="text-sm text-slate-400">Say hi. Messages are not saved.</p>}
+        {chat.length === 0 && (
+          <p className="text-sm text-slate-400">Say hi. Messages are not saved.</p>
+        )}
         {chat.map((m, i) => {
           const mine = m.userId === myId;
           return (
             <div key={i} className={cn('flex items-end gap-2', mine && 'flex-row-reverse')}>
-              <Avatar userId={m.userId} name={m.from} version={avatarVersionOf(m.userId)} size="sm" />
+              <Avatar
+                userId={m.userId}
+                name={m.from}
+                version={avatarVersionOf(m.userId)}
+                size="sm"
+              />
               <div className={cn('max-w-[80%]', mine && 'text-right')}>
                 <div className="text-xs text-slate-400">{m.from}</div>
                 {m.kind === 'sticker' ? (
@@ -116,7 +130,12 @@ export function ChatPanel() {
           >
             <Smiley size={22} />
           </button>
-          <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Message…" maxLength={500} />
+          <Input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Message…"
+            maxLength={500}
+          />
           <Button type="submit" variant="secondary" disabled={!text.trim()}>
             Send
           </Button>

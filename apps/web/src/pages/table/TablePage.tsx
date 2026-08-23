@@ -1,11 +1,36 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
-import { ArrowLeft, ChatCircle, DotsThreeVertical, Eye, Microphone, MicrophoneSlash, Moon, ShareNetwork, Sun, Timer, Trophy, VideoCamera, X } from '@phosphor-icons/react';
+import {
+  ArrowLeft,
+  CardsThree,
+  ChatCircle,
+  DotsThreeVertical,
+  Eye,
+  Microphone,
+  MicrophoneSlash,
+  Moon,
+  Play,
+  Receipt,
+  ShareNetwork,
+  Sun,
+  Timer,
+  Trophy,
+  UserPlus,
+  VideoCamera,
+  X,
+} from '@phosphor-icons/react';
 import NumberFlow from '@number-flow/react';
 import confetti from 'canvas-confetti';
 import { HAND_CATEGORY_NAMES, bestFive, describeScore, evaluate7, handCategory } from '@4am/shared';
-import { answerPeek, bindGameClient, offerPeek, setSitOut, sit } from '../../shared/gameClient.ts';
+import {
+  answerPeek,
+  bindGameClient,
+  offerPeek,
+  setSitOut,
+  sit,
+  startHand,
+} from '../../shared/gameClient.ts';
 import { wsClient } from '../../shared/ws.ts';
 import { useStore } from '../../shared/store.ts';
 import { api } from '../../shared/api.ts';
@@ -24,6 +49,7 @@ import { InviteFriendsDialogBody } from '../../features/friends/FriendsPanel.tsx
 import { LeaderboardTable, type LeaderboardRow } from '../leaderboard/LeaderboardPage.tsx';
 import { ShareHandDialog } from '../../features/share/ShareHandDialog.tsx';
 import type { ShareData } from '../../features/share/shareCard.ts';
+import { unreadChatCount } from './tableUi.ts';
 
 function useNow(tickMs = 500): number {
   const [now, setNow] = useState(Date.now());
@@ -38,6 +64,46 @@ interface FloatingReaction {
   id: number;
   emoji: string;
   left: number;
+}
+
+const desktopIconClass =
+  'relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition-[color,background-color,transform] duration-200 hover:bg-slate-200/70 hover:text-slate-900 active:scale-[0.96] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white';
+
+function DesktopIconButton({
+  label,
+  onClick,
+  children,
+  active = false,
+  badge = 0,
+  buttonRef,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+  active?: boolean;
+  badge?: number;
+  buttonRef?: React.Ref<HTMLButtonElement>;
+}) {
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={cn(
+        desktopIconClass,
+        active && 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300',
+      )}
+    >
+      {children}
+      {badge > 0 && (
+        <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-600 px-1 text-[0.62rem] font-bold text-white ring-2 ring-slate-100 dark:ring-slate-950">
+          {badge > 9 ? '9+' : badge}
+        </span>
+      )}
+    </button>
+  );
 }
 
 export function TablePage() {
@@ -56,6 +122,7 @@ export function TablePage() {
   const [joinSlow, setJoinSlow] = useState(false);
   const wsConnected = useStore((s) => s.wsConnected);
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatSeenCount, setChatSeenCount] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const prefs = useStore((s) => s.prefs);
   const setPrefs = useStore((s) => s.setPrefs);
@@ -71,39 +138,104 @@ export function TablePage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
   const [watchInfo, setWatchInfo] = useState<{ allow: boolean; token: string } | null>(null);
-  const [joinReqs, setJoinReqs] = useState<{ id: number; userId: number; displayName: string }[]>([]);
+  const [joinReqs, setJoinReqs] = useState<{ id: number; userId: number; displayName: string }[]>(
+    [],
+  );
   const [askedToJoin, setAskedToJoin] = useState(false);
   const [standings, setStandings] = useState<LeaderboardRow[] | null>(null);
   const [floats, setFloats] = useState<FloatingReaction[]>([]);
   const floatId = useRef(0);
   const lastChatLen = useRef(0);
   const beepedUrgent = useRef<string | null>(null);
+  const desktopChatCloseRef = useRef<HTMLButtonElement>(null);
+  const desktopChatDrawerRef = useRef<HTMLElement>(null);
+  const desktopChatTriggerRef = useRef<HTMLButtonElement>(null);
   const now = useNow();
   const reduceMotion = useReducedMotion();
+  const unreadChat = unreadChatCount(chat.length, chatSeenCount, chatOpen);
+
+  useEffect(() => {
+    if (!chatOpen) return;
+    setChatSeenCount(chat.length);
+  }, [chatOpen, chat.length]);
+
+  useEffect(() => {
+    if (!chatOpen) return;
+    const desktopMedia = window.matchMedia('(min-width: 768px)');
+    const closeAtBreakpoint = () => setChatOpen(false);
+    desktopMedia.addEventListener('change', closeAtBreakpoint);
+    if (!desktopMedia.matches) {
+      return () => desktopMedia.removeEventListener('change', closeAtBreakpoint);
+    }
+    desktopChatCloseRef.current?.focus();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setChatOpen(false);
+      if (event.key !== 'Tab') return;
+      const controls = desktopChatDrawerRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])',
+      );
+      if (!controls?.length) return;
+      const first = controls[0]!;
+      const last = controls[controls.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      desktopMedia.removeEventListener('change', closeAtBreakpoint);
+      document.removeEventListener('keydown', closeOnEscape);
+      document.body.style.overflow = previousOverflow;
+      if (desktopMedia.matches) desktopChatTriggerRef.current?.focus();
+    };
+  }, [chatOpen]);
 
   // winner-reveal choreography: parent staggers, items spring in, cards drop in
   const revealParent = {
     hidden: {},
-    show: { transition: { staggerChildren: reduceMotion ? 0 : 0.09, delayChildren: reduceMotion ? 0 : 0.12 } },
+    show: {
+      transition: {
+        staggerChildren: reduceMotion ? 0 : 0.09,
+        delayChildren: reduceMotion ? 0 : 0.12,
+      },
+    },
   };
   const revealItem = reduceMotion
     ? { hidden: { opacity: 1 }, show: { opacity: 1 } }
     : {
         hidden: { opacity: 0, y: 12, scale: 0.94 },
-        show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', stiffness: 380, damping: 24 } as const },
+        show: {
+          opacity: 1,
+          y: 0,
+          scale: 1,
+          transition: { type: 'spring', stiffness: 380, damping: 24 } as const,
+        },
       };
   const revealCard = reduceMotion
     ? revealItem
     : {
         hidden: { opacity: 0, y: -20, rotate: -8 },
-        show: { opacity: 1, y: 0, rotate: 0, transition: { type: 'spring', stiffness: 300, damping: 17 } as const },
+        show: {
+          opacity: 1,
+          y: 0,
+          rotate: 0,
+          transition: { type: 'spring', stiffness: 300, damping: 17 } as const,
+        },
       };
 
   useEffect(() => {
     bindGameClient();
     wsClient.joinRoom(roomId!);
     // validate membership over REST too: surfaces 401/403/404 instead of hanging
-    api.getRoom(roomId!).catch((e) => setJoinError(e instanceof Error ? e.message : 'could not load room'));
+    api
+      .getRoom(roomId!)
+      .catch((e) => setJoinError(e instanceof Error ? e.message : 'could not load room'));
     return () => {
       voice.leave();
       wsClient.leaveRoom();
@@ -143,8 +275,14 @@ export function TablePage() {
     const myDelta = hand.result.deltas.find((d) => d.seat === mySeat)?.delta ?? 0;
     if (myDelta > 0 && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       confetti({ particleCount: 110, spread: 75, origin: { y: 0.7 } });
-      setTimeout(() => confetti({ particleCount: 50, angle: 60, spread: 60, origin: { x: 0, y: 0.8 } }), 220);
-      setTimeout(() => confetti({ particleCount: 50, angle: 120, spread: 60, origin: { x: 1, y: 0.8 } }), 380);
+      setTimeout(
+        () => confetti({ particleCount: 50, angle: 60, spread: 60, origin: { x: 0, y: 0.8 } }),
+        220,
+      );
+      setTimeout(
+        () => confetti({ particleCount: 50, angle: 120, spread: 60, origin: { x: 1, y: 0.8 } }),
+        380,
+      );
     }
   }, [hand.result]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -172,8 +310,15 @@ export function TablePage() {
 
   useEffect(() => {
     if (!watchOpen || !isBankerHere) return;
-    api.spectateSettings(roomId!).then(setWatchInfo).catch(() => {});
-    const loadReqs = () => api.joinRequests(roomId!).then((r) => setJoinReqs(r.requests)).catch(() => {});
+    api
+      .spectateSettings(roomId!)
+      .then(setWatchInfo)
+      .catch(() => {});
+    const loadReqs = () =>
+      api
+        .joinRequests(roomId!)
+        .then((r) => setJoinReqs(r.requests))
+        .catch(() => {});
     loadReqs();
     const iv = setInterval(loadReqs, 5000);
     return () => clearInterval(iv);
@@ -182,7 +327,10 @@ export function TablePage() {
   useEffect(() => {
     if (!standingsOpen) return;
     setStandings(null);
-    api.roomLeaderboard(roomId!).then((r) => setStandings(r.rows)).catch(() => setStandings([]));
+    api
+      .roomLeaderboard(roomId!)
+      .then((r) => setStandings(r.rows))
+      .catch(() => setStandings([]));
   }, [standingsOpen, roomId]);
 
   // re-arm the buy-in prompt whenever the broke state resolves (approval landed / stood up)
@@ -205,15 +353,18 @@ export function TablePage() {
     const seated = room.players.filter((p) => p.seat !== null && !p.privateStats);
     const netOf = (p: (typeof seated)[number]) => p.stack - p.totalBought;
     const bestNet = seated.length ? Math.max(...seated.map(netOf)) : 0;
-    const leaderId = bestNet > 0 ? seated.find((p) => netOf(p) === bestNet)?.userId ?? null : null;
+    const leaderId =
+      bestNet > 0 ? (seated.find((p) => netOf(p) === bestNet)?.userId ?? null) : null;
     return room.players
       .filter((p) => p.seat !== null)
       .sort((a, b) => a.seat! - b.seat!)
       .map((p) => {
         const engineSeat = hand.betting?.seats.find((s) => s.seat === p.seat);
-        const inHand = hand.handId !== null && !hand.abort && hand.seats.some((s) => s.seat === p.seat);
+        const inHand =
+          hand.handId !== null && !hand.abort && hand.seats.some((s) => s.seat === p.seat);
         const reveal = hand.showdown?.reveals.find((r) => r.seat === p.seat);
-        const won = !!hand.result && (hand.result.deltas.find((d) => d.seat === p.seat)?.delta ?? 0) > 0;
+        const won =
+          !!hand.result && (hand.result.deltas.find((d) => d.seat === p.seat)?.delta ?? 0) > 0;
         const stackShown = engineSeat && handLive ? engineSeat.stack : p.stack;
         return {
           seat: p.seat!,
@@ -245,7 +396,9 @@ export function TablePage() {
       <div className="flex min-h-screen flex-col items-center justify-center gap-5 p-6 text-center">
         {joinError ? (
           <>
-            <p className="max-w-sm text-sm text-rose-600">Could not join this table: {joinError}.</p>
+            <p className="max-w-sm text-sm text-rose-600">
+              Could not join this table: {joinError}.
+            </p>
             <div className="flex gap-2">
               <Button variant="secondary" onClick={() => location.reload()}>
                 Try again
@@ -300,12 +453,12 @@ export function TablePage() {
     : mySeat !== null && !hand.seats.some((s) => s.seat === mySeat)
       ? 'You are not in this hand. You will be dealt in at the next deal.'
       : disconnectedInHand.length > 0
-      ? `${disconnectedInHand.join(', ')} lost connection. Holding the hand for them to rejoin…`
-      : hand.betting
-        ? hand.betting.toAct !== null && hand.betting.toAct !== mySeat
-          ? `Waiting for ${seatViews.find((s) => s.seat === hand.betting!.toAct)?.displayName ?? 'player'}…`
-          : null
-        : 'Shuffling the encrypted deck…';
+        ? `${disconnectedInHand.join(', ')} lost connection. Holding the hand for them to rejoin…`
+        : hand.betting
+          ? hand.betting.toAct !== null && hand.betting.toAct !== mySeat
+            ? `Waiting for ${seatViews.find((s) => s.seat === hand.betting!.toAct)?.displayName ?? 'player'}…`
+            : null
+          : 'Shuffling the encrypted deck…';
 
   const peekAmt = Math.max(1, parseInt(peekAmtStr, 10) || room.room.bb * 5);
   const peekEligible =
@@ -316,7 +469,9 @@ export function TablePage() {
       : [];
   const peekReveals = Object.entries(hand.peekResults);
   const hasPeekContent =
-    hand.peekOffers.length > 0 || peekReveals.length > 0 || (showResult && peekEligible.length > 0 && mySeat !== null);
+    hand.peekOffers.length > 0 ||
+    peekReveals.length > 0 ||
+    (showResult && peekEligible.length > 0 && mySeat !== null);
 
   const peekBody = (dark: boolean) => (
     <div className="space-y-2.5">
@@ -418,8 +573,7 @@ export function TablePage() {
         : runnerUp
           ? `${nameOf(top.seat)} wins with ${describeScore(top.score)} against ${nameOf(runnerUp.seat)}'s ${describeScore(runnerUp.score).replace(/^a /, '')}.`
           : `${nameOf(top.seat)} wins with ${describeScore(top.score)}.`;
-    const winningFive =
-      hand.board.length === 5 ? bestFive([...top.cards, ...hand.board]) : null;
+    const winningFive = hand.board.length === 5 ? bestFive([...top.cards, ...hand.board]) : null;
     return { headline, winningFive };
   })();
 
@@ -482,7 +636,10 @@ export function TablePage() {
               </motion.p>
             )}
             {reasoning?.winningFive && (
-              <motion.div variants={revealItem} className="shine-once flex items-center gap-2 rounded-lg py-0.5">
+              <motion.div
+                variants={revealItem}
+                className="shine-once flex items-center gap-2 rounded-lg py-0.5"
+              >
                 <span className="text-xs uppercase tracking-wide text-slate-400">Winning five</span>
                 <div className="flex gap-1">
                   {reasoning.winningFive.map((c) => (
@@ -493,41 +650,45 @@ export function TablePage() {
                 </div>
               </motion.div>
             )}
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            <motion.span variants={revealItem} className="font-display font-semibold">
-              {hand.showdown ? 'Showdown' : 'Everyone folded'}
-            </motion.span>
-            {hand.showdown?.reveals.map((r) => (
-              <motion.span key={r.seat} variants={revealItem} className="flex items-center gap-1.5 text-sm">
-                <span className="text-slate-500">
-                  {seatViews.find((s) => s.seat === r.seat)?.displayName}
-                </span>
-                <Badge tone="slate">{HAND_CATEGORY_NAMES[handCategory(r.score)]}</Badge>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              <motion.span variants={revealItem} className="font-display font-semibold">
+                {hand.showdown ? 'Showdown' : 'Everyone folded'}
               </motion.span>
-            ))}
-            {hand.result?.deltas
-              .filter((d) => d.delta !== 0)
-              .map((d) => (
+              {hand.showdown?.reveals.map((r) => (
                 <motion.span
-                  key={d.seat}
+                  key={r.seat}
                   variants={revealItem}
-                  className={cn(
-                    'font-display text-sm font-bold',
-                    d.delta > 0 ? 'text-emerald-600' : 'text-rose-600',
-                  )}
+                  className="flex items-center gap-1.5 text-sm"
                 >
-                  {seatViews.find((s) => s.seat === d.seat)?.displayName} {d.delta > 0 ? '+' : ''}
-                  {fmt(d.delta)}
+                  <span className="text-slate-500">
+                    {seatViews.find((s) => s.seat === r.seat)?.displayName}
+                  </span>
+                  <Badge tone="slate">{HAND_CATEGORY_NAMES[handCategory(r.score)]}</Badge>
                 </motion.span>
               ))}
-            {shareData && (
-              <motion.span variants={revealItem}>
-                <Button variant="ghost" onClick={() => setShareOpen(true)}>
-                  <ShareNetwork size={16} /> Share
-                </Button>
-              </motion.span>
-            )}
-          </div>
+              {hand.result?.deltas
+                .filter((d) => d.delta !== 0)
+                .map((d) => (
+                  <motion.span
+                    key={d.seat}
+                    variants={revealItem}
+                    className={cn(
+                      'font-display text-sm font-bold',
+                      d.delta > 0 ? 'text-emerald-600' : 'text-rose-600',
+                    )}
+                  >
+                    {seatViews.find((s) => s.seat === d.seat)?.displayName} {d.delta > 0 ? '+' : ''}
+                    {fmt(d.delta)}
+                  </motion.span>
+                ))}
+              {shareData && (
+                <motion.span variants={revealItem}>
+                  <Button variant="ghost" onClick={() => setShareOpen(true)}>
+                    <ShareNetwork size={16} /> Share
+                  </Button>
+                </motion.span>
+              )}
+            </div>
           </motion.div>
         )}
       </Panel>
@@ -589,7 +750,8 @@ export function TablePage() {
       {hand.abort ? (
         <span>
           <span className="font-semibold text-rose-300">Hand aborted:</span> {hand.abort.reason}
-          {hand.abort.blamedSeat !== null && `. Seat ${hand.abort.blamedSeat + 1}; stacks rolled back.`}
+          {hand.abort.blamedSeat !== null &&
+            `. Seat ${hand.abort.blamedSeat + 1}; stacks rolled back.`}
         </span>
       ) : (
         <motion.div
@@ -605,8 +767,13 @@ export function TablePage() {
             </motion.p>
           )}
           {reasoning?.winningFive && (
-            <motion.div variants={revealItem} className="shine-once flex items-center gap-2 rounded-lg py-0.5">
-              <span className="text-[0.6rem] uppercase tracking-wide text-white/40">Winning five</span>
+            <motion.div
+              variants={revealItem}
+              className="shine-once flex items-center gap-2 rounded-lg py-0.5"
+            >
+              <span className="text-[0.6rem] uppercase tracking-wide text-white/40">
+                Winning five
+              </span>
               <div className="flex gap-1">
                 {reasoning.winningFive.map((c) => (
                   <motion.span key={c} variants={revealCard}>
@@ -616,39 +783,39 @@ export function TablePage() {
               </div>
             </motion.div>
           )}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          <span className="font-display font-semibold">
-            {hand.showdown ? 'Showdown' : 'Everyone folded'}
-          </span>
-          {hand.showdown?.reveals.map((r) => (
-            <span key={r.seat} className="rounded-full bg-white/15 px-2 py-0.5 text-xs">
-              {seatViews.find((x) => x.seat === r.seat)?.displayName}:{' '}
-              {HAND_CATEGORY_NAMES[handCategory(r.score)]}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <span className="font-display font-semibold">
+              {hand.showdown ? 'Showdown' : 'Everyone folded'}
             </span>
-          ))}
-          {hand.result?.deltas
-            .filter((d) => d.delta !== 0)
-            .map((d) => (
-              <span
-                key={d.seat}
-                className={cn(
-                  'font-display text-xs font-bold',
-                  d.delta > 0 ? 'text-emerald-300' : 'text-rose-300',
-                )}
-              >
-                {seatViews.find((x) => x.seat === d.seat)?.displayName} {d.delta > 0 ? '+' : ''}
-                {fmt(d.delta)}
+            {hand.showdown?.reveals.map((r) => (
+              <span key={r.seat} className="rounded-full bg-white/15 px-2 py-0.5 text-xs">
+                {seatViews.find((x) => x.seat === r.seat)?.displayName}:{' '}
+                {HAND_CATEGORY_NAMES[handCategory(r.score)]}
               </span>
             ))}
-          {shareData && (
-            <button
-              onClick={() => setShareOpen(true)}
-              className="flex items-center gap-1 rounded-full border border-white/25 px-2.5 py-1 text-xs font-semibold text-white/80"
-            >
-              <ShareNetwork size={13} /> Share
-            </button>
-          )}
-        </div>
+            {hand.result?.deltas
+              .filter((d) => d.delta !== 0)
+              .map((d) => (
+                <span
+                  key={d.seat}
+                  className={cn(
+                    'font-display text-xs font-bold',
+                    d.delta > 0 ? 'text-emerald-300' : 'text-rose-300',
+                  )}
+                >
+                  {seatViews.find((x) => x.seat === d.seat)?.displayName} {d.delta > 0 ? '+' : ''}
+                  {fmt(d.delta)}
+                </span>
+              ))}
+            {shareData && (
+              <button
+                onClick={() => setShareOpen(true)}
+                className="flex items-center gap-1 rounded-full border border-white/25 px-2.5 py-1 text-xs font-semibold text-white/80"
+              >
+                <ShareNetwork size={13} /> Share
+              </button>
+            )}
+          </div>
         </motion.div>
       )}
     </div>
@@ -676,7 +843,7 @@ export function TablePage() {
   );
 
   return (
-    <div className="min-h-screen">
+    <div className="table-app-bg min-h-screen">
       {/* MOBILE: full-screen Offsuit-style app view */}
       <div
         className="flex min-h-[100dvh] flex-col overflow-x-hidden bg-slate-950 text-white md:hidden"
@@ -691,7 +858,9 @@ export function TablePage() {
             <ArrowLeft size={20} weight="bold" />
           </Link>
           <div className="min-w-0">
-            <div className="truncate font-display text-base font-bold leading-tight">{room.room.name}</div>
+            <div className="truncate font-display text-base font-bold leading-tight">
+              {room.room.name}
+            </div>
             <div className="font-display text-[0.65rem] tracking-widest text-white/40">
               {room.room.joinCode} · {room.room.sb}/{room.room.bb}
             </div>
@@ -709,7 +878,9 @@ export function TablePage() {
             )}
             <button
               onClick={() => (voiceState.joined ? voice.toggleMute() : void voice.join())}
-              aria-label={voiceState.joined ? (voiceState.muted ? 'Unmute' : 'Mute') : 'Join voice chat'}
+              aria-label={
+                voiceState.joined ? (voiceState.muted ? 'Unmute' : 'Mute') : 'Join voice chat'
+              }
               className={cn(
                 'flex h-9 w-9 items-center justify-center rounded-full bg-white/10 active:scale-95',
                 voiceState.joined && !voiceState.muted && 'bg-emerald-500/25 text-emerald-300',
@@ -787,7 +958,11 @@ export function TablePage() {
               </div>
               <div className="flex gap-2">
                 {mySeat !== null && (
-                  <Button variant="secondary" className="flex-1" onClick={() => setSitOut(!meSittingOut)}>
+                  <Button
+                    variant="secondary"
+                    className="flex-1"
+                    onClick={() => setSitOut(!meSittingOut)}
+                  >
                     {meSittingOut ? 'Deal me back in' : 'Sit out next hands'}
                   </Button>
                 )}
@@ -873,202 +1048,264 @@ export function TablePage() {
       </div>
 
       {/* DESKTOP */}
-      <div className="mx-auto hidden min-h-screen max-w-7xl flex-col gap-4 p-4 md:flex">
-      <header className="flex flex-wrap items-center gap-3">
-        <Link to="/lobby" className="text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
-          ← Leave table
-        </Link>
-        <h1 className="font-display text-lg font-bold">{room.room.name}</h1>
-        {room.room.joinCode !== '' && (
-          <Badge tone="indigo" className="font-display tracking-widest">
-            {room.room.joinCode}
-          </Badge>
-        )}
-        <Badge tone="slate">
-          blinds {room.room.sb}/{room.room.bb}
-        </Badge>
-        {room.room.auditMode === 'strict-audit' && <Badge tone="amber">strict audit</Badge>}
-        {room.room.voided && (
-          <span title="The banker voided this table: results do not count anywhere">
-            <Badge tone="rose">void table</Badge>
-          </span>
-        )}
-        {handLive && secs !== null && (
-          <span
-            className={cn(
-              'rounded-full bg-white px-3 py-1 font-display text-sm font-semibold ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700',
-              urgent && 'animate-urgent bg-rose-50 text-rose-600 ring-rose-300 dark:bg-rose-950',
-            )}
+      <div className="mx-auto hidden min-h-screen w-full max-w-[96rem] flex-col gap-4 px-5 py-4 md:flex lg:px-7">
+        <header className="flex flex-wrap items-center gap-3 rounded-2xl bg-white/80 p-2.5 shadow-[0_12px_36px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 dark:bg-slate-950/70 dark:ring-slate-800">
+          <Link
+            to="/lobby"
+            className={desktopIconClass}
+            aria-label="Leave table"
+            title="Leave table"
           >
-            <Timer size={15} weight="bold" className="-mt-0.5 mr-1 inline" />
-            0:{String(secs).padStart(2, '0')}
-          </span>
-        )}
-        {isHost && (
-          <label className="hidden items-center gap-1.5 text-xs text-slate-500 md:flex">
-            turn time
-            <select
-              value={room.room.actionSecs ?? 45}
-              disabled={handLive}
-              onChange={(e) => void api.roomSettings(roomId!, +e.target.value)}
-              className="rounded-md border border-slate-200 bg-white px-1.5 py-1 dark:border-slate-700 dark:bg-slate-800"
-              title={handLive ? 'applies from the next hand' : undefined}
-            >
-              {[15, 30, 45, 60, 90, 120].map((s) => (
-                <option key={s} value={s}>
-                  {s}s
-                </option>
-              ))}
-              <option value={0}>No limit</option>
-            </select>
-          </label>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          {mySeat !== null && (
-            <Button
-              variant="ghost"
-              onClick={() => setSitOut(!meSittingOut)}
-              title={handLive ? 'applies from the next hand' : undefined}
-            >
-              {meSittingOut ? 'Deal me in' : 'Sit out'}
-            </Button>
-          )}
-          {room.room.meetLink && (
-            <a href={room.room.meetLink} target="_blank" rel="noreferrer">
-              <Button variant="ghost" title="Open the video call">
-                <VideoCamera size={16} /> Call
-              </Button>
-            </a>
-          )}
-          {!amSpectator && (
-            <Button variant="ghost" onClick={() => setInviteOpen(true)}>
-              Invite friends
-            </Button>
-          )}
-          {isBankerHere && (
-            <Button variant="ghost" onClick={() => setWatchOpen(true)} title="Watch-only share link">
-              <Eye size={16} />
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            onClick={() => setStandingsOpen(true)}
-            title="Room standings"
-            aria-label="Room standings"
-          >
-            <Trophy size={16} />
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={toggleTheme}
-            title="Toggle dark mode"
-            aria-label="Toggle dark mode"
-          >
-            {prefs.theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-          </Button>
-          <Button
-            variant={voiceState.joined ? (voiceState.muted ? 'danger' : 'success') : 'secondary'}
-            onClick={() => (voiceState.joined ? voice.toggleMute() : void voice.join())}
-            title={voiceState.joined ? (voiceState.muted ? 'Unmute' : 'Mute') : 'Join voice chat'}
-          >
-            {voiceState.joined ? (
-              voiceState.muted ? (
-                <>
-                  <MicrophoneSlash size={16} weight="bold" /> Muted
-                </>
-              ) : (
-                <>
-                  <Microphone size={16} weight="bold" /> Live
-                </>
-              )
-            ) : (
-              <>
-                <Microphone size={16} /> Join voice
-              </>
-            )}
-          </Button>
-          <BankControls roomId={roomId!} />
-          <Link to={`/room/${roomId}/ledger`}>
-            <Button variant="ghost">Ledger</Button>
+            <ArrowLeft size={19} weight="bold" />
           </Link>
-          <Link to={`/room/${roomId}/hands`}>
-            <Button variant="ghost">Hands</Button>
-          </Link>
-        </div>
-      </header>
-
-      <div className="grid flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex flex-col gap-4">
-          <div className="grid gap-4 md:grid-cols-[280px_minmax(0,1fr)]">
-            {/* opponents */}
-            <div className="space-y-2.5">
-              {opponents.length === 0 && (
-                <Panel className="text-sm text-slate-500">
-                  {room.room.joinCode !== '' ? (
-                    <>
-                      Share code <span className="font-display font-bold">{room.room.joinCode}</span>{' '}
-                      with your friends.
-                    </>
-                  ) : (
-                    'Waiting for players.'
-                  )}
-                </Panel>
-              )}
-              {opponents.map((p) => (
-                <PlayerRow key={p.seat} p={p} urgent={urgent} />
-              ))}
-            </div>
-
-            {/* board */}
-            <div
-              className={cn(
-                'relative flex min-h-[320px] flex-col items-center justify-center gap-6 rounded-3xl bg-slate-200/50 p-4 ring-1 ring-slate-200 md:min-h-[440px] md:p-6 dark:bg-slate-900/60 dark:ring-slate-800',
-                notInHand && 'opacity-60 saturate-50',
-              )}
-            >
-              {/* floating sticker reactions */}
-              {floats.map((f) => (
-                <span
-                  key={f.id}
-                  className="animate-float pointer-events-none absolute top-1/3 z-10 text-5xl"
-                  style={{ left: `${f.left}%` }}
-                >
-                  {f.emoji}
+          <div className="min-w-0 pr-2">
+            <h1 className="truncate font-display text-lg font-semibold tracking-[-0.02em]">
+              {room.room.name}
+            </h1>
+            <div className="mt-0.5 flex items-center gap-2 text-[0.68rem] text-slate-500">
+              {room.room.joinCode !== '' && (
+                <span className="font-display font-semibold tracking-[0.16em] text-indigo-600 dark:text-indigo-300">
+                  {room.room.joinCode}
                 </span>
-              ))}
-              <div className="rounded-xl bg-indigo-600 px-6 py-2 font-display text-xl font-bold text-white shadow">
-                POT <NumberFlow value={pot} />
-              </div>
-              <div className="flex gap-1.5 md:gap-2">
-                {[0, 1, 2, 3, 4].map((i) =>
-                  hand.board[i] !== undefined ? (
-                    <PlayingCard key={`${i}-${hand.board[i]}`} card={hand.board[i]} size="lg" deal />
-                  ) : (
-                    <div
-                      key={i}
-                      className="h-20 w-14 rounded-lg border-2 border-dashed border-slate-300 md:h-32 md:w-[5.6rem] md:rounded-2xl dark:border-slate-700"
-                    />
-                  ),
-                )}
-              </div>
-              {!handLive && !showResult && (
-                <p className="text-sm text-slate-500">
-                  {mySeat === null ? 'Pick a seat to play.' : 'No hand in progress.'}
-                </p>
               )}
-              {notInHand && (
-                <p className="rounded-full bg-white/80 px-4 py-1.5 text-sm font-semibold text-slate-600 shadow dark:bg-slate-800/90 dark:text-slate-300">
-                  You are not in this hand. You will be dealt in at the next deal.
-                </p>
-              )}
+              <span>
+                blinds {room.room.sb}/{room.room.bb}
+              </span>
             </div>
           </div>
 
-          {/* non-blocking hand result */}
+          {room.room.auditMode === 'strict-audit' && <Badge tone="amber">strict audit</Badge>}
+          {room.room.voided && (
+            <span title="The banker voided this table: results do not count anywhere">
+              <Badge tone="rose">void table</Badge>
+            </span>
+          )}
+          {handLive && secs !== null && (
+            <span
+              className={cn(
+                'flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 font-display text-sm font-semibold tabular-nums dark:bg-slate-900',
+                urgent && 'animate-urgent bg-rose-50 text-rose-600 dark:bg-rose-950',
+              )}
+            >
+              <Timer size={15} weight="bold" /> 0:{String(secs).padStart(2, '0')}
+            </span>
+          )}
+
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
+            <Button
+              variant={voiceState.joined ? (voiceState.muted ? 'danger' : 'success') : 'secondary'}
+              className="h-10 rounded-xl"
+              onClick={() => (voiceState.joined ? voice.toggleMute() : void voice.join())}
+              title={voiceState.joined ? (voiceState.muted ? 'Unmute' : 'Mute') : 'Join voice chat'}
+            >
+              {voiceState.joined ? (
+                voiceState.muted ? (
+                  <>
+                    <MicrophoneSlash size={17} weight="bold" /> Muted
+                  </>
+                ) : (
+                  <>
+                    <Microphone size={17} weight="bold" /> Voice live
+                  </>
+                )
+              ) : (
+                <>
+                  <Microphone size={17} /> Join voice
+                </>
+              )}
+            </Button>
+            <BankControls roomId={roomId!} />
+            <span className="mx-1 h-6 w-px bg-slate-200 dark:bg-slate-800" aria-hidden="true" />
+
+            {!amSpectator && (
+              <DesktopIconButton label="Invite friends" onClick={() => setInviteOpen(true)}>
+                <UserPlus size={19} />
+              </DesktopIconButton>
+            )}
+            {isBankerHere && (
+              <DesktopIconButton label="Create watch-only link" onClick={() => setWatchOpen(true)}>
+                <Eye size={19} />
+              </DesktopIconButton>
+            )}
+            <DesktopIconButton label="Room standings" onClick={() => setStandingsOpen(true)}>
+              <Trophy size={19} />
+            </DesktopIconButton>
+            <Link
+              to={`/room/${roomId}/ledger`}
+              className={desktopIconClass}
+              aria-label="Open ledger"
+              title="Open ledger"
+            >
+              <Receipt size={19} />
+            </Link>
+            <Link
+              to={`/room/${roomId}/hands`}
+              className={desktopIconClass}
+              aria-label="Open hand history"
+              title="Open hand history"
+            >
+              <CardsThree size={19} />
+            </Link>
+            <DesktopIconButton label="Toggle theme" onClick={toggleTheme}>
+              {prefs.theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
+            </DesktopIconButton>
+            <DesktopIconButton
+              label={unreadChat > 0 ? `Open chat, ${unreadChat} unread messages` : 'Open chat'}
+              onClick={() => setChatOpen(true)}
+              active={chatOpen}
+              badge={unreadChat}
+              buttonRef={desktopChatTriggerRef}
+            >
+              <ChatCircle size={20} weight={chatOpen ? 'fill' : 'regular'} />
+            </DesktopIconButton>
+
+            <div className="relative">
+              <DesktopIconButton
+                label="More table controls"
+                onClick={() => setMenuOpen((open) => !open)}
+                active={menuOpen}
+              >
+                <DotsThreeVertical size={20} weight="bold" />
+              </DesktopIconButton>
+              {menuOpen && (
+                <>
+                  <button
+                    className="fixed inset-0 z-20 cursor-default"
+                    aria-label="Close table controls"
+                    onClick={() => setMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 top-12 z-30 w-64 space-y-1 rounded-2xl bg-white p-2 shadow-[0_20px_60px_rgba(15,23,42,0.18)] ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+                    {mySeat !== null && (
+                      <button
+                        className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+                        onClick={() => {
+                          setSitOut(!meSittingOut);
+                          setMenuOpen(false);
+                        }}
+                      >
+                        {meSittingOut ? 'Deal me back in' : 'Sit out next hand'}
+                      </button>
+                    )}
+                    {room.room.meetLink && (
+                      <a
+                        href={room.room.meetLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        <VideoCamera size={17} /> Open video call
+                      </a>
+                    )}
+                    {isHost && (
+                      <label className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+                        Turn timer
+                        <select
+                          value={room.room.actionSecs ?? 45}
+                          disabled={handLive}
+                          onChange={(event) => void api.roomSettings(roomId!, +event.target.value)}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-800"
+                          title={handLive ? 'Applies from the next hand' : undefined}
+                        >
+                          {[15, 30, 45, 60, 90, 120].map((seconds) => (
+                            <option key={seconds} value={seconds}>
+                              {seconds}s
+                            </option>
+                          ))}
+                          <option value={0}>No limit</option>
+                        </select>
+                      </label>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </header>
+
+        <main className="flex flex-1 flex-col gap-4">
+          <section
+            aria-label="Players at the table"
+            className="mx-auto grid w-full max-w-5xl grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-3"
+          >
+            {opponents.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => setInviteOpen(true)}
+                className="flex min-h-20 items-center justify-center gap-2 rounded-2xl bg-slate-100/70 px-4 text-sm text-slate-500 ring-1 ring-slate-200/70 hover:bg-slate-100 hover:text-slate-800 dark:bg-slate-900/60 dark:ring-slate-800 dark:hover:bg-slate-900 dark:hover:text-slate-200"
+              >
+                <UserPlus size={18} /> Invite friends with code{' '}
+                <span className="font-display font-semibold text-indigo-600 dark:text-indigo-300">
+                  {room.room.joinCode}
+                </span>
+              </button>
+            ) : (
+              opponents.map((player) => <PlayerRow key={player.seat} p={player} urgent={urgent} />)
+            )}
+          </section>
+
+          <section
+            aria-label="Poker board"
+            className={cn(
+              'relative flex min-h-[clamp(30rem,56vh,42rem)] flex-col items-center justify-center gap-8 overflow-hidden rounded-[2rem] bg-slate-200/50 px-6 py-10 ring-1 ring-slate-200 dark:bg-slate-900/60 dark:ring-slate-800 lg:px-10',
+              notInHand && 'opacity-60 saturate-50',
+            )}
+          >
+            {floats.map((reaction) => (
+              <span
+                key={reaction.id}
+                className="animate-float pointer-events-none absolute top-1/3 z-10 text-5xl"
+                style={{ left: `${reaction.left}%` }}
+              >
+                {reaction.emoji}
+              </span>
+            ))}
+            <div className="rounded-xl bg-indigo-600 px-5 py-2.5 font-display text-lg font-semibold text-white shadow-[0_12px_30px_rgba(79,70,229,0.22)]">
+              POT <NumberFlow value={pot} />
+            </div>
+            <div className="flex items-center justify-center gap-2.5 lg:gap-3">
+              {[0, 1, 2, 3, 4].map((index) =>
+                hand.board[index] !== undefined ? (
+                  <PlayingCard
+                    key={`${index}-${hand.board[index]}`}
+                    card={hand.board[index]}
+                    size="table"
+                    deal
+                  />
+                ) : (
+                  <div
+                    key={index}
+                    className="h-36 w-24 rounded-2xl border-2 border-dashed border-slate-300/80 dark:border-slate-700"
+                    aria-label={`Empty community card ${index + 1}`}
+                  />
+                ),
+              )}
+            </div>
+            {!handLive && !showResult && (
+              <div className="text-center">
+                <p className="text-sm text-slate-500">
+                  {mySeat === null
+                    ? 'Pick a seat to join the next hand.'
+                    : opponents.length === 0
+                      ? 'Invite at least one friend to deal.'
+                      : 'Everyone is seated. Deal when ready.'}
+                </p>
+                {mySeat !== null && isHost && opponents.length > 0 && (
+                  <Button className="mt-5 h-11 rounded-xl px-5" onClick={startHand}>
+                    <Play size={17} weight="fill" /> Deal hand
+                  </Button>
+                )}
+              </div>
+            )}
+            {notInHand && (
+              <p className="rounded-xl bg-white/90 px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm dark:bg-slate-800/90 dark:text-slate-300">
+                You will be dealt in at the next hand.
+              </p>
+            )}
+          </section>
+
           {resultBanner}
           {peekPanel}
 
-          {/* you + actions */}
           {me ? (
             <YouRow p={me} cards={hand.myCards} urgent={urgent} />
           ) : amSpectator ? (
@@ -1076,15 +1313,50 @@ export function TablePage() {
           ) : (
             seatPicker
           )}
-          <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} />
-        </div>
-
-        <div className="min-h-80">
-          <ChatPanel />
-        </div>
+          <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} hideIdleStart />
+        </main>
       </div>
 
-      </div>
+      {chatOpen && (
+        <div className="fixed inset-0 z-40 hidden md:block">
+          <button
+            className="absolute inset-0 bg-slate-950/45"
+            aria-label="Close chat"
+            onClick={() => setChatOpen(false)}
+          />
+          <motion.aside
+            ref={desktopChatDrawerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Table chat"
+            initial={reduceMotion ? false : { x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+            className="absolute inset-y-0 right-0 flex w-[min(25rem,calc(100vw-2rem))] flex-col bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.22)] dark:bg-slate-950"
+          >
+            <div className="flex h-16 items-center justify-between border-b border-slate-200 px-5 dark:border-slate-800">
+              <div>
+                <h2 className="font-display text-base font-semibold">Table chat</h2>
+                <p className="text-xs text-slate-500">Messages disappear when the room closes.</p>
+              </div>
+              <button
+                ref={desktopChatCloseRef}
+                type="button"
+                onClick={() => setChatOpen(false)}
+                className={desktopIconClass}
+                aria-label="Close chat"
+                title="Close chat"
+              >
+                <X size={19} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 p-3">
+              <ChatPanel chrome={false} />
+            </div>
+          </motion.aside>
+        </div>
+      )}
 
       <BrokeBuyInDialog
         roomId={roomId!}
@@ -1092,7 +1364,11 @@ export function TablePage() {
         onClose={() => setBrokeDismissed(true)}
       />
       <ShareHandDialog open={shareOpen} onClose={() => setShareOpen(false)} data={shareData} />
-      <Dialog open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite friends to this table">
+      <Dialog
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        title="Invite friends to this table"
+      >
         <InviteFriendsDialogBody roomId={roomId!} memberIds={room.players.map((p) => p.userId)} />
       </Dialog>
       <Dialog open={watchOpen} onClose={() => setWatchOpen(false)} title="Watch-only share link">
@@ -1102,7 +1378,10 @@ export function TablePage() {
               type="checkbox"
               checked={watchInfo?.allow ?? false}
               onChange={(e) =>
-                void api.spectateSettings(roomId!, e.target.checked).then(setWatchInfo).catch(() => {})
+                void api
+                  .spectateSettings(roomId!, e.target.checked)
+                  .then(setWatchInfo)
+                  .catch(() => {})
               }
               className="mt-0.5"
             />
@@ -1132,12 +1411,19 @@ export function TablePage() {
                 Watchers asking to play
               </p>
               {joinReqs.map((r) => (
-                <div key={r.id} className="flex items-center gap-3 rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800/60">
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{r.displayName}</span>
+                <div
+                  key={r.id}
+                  className="flex items-center gap-3 rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800/60"
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                    {r.displayName}
+                  </span>
                   <Button
                     variant="success"
                     onClick={() =>
-                      void api.admit(roomId!, r.userId, true).then(() => setJoinReqs((q) => q.filter((x) => x.id !== r.id)))
+                      void api
+                        .admit(roomId!, r.userId, true)
+                        .then(() => setJoinReqs((q) => q.filter((x) => x.id !== r.id)))
                     }
                   >
                     Let them in
@@ -1145,7 +1431,9 @@ export function TablePage() {
                   <Button
                     variant="ghost"
                     onClick={() =>
-                      void api.admit(roomId!, r.userId, false).then(() => setJoinReqs((q) => q.filter((x) => x.id !== r.id)))
+                      void api
+                        .admit(roomId!, r.userId, false)
+                        .then(() => setJoinReqs((q) => q.filter((x) => x.id !== r.id)))
                     }
                   >
                     No

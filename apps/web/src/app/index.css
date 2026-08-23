@@ -15,6 +15,28 @@ body {
   @apply bg-slate-950 text-slate-100;
 }
 
+/* A quiet card-pip field gives the desktop table depth without competing with the felt. */
+.table-app-bg {
+  background-color: #f1f5f9;
+  background-image:
+    radial-gradient(circle at 50% 4%, rgb(99 102 241 / 0.08), transparent 34rem),
+    radial-gradient(circle, rgb(71 85 105 / 0.12) 0.7px, transparent 0.9px);
+  background-position:
+    center top,
+    0 0;
+  background-size:
+    auto,
+    1.5rem 1.5rem;
+  background-attachment: fixed;
+}
+
+.dark .table-app-bg {
+  background-color: #020617;
+  background-image:
+    radial-gradient(circle at 50% 4%, rgb(99 102 241 / 0.1), transparent 36rem),
+    radial-gradient(circle, rgb(129 140 248 / 0.1) 0.7px, transparent 0.9px);
+}
+
 /* card backs — the 4AM night grid with a crescent, in four colorways */
 .card-back {
   background-image:

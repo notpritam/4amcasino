@@ -12,7 +12,17 @@ const PRE_ACTIONS = [
   { key: 'call-any', label: 'Call any' },
 ] as const;
 
-export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; isHost: boolean; urgent: boolean }) {
+export function ActionBar({
+  mySeat,
+  isHost,
+  urgent,
+  hideIdleStart = false,
+}: {
+  mySeat: number | null;
+  isHost: boolean;
+  urgent: boolean;
+  hideIdleStart?: boolean;
+}) {
   const hand = useStore((s) => s.hand);
   const room = useStore((s) => s.room);
   const patchHand = useStore((s) => s.patchHand);
@@ -39,7 +49,8 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
 
   // voluntary card show: available once you folded, or when the hand is over
   const iFolded = !!st?.seats.find((s) => s.seat === mySeat)?.folded;
-  const dealtIn = mySeat !== null && hand.seats.some((s) => s.seat === mySeat) && hand.myCards.length > 0;
+  const dealtIn =
+    mySeat !== null && hand.seats.some((s) => s.seat === mySeat) && hand.myCards.length > 0;
   const alreadyPublic =
     mySeat !== null &&
     (!!hand.shown[mySeat] || !!hand.showdown?.reveals.some((r) => r.seat === mySeat));
@@ -55,9 +66,7 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
       ? hand.seats
           .filter((s) => !hand.betting?.seats.find((b) => b.seat === s.seat)?.folded)
           .filter((s) => room.players.some((p) => p.userId === s.userId && !p.connected))
-          .map(
-            (s) => room.players.find((p) => p.userId === s.userId)?.displayName ?? s.username,
-          )
+          .map((s) => room.players.find((p) => p.userId === s.userId)?.displayName ?? s.username)
       : [];
 
   // pending: an action left this device but the table has not updated yet
@@ -84,22 +93,38 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
     return Math.min(Math.max(snapped, la.minRaiseTo), la.maxRaiseTo);
   };
 
-  const quicks = la && st
-    ? [
-        { label: 'Min', value: la.minRaiseTo },
-        { label: '⅓ pot', value: potRaise(1 / 3) },
-        { label: '½ pot', value: potRaise(1 / 2) },
-        { label: '¾ pot', value: potRaise(3 / 4) },
-        { label: 'Pot', value: potRaise(1) },
-        { label: 'All-in', value: la.maxRaiseTo },
-      ]
-    : [];
+  const quicks =
+    la && st
+      ? [
+          { label: 'Min', value: la.minRaiseTo },
+          { label: '⅓ pot', value: potRaise(1 / 3) },
+          { label: '½ pot', value: potRaise(1 / 2) },
+          { label: '¾ pot', value: potRaise(3 / 4) },
+          { label: 'Pot', value: potRaise(1) },
+          { label: 'All-in', value: la.maxRaiseTo },
+        ]
+      : [];
 
   return (
-    <div className={cn('rounded-2xl bg-indigo-600 p-4 text-white shadow-lg', myTurn && urgent && 'animate-urgent')}>
+    <div
+      className={cn(
+        'rounded-2xl p-4',
+        myTurn
+          ? 'bg-indigo-600 text-white shadow-[0_18px_50px_rgba(79,70,229,0.2)]'
+          : 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700/70',
+        myTurn && urgent && 'animate-urgent',
+      )}
+    >
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <div className="min-w-24">
-          <div className="text-xs uppercase tracking-wide text-indigo-200">Your bet</div>
+          <div
+            className={cn(
+              'text-xs uppercase tracking-wide',
+              myTurn ? 'text-indigo-200' : 'text-slate-400',
+            )}
+          >
+            Your bet
+          </div>
           <div className="font-display text-2xl font-bold">
             <NumberFlow value={me?.committed ?? 0} />
           </div>
@@ -184,12 +209,12 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
             </div>
           </>
         ) : (
-          <div className="flex-1 text-sm text-indigo-100">
+          <div className={cn('flex-1 text-sm', myTurn ? 'text-indigo-100' : 'text-slate-500')}>
             {handIdle
               ? balance === 0
-                ? 'You are out of chips. Buy points from the bank (top right) to keep playing.'
+                ? 'You are out of chips. Use Buy points in the command bar to keep playing.'
                 : hand.autoDealAt && hand.autoDealAt > Date.now()
-                  ? 'Next hand deals itself in a moment. Sit out (top right) if you need a break.'
+                  ? 'Next hand deals itself in a moment. Use the more menu if you need to sit out.'
                   : isHost
                     ? 'Deal when everyone is seated.'
                     : 'Waiting for the host to deal.'
@@ -206,7 +231,7 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
 
         {canPreAct && (
           <div className="flex items-center gap-1.5">
-            <span className="text-xs uppercase tracking-wide text-indigo-200">Ahead of turn</span>
+            <span className="text-xs uppercase tracking-wide text-slate-400">Ahead of turn</span>
             {PRE_ACTIONS.map((pa) => (
               <button
                 key={pa.key}
@@ -214,8 +239,8 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
                 className={cn(
                   'rounded-full px-3 py-1 text-xs font-semibold transition-colors',
                   hand.preAction === pa.key
-                    ? 'bg-white text-indigo-700'
-                    : 'bg-white/15 text-white hover:bg-white/25',
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700',
                 )}
               >
                 {pa.label}
@@ -227,7 +252,10 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
         {canShow && (
           <Button
             variant="secondary"
-            className="border-0 bg-white/15! text-white! hover:bg-white/25! dark:bg-white/15! dark:text-white! dark:hover:bg-white/25!"
+            className={cn(
+              myTurn &&
+                'border-0 bg-white/15! text-white! hover:bg-white/25! dark:bg-white/15! dark:text-white! dark:hover:bg-white/25!',
+            )}
             disabled={showSentFor === hand.handId}
             onClick={() => {
               setShowSentFor(hand.handId);
@@ -238,7 +266,7 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
           </Button>
         )}
 
-        {handIdle && isHost && (
+        {handIdle && isHost && !hideIdleStart && (
           <Button
             variant="secondary"
             className="border-0 bg-white! text-indigo-700! dark:bg-white! dark:text-indigo-700!"
@@ -249,14 +277,37 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
         )}
 
         <div className="ml-auto text-right">
-          <div className="text-xs uppercase tracking-wide text-indigo-200">Your balance</div>
-          <div className={cn('font-display text-2xl font-bold', balance === 0 && 'text-rose-300')}>
+          <div
+            className={cn(
+              'text-xs uppercase tracking-wide',
+              myTurn ? 'text-indigo-200' : 'text-slate-400',
+            )}
+          >
+            Your balance
+          </div>
+          <div
+            className={cn(
+              'font-display text-2xl font-bold',
+              balance === 0 && (myTurn ? 'text-rose-300' : 'text-rose-500'),
+            )}
+          >
             <NumberFlow value={balance} />
           </div>
           {bought > 0 && (
-            <div className="text-xs text-indigo-200">
+            <div className={cn('text-xs', myTurn ? 'text-indigo-200' : 'text-slate-400')}>
               bought {fmt(bought)} ·{' '}
-              <span className={cn('font-display font-bold', net >= 0 ? 'text-emerald-300' : 'text-rose-300')}>
+              <span
+                className={cn(
+                  'font-display font-bold',
+                  net >= 0
+                    ? myTurn
+                      ? 'text-emerald-300'
+                      : 'text-emerald-600 dark:text-emerald-400'
+                    : myTurn
+                      ? 'text-rose-300'
+                      : 'text-rose-600 dark:text-rose-400',
+                )}
+              >
                 {net >= 0 ? `up ${fmt(net)}` : `down ${fmt(-net)}`}
               </span>
             </div>

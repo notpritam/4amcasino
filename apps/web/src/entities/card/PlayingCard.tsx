@@ -11,6 +11,7 @@ const sizes = {
   md: 'h-24 w-[4.2rem] rounded-xl text-base',
   // responsive: phones get a board that fits five across
   lg: 'h-20 w-14 rounded-lg text-sm md:h-32 md:w-[5.6rem] md:rounded-2xl md:text-lg',
+  table: 'h-36 w-24 rounded-2xl text-2xl',
   // Offsuit-style huge mobile hole cards
   xl: 'h-36 w-24 rounded-2xl text-2xl',
 } as const;
@@ -20,6 +21,7 @@ const centerSizes = {
   sm: 'text-lg',
   md: 'text-3xl',
   lg: 'text-2xl md:text-5xl',
+  table: 'text-5xl',
   xl: 'text-5xl',
 } as const;
 
@@ -76,7 +78,7 @@ export function PlayingCard({
         {rank}
         <div className="-mt-0.5">{glyph}</div>
       </div>
-      {(size === 'md' || size === 'lg') && (
+      {(size === 'md' || size === 'lg' || size === 'table') && (
         <div className={cn('absolute inset-0 flex items-center justify-center', centerSizes[size])}>
           {glyph}
         </div>

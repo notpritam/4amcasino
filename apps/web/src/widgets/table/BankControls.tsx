@@ -3,6 +3,7 @@ import { api } from '../../shared/api.ts';
 import { useStore } from '../../shared/store.ts';
 import { fmt } from '../../shared/lib/cn.ts';
 import { Badge, Button, Dialog, Input } from '../../shared/ui/index.tsx';
+import { Coins, HandCoins, Tray } from '@phosphor-icons/react';
 
 interface BuyRequest {
   id: number;
@@ -74,14 +75,14 @@ export function BankControls({ roomId }: { roomId: string }) {
   return (
     <>
       <Button variant="secondary" onClick={() => setBuyOpen(true)}>
-        Buy points
+        <Coins size={17} /> Buy points
       </Button>
       <Button variant="secondary" onClick={() => setSendOpen(true)}>
-        Send chips
+        <HandCoins size={17} /> Send chips
       </Button>
       {isBanker && (
         <Button variant="secondary" onClick={() => setInboxOpen(true)} className="relative">
-          Bank inbox
+          <Tray size={17} /> Bank inbox
           {requests.length > 0 && (
             <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[0.65rem] font-bold text-white">
               {requests.length}
@@ -101,11 +102,20 @@ export function BankControls({ roomId }: { roomId: string }) {
             </p>
             <label className="block text-sm">
               <span className="mb-1 block text-slate-500">Amount</span>
-              <Input type="number" min={1} value={amount} onChange={(e) => setAmount(+e.target.value)} />
+              <Input
+                type="number"
+                min={1}
+                value={amount}
+                onChange={(e) => setAmount(+e.target.value)}
+              />
             </label>
             <label className="block text-sm">
               <span className="mb-1 block text-slate-500">Note (optional)</span>
-              <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="paid via UPI" />
+              <Input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="paid via UPI"
+              />
             </label>
             <Button type="submit" className="w-full">
               Request {fmt(amount)} points
@@ -169,7 +179,11 @@ export function BankControls({ roomId }: { roomId: string }) {
             </label>
             <label className="block text-sm">
               <span className="mb-1 block text-slate-500">Note (optional)</span>
-              <Input value={sendNote} onChange={(e) => setSendNote(e.target.value)} placeholder="loan until next buy-in" />
+              <Input
+                value={sendNote}
+                onChange={(e) => setSendNote(e.target.value)}
+                placeholder="loan until next buy-in"
+              />
             </label>
             <Button type="submit" className="w-full" disabled={sendTo === ''}>
               Send {fmt(sendAmount)}
@@ -190,7 +204,9 @@ export function BankControls({ roomId }: { roomId: string }) {
                 min={0}
                 max={500}
                 defaultValue={room?.room.minSettleHands ?? 0}
-                onBlur={(e) => void api.setMinSettleHands(roomId, Math.max(0, +e.target.value)).catch(() => {})}
+                onBlur={(e) =>
+                  void api.setMinSettleHands(roomId, Math.max(0, +e.target.value)).catch(() => {})
+                }
               />
             </label>
             <label className="block text-sm">
@@ -203,7 +219,9 @@ export function BankControls({ roomId }: { roomId: string }) {
                 min={0}
                 max={100000}
                 defaultValue={room?.room.sevenDeuceBonus ?? 0}
-                onBlur={(e) => void api.setSevenDeuceBonus(roomId, Math.max(0, +e.target.value)).catch(() => {})}
+                onBlur={(e) =>
+                  void api.setSevenDeuceBonus(roomId, Math.max(0, +e.target.value)).catch(() => {})
+                }
               />
             </label>
           </div>
@@ -215,7 +233,9 @@ export function BankControls({ roomId }: { roomId: string }) {
             </span>
             <select
               value={room?.room.coBankerId ?? ''}
-              onChange={(e) => void api.setCoBanker(roomId, e.target.value ? +e.target.value : null)}
+              onChange={(e) =>
+                void api.setCoBanker(roomId, e.target.value ? +e.target.value : null)
+              }
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
             >
               <option value="">None</option>
@@ -234,7 +254,10 @@ export function BankControls({ roomId }: { roomId: string }) {
         ) : (
           <div className="space-y-3">
             {requests.map((r) => (
-              <div key={r.id} className="flex items-center gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
+              <div
+                key={r.id}
+                className="flex items-center gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60"
+              >
                 <div className="flex-1">
                   <div className="text-sm font-semibold">
                     {r.username} · <span className="font-display">{fmt(r.amount)}</span>
