@@ -36,7 +36,9 @@ class TestClient {
   handId: string | null = null;
   handKey: bigint | null = null;
   myCards: CardId[] = [];
+  myCardPoints: { deckIndex: number; point: string }[] = [];
   board: CardId[] = [];
+  cardsShown: { seat: number; cards: CardId[] }[] = [];
   sawShowdown = false;
   handEnd: Extract<ServerMsg, { t: 'hand_end' }> | null = null;
   handAbort: Extract<ServerMsg, { t: 'hand_abort' }> | null = null;
@@ -97,21 +99,34 @@ class TestClient {
     this.send({ t: 'action', handId: this.handId, action, sig: this.signed('action', { action }) });
   }
 
+  showCards(): void {
+    const shares = this.myCardPoints.map(({ deckIndex, point }) => {
+      const { out, proof } = proveUnmask(this.handKey!, pointFromHex(point));
+      return { deckIndex, out: pointHex(out), proof };
+    });
+    this.send({ t: 'show_cards', handId: this.handId, shares, sig: this.signed('show_cards', { shares }) });
+  }
+
   handle(msg: ServerMsg): void {
     switch (msg.t) {
       case 'hand_start': {
         const mine = msg.seats.find((s) => s.userId === this.userId);
         if (!mine) break;
-        this.seat = mine.seat;
-        this.handId = msg.handId;
-        this.handKey = randScalar();
-        this.myCards = [];
-        this.board = [];
-        this.sawShowdown = false;
-        this.handEnd = null;
-        this.handAbort = null;
-        this.lastRespondedActionSeq = -1;
-        const commit = pointHex(handKeyCommit(this.handKey));
+        // like the real client: a re-delivered hand_start (reconnect) keeps state and key
+        if (this.handId !== msg.handId) {
+          this.seat = mine.seat;
+          this.handId = msg.handId;
+          this.handKey = randScalar();
+          this.myCards = [];
+          this.myCardPoints = [];
+          this.board = [];
+          this.cardsShown = [];
+          this.sawShowdown = false;
+          this.handEnd = null;
+          this.handAbort = null;
+          this.lastRespondedActionSeq = -1;
+        }
+        const commit = pointHex(handKeyCommit(this.handKey!));
         this.send({ t: 'key_commit', handId: this.handId, commit, sig: this.signed('key_commit', { commit }) });
         break;
       }
@@ -130,13 +145,21 @@ class TestClient {
         break;
       }
       case 'your_card': {
+        if (this.myCardPoints.some((c) => c.deckIndex === msg.deckIndex)) break;
         const plain = mulPoint(pointFromHex(msg.point), invScalar(this.handKey!));
         const card = recoverCard(plain, this.lookup);
-        if (card !== null) this.myCards.push(card);
+        if (card !== null) {
+          this.myCards.push(card);
+          this.myCardPoints.push({ deckIndex: msg.deckIndex, point: msg.point });
+        }
         break;
       }
       case 'board_open': {
-        this.board.push(msg.card);
+        if (!this.board.includes(msg.card)) this.board.push(msg.card);
+        break;
+      }
+      case 'cards_shown': {
+        this.cardsShown.push({ seat: msg.seat, cards: msg.cards });
         break;
       }
       case 'betting_state': {
@@ -285,5 +308,47 @@ describe('full hand integration', () => {
     expect(players[0]!.handAbort!.blamedSeat).toBe(2);
     const state = await host.api(`/api/rooms/${room.id}`);
     for (const p of state.players) expect(p.stack).toBe(1000);
+  }, 20000);
+
+  it('a disconnected player can rejoin during the grace window and the hand completes', async () => {
+    const { players, room, host } = await setupRoom(['host', 'bob', 'flaky']);
+    const flaky = players[2]!;
+    flaky.respondShares = false; // simulates a device that missed the requests
+    host.send({ t: 'start_hand' });
+    await new Promise((r) => setTimeout(r, 2000)); // the deal is now stalled on flaky
+    expect(host.handAbort).toBeNull();
+    flaky.ws.close();
+    flaky.respondShares = true;
+    await flaky.connect(room.id); // rejoin: the server re-sends what it is waiting on
+    await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null, 20000)));
+    for (const p of players) expect(p.handAbort).toBeNull();
+    expect(flaky.myCards).toHaveLength(2);
+  }, 20000);
+
+  it('a folded player can voluntarily show cards while the hand continues', async () => {
+    const { players, host } = await setupRoom(
+      ['host', 'bob', 'carol'],
+      ['fold-first', 'passive', 'passive'],
+    );
+    host.send({ t: 'start_hand' });
+    await host.waitFor(() => host.lastRespondedActionSeq >= 0); // host has sent the fold
+    await new Promise((r) => setTimeout(r, 200));
+    host.showCards();
+    await players[2]!.waitFor(() => players[2]!.cardsShown.length > 0);
+    expect(players[2]!.cardsShown[0]!.seat).toBe(host.seat);
+    expect(players[2]!.cardsShown[0]!.cards.slice().sort()).toEqual(host.myCards.slice().sort());
+    await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null)));
+    expect(players[0]!.handAbort).toBeNull();
+  });
+
+  it('the fold winner can voluntarily show cards after the hand ends', async () => {
+    const { players, host } = await setupRoom(['host', 'bob'], ['fold-first', 'passive']);
+    host.send({ t: 'start_hand' });
+    await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null)));
+    const bob = players[1]!;
+    bob.showCards();
+    await host.waitFor(() => host.cardsShown.length > 0);
+    expect(host.cardsShown[0]!.seat).toBe(bob.seat);
+    expect(host.cardsShown[0]!.cards.slice().sort()).toEqual(bob.myCards.slice().sort());
   });
 });

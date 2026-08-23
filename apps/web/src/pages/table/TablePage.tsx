@@ -163,7 +163,7 @@ export function TablePage() {
           connected: p.connected,
           speaking: !!voiceState.speakingByUser[p.userId],
           voiceMuted: !!voiceState.mutedByUser[p.userId],
-          revealed: reveal?.cards,
+          revealed: reveal?.cards ?? hand.shown[p.seat!],
           won,
           lastAction: hand.lastActions[p.seat!],
         };
@@ -212,18 +212,24 @@ export function TablePage() {
 
   const pot = hand.betting ? hand.betting.seats.reduce((s, x) => s + x.total, 0) : 0;
   const me = seatViews.find((s) => s.seat === mySeat);
-  const opponents = seatViews.filter((s) => s.seat !== mySeat);
+  // players seated but not dealt into the live hand stay hidden until the next deal
+  const opponents = seatViews.filter((s) => s.seat !== mySeat && (!handLive || s.inHand));
   const takenSeats = new Set(seatViews.map((s) => s.seat));
   const secs = remaining !== null ? Math.max(0, Math.ceil(remaining / 1000)) : null;
   const showResult = (hand.result !== null || hand.abort !== null) && !resultDismissed;
 
+  const disconnectedInHand = handLive
+    ? seatViews.filter((s) => s.inHand && !s.folded && !s.connected).map((s) => s.displayName)
+    : [];
   const mobileStatus = !handLive
     ? null
-    : hand.betting
-      ? hand.betting.toAct !== null && hand.betting.toAct !== mySeat
-        ? `Waiting for ${seatViews.find((s) => s.seat === hand.betting!.toAct)?.displayName ?? 'player'}…`
-        : null
-      : 'Shuffling the encrypted deck…';
+    : disconnectedInHand.length > 0
+      ? `${disconnectedInHand.join(', ')} lost connection. Holding the hand for them to rejoin…`
+      : hand.betting
+        ? hand.betting.toAct !== null && hand.betting.toAct !== mySeat
+          ? `Waiting for ${seatViews.find((s) => s.seat === hand.betting!.toAct)?.displayName ?? 'player'}…`
+          : null
+        : 'Shuffling the encrypted deck…';
 
   const resultBanner = showResult && (
     <motion.div initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }}>
@@ -242,7 +248,10 @@ export function TablePage() {
           <div className="text-sm">
             <span className="font-semibold text-rose-600">Hand aborted:</span> {hand.abort.reason}
             {hand.abort.blamedSeat !== null &&
-              `. Caused by seat ${hand.abort.blamedSeat + 1}; stacks rolled back.`}
+              `. ${
+                hand.seats.find((s) => s.seat === hand.abort!.blamedSeat)?.username ??
+                `Seat ${hand.abort.blamedSeat + 1}`
+              } did not come back in time; all bets were returned.`}
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">

@@ -36,6 +36,8 @@ import { getRoom, roomPlayers } from './rooms.js';
 export interface GameOpts {
   cryptoTimeoutMs: number;
   actionTimeoutMs: number;
+  /** Extra chances a stalled player gets before the hand aborts (default 3). */
+  cryptoRetries?: number;
 }
 
 interface Identity {
@@ -59,10 +61,23 @@ interface Chain {
   remaining: number[]; // seats yet to apply their unmask, in order
 }
 
+interface ShowSnapshot {
+  handId: string;
+  bySeat: Map<
+    number,
+    { userId: number; pubkey: string; commit: Point; cards: { deckIndex: number; point: Point }[] }
+  >;
+}
+
 export class GameRoom {
   private sockets = new Map<number, WebSocket>();
   private hand: Hand | null = null;
   private lastButton: number | null = null;
+  // voluntary card shows for the current (or most recently ended) hand
+  private shown = new Map<number, CardId[]>();
+  private shownHandId: string | null = null;
+  private lastHandShow: ShowSnapshot | null = null;
+  private lookup = cardLookup();
 
   constructor(
     private db: DB,
@@ -74,6 +89,15 @@ export class GameRoom {
   join(userId: number, ws: WebSocket): void {
     this.sockets.set(userId, ws);
     this.broadcastRoomState();
+    // late joiners and reconnects still get to see voluntarily shown cards
+    if (this.shownHandId) {
+      for (const [seat, cards] of this.shown) {
+        this.send(userId, { t: 'cards_shown', handId: this.shownHandId, seat, cards });
+      }
+    }
+    // a rejoining participant gets the whole hand context back, plus any
+    // request (shuffle turn, unmask share) the table is still waiting on
+    this.hand?.resendPending(userId);
   }
 
   leave(userId: number, ws: WebSocket): void {
@@ -194,6 +218,10 @@ export class GameRoom {
         this.hand.onMessage(userId, msg);
         return;
       }
+      case 'show_cards': {
+        if (this.hand && this.hand.id === msg.handId) return this.hand.onMessage(userId, msg);
+        return this.onPostHandShow(userId, msg);
+      }
       default:
         return;
     }
@@ -229,12 +257,61 @@ export class GameRoom {
       ...this.opts,
       actionTimeoutMs: room.action_secs !== null ? room.action_secs * 1000 : this.opts.actionTimeoutMs,
     };
+    this.shown.clear();
+    this.shownHandId = null;
     this.hand = new Hand(this, this.db, room.id, handSeats, button, room.sb, room.bb, room.audit_mode, this.serverId, handOpts, () => {
       this.lastButton = button;
+      this.lastHandShow = this.hand?.showSnapshot() ?? null;
       this.hand = null;
       this.broadcastRoomState();
     });
     this.hand.begin();
+  }
+
+  /** Records a verified voluntary show and tells the table. Returns false when already shown. */
+  recordShow(handId: string, seat: number, cards: CardId[]): boolean {
+    if (this.shownHandId !== handId) {
+      this.shown.clear();
+      this.shownHandId = handId;
+    }
+    if (this.shown.has(seat)) return false;
+    this.shown.set(seat, cards);
+    this.broadcast({ t: 'cards_shown', handId, seat, cards });
+    return true;
+  }
+
+  /** A show after the hand ended: verified against the finished hand's snapshot. */
+  private onPostHandShow(userId: number, msg: Extract<ClientMsg, { t: 'show_cards' }>): void {
+    const snap = this.lastHandShow;
+    if (!snap || snap.handId !== msg.handId)
+      return this.send(userId, { t: 'error', message: 'no such hand' });
+    const entry = [...snap.bySeat.entries()].find(([, v]) => v.userId === userId);
+    if (!entry) return this.send(userId, { t: 'error', message: 'you were not in that hand' });
+    const [seat, v] = entry;
+    if (this.shownHandId === msg.handId && this.shown.has(seat)) return;
+    if (!verifyContent(v.pubkey, msg.handId, 'show_cards', signedBody(msg), msg.sig))
+      return this.send(userId, { t: 'error', message: 'bad signature' });
+    const points = new Map(v.cards.map((c) => [c.deckIndex, c.point]));
+    const cards: CardId[] = [];
+    const seen = new Set<number>();
+    for (const sh of msg.shares) {
+      const pIn = points.get(sh.deckIndex);
+      if (!pIn || seen.has(sh.deckIndex))
+        return this.send(userId, { t: 'error', message: 'invalid card reveal' });
+      seen.add(sh.deckIndex);
+      let out: Point;
+      try {
+        out = pointFromHex(sh.out);
+      } catch {
+        return this.send(userId, { t: 'error', message: 'invalid card reveal' });
+      }
+      if (!verifyUnmask(v.commit, pIn, out, sh.proof))
+        return this.send(userId, { t: 'error', message: 'invalid card reveal' });
+      const card = recoverCard(out, this.lookup);
+      if (card === null) return this.send(userId, { t: 'error', message: 'invalid card reveal' });
+      cards.push(card);
+    }
+    this.recordShow(msg.handId, seat, cards);
   }
 }
 
@@ -253,6 +330,10 @@ class Hand {
   private betting: BettingState | null = null;
   private actionSeq = 0;
   private reveals = new Map<number, CardId[]>();
+  private shownSeats = new Set<number>();
+  private startMsg: ServerMsg | null = null;
+  private lastDeadline: number | null = null;
+  private retriesLeft: number;
   private revealedKeys = new Map<number, string>();
   private runout = false;
   private timer: NodeJS.Timeout | null = null;
@@ -278,6 +359,7 @@ class Hand {
     private onDone: () => void,
   ) {
     this.n = seats.length;
+    this.retriesLeft = opts.cryptoRetries ?? 3;
   }
 
   // ---------- lifecycle ----------
@@ -290,7 +372,7 @@ class Hand {
       sb: this.sb,
       bb: this.bb,
     });
-    this.room.broadcast({
+    this.startMsg = {
       t: 'hand_start',
       handId: this.id,
       seats: this.seats.map((s) => ({
@@ -304,7 +386,8 @@ class Hand {
       sb: this.sb,
       bb: this.bb,
       auditMode: this.auditMode,
-    });
+    };
+    this.room.broadcast(this.startMsg);
     this.armTimer(this.opts.cryptoTimeoutMs);
   }
 
@@ -319,6 +402,14 @@ class Hand {
   }
 
   private onTimeout(): void {
+    // give a stalled (often just disconnected) player a fixed grace window:
+    // re-send whatever we are waiting on a few times before giving up
+    if (this.phase !== 'betting' && this.phase !== 'audit' && this.phase !== 'done' && this.retriesLeft > 0) {
+      this.retriesLeft--;
+      this.renudge();
+      this.armTimer(this.opts.cryptoTimeoutMs);
+      return;
+    }
     switch (this.phase) {
       case 'commit': {
         const missing = this.seats.find((s) => !this.commits.has(s.seat));
@@ -356,16 +447,66 @@ class Hand {
     this.clearTimer();
     this.phase = 'done';
     this.appendServer('hand_abort', { reason, blamedSeat });
-    if (blamedSeat !== null) {
-      const info = this.seats.find((s) => s.seat === blamedSeat);
-      if (info) {
-        this.db
-          .prepare('UPDATE room_players SET sitting_out = 1 WHERE room_id = ? AND user_id = ?')
-          .run(this.roomId, info.userId);
-      }
-    }
+    // no sitting-out penalty: the next deal already skips disconnected players,
+    // and punishing a flaky connection kept locking people out of their seat
     this.room.broadcast({ t: 'hand_abort', handId: this.id, reason, blamedSeat });
     this.onDone();
+  }
+
+  /** Re-send whatever request the stalled player(s) may have missed. */
+  private renudge(): void {
+    switch (this.phase) {
+      case 'commit':
+        if (this.startMsg)
+          for (const s of this.seats)
+            if (!this.commits.has(s.seat)) this.room.send(s.userId, this.startMsg);
+        return;
+      case 'shuffle':
+        this.requestShuffle();
+        return;
+      case 'deal':
+      case 'reveal':
+        for (const chain of this.chains.values())
+          if (chain.remaining.length > 0) this.kickChain(chain);
+        return;
+      default:
+        return;
+    }
+  }
+
+  /** Bring a (re)connecting participant fully back into the hand. */
+  resendPending(userId: number): void {
+    const info = this.seatOf(userId);
+    if (!info || this.phase === 'done') return;
+    if (this.startMsg) this.room.send(userId, this.startMsg);
+    const orderIdx = this.seats.findIndex((s) => s.seat === info.seat);
+    for (const idx of this.holeIndexes(orderIdx)) {
+      const pt = this.holeFinal.get(idx);
+      if (pt) this.room.send(userId, { t: 'your_card', handId: this.id, deckIndex: idx, point: pointHex(pt) });
+    }
+    for (const [deckIndex, card] of this.boardCards) {
+      this.room.send(userId, { t: 'board_open', handId: this.id, deckIndex, card });
+    }
+    if (this.phase === 'shuffle' && this.seats[this.shuffleIdx]?.seat === info.seat) {
+      this.requestShuffle();
+    }
+    if (this.phase === 'deal' || this.phase === 'reveal') {
+      for (const chain of this.chains.values())
+        if (chain.remaining[0] === info.seat) this.kickChain(chain);
+    }
+    if (this.phase === 'betting' && this.betting) {
+      this.room.send(userId, {
+        t: 'betting_state',
+        handId: this.id,
+        actionSeq: this.actionSeq,
+        state: this.betting,
+        board: this.currentBoard(),
+        deadline: this.lastDeadline,
+      });
+    }
+    if (this.phase === 'audit' && !this.revealedKeys.has(info.seat)) {
+      this.room.send(userId, { t: 'need_keys', handId: this.id });
+    }
   }
 
   // ---------- transcript ----------
@@ -405,7 +546,7 @@ class Hand {
     if (this.phase === 'done') return;
     const info = this.seatOf(userId);
     if (!info) return this.err(userId, 'not in this hand');
-    if (msg.t === 'key_commit' || msg.t === 'shuffle_deck' || msg.t === 'unmask_share' || msg.t === 'action' || msg.t === 'reveal_key') {
+    if (msg.t === 'key_commit' || msg.t === 'shuffle_deck' || msg.t === 'unmask_share' || msg.t === 'action' || msg.t === 'reveal_key' || msg.t === 'show_cards') {
       if (!verifyContent(info.pubkey, this.id, msg.t, signedBody(msg), msg.sig)) {
         return this.err(userId, 'bad signature');
       }
@@ -421,9 +562,83 @@ class Hand {
         return this.onAction(info, msg.action, msg.sig);
       case 'reveal_key':
         return this.onRevealKey(info, msg.key, msg.sig);
+      case 'show_cards':
+        return this.onShowCards(info, msg.shares, msg.sig);
       default:
         return;
     }
+  }
+
+  // ---------- voluntary shows ----------
+
+  /** Mid-hand a player may show their cards only once they have folded. */
+  private onShowCards(
+    info: HandSeatInfo,
+    shares: { deckIndex: number; out: string; proof: { A1: string; A2: string; z: string } }[],
+    sig: string,
+  ): void {
+    const folded = this.betting?.seats.find((s) => s.seat === info.seat)?.folded;
+    if (!folded)
+      return this.err(info.userId, 'you can show your cards after folding or once the hand ends');
+    if (this.shownSeats.has(info.seat)) return;
+    const cards = this.verifyShowShares(info.seat, shares);
+    if (!cards) return this.err(info.userId, 'invalid card reveal');
+    this.shownSeats.add(info.seat);
+    this.appendPlayer('show_cards', info.pubkey, { shares }, sig);
+    this.room.recordShow(this.id, info.seat, cards);
+  }
+
+  private verifyShowShares(
+    seat: number,
+    shares: { deckIndex: number; out: string; proof: { A1: string; A2: string; z: string } }[],
+  ): CardId[] | null {
+    const orderIdx = this.seats.findIndex((s) => s.seat === seat);
+    const validIdx = new Set(this.holeIndexes(orderIdx));
+    const commit = this.commits.get(seat);
+    if (!commit) return null;
+    const cards: CardId[] = [];
+    const seen = new Set<number>();
+    for (const sh of shares) {
+      if (!validIdx.has(sh.deckIndex) || seen.has(sh.deckIndex)) return null;
+      seen.add(sh.deckIndex);
+      const pIn = this.holeFinal.get(sh.deckIndex);
+      if (!pIn) return null;
+      let out: Point;
+      try {
+        out = pointFromHex(sh.out);
+      } catch {
+        return null;
+      }
+      if (!verifyUnmask(commit, pIn, out, sh.proof)) return null;
+      const card = recoverCard(out, this.lookup);
+      if (card === null) return null;
+      cards.push(card);
+    }
+    return cards;
+  }
+
+  /** What GameRoom needs to keep verifying shows after this hand is gone. */
+  showSnapshot(): {
+    handId: string;
+    bySeat: Map<
+      number,
+      { userId: number; pubkey: string; commit: Point; cards: { deckIndex: number; point: Point }[] }
+    >;
+  } {
+    const bySeat = new Map<
+      number,
+      { userId: number; pubkey: string; commit: Point; cards: { deckIndex: number; point: Point }[] }
+    >();
+    for (let k = 0; k < this.n; k++) {
+      const s = this.seats[k]!;
+      const commit = this.commits.get(s.seat);
+      if (!commit) continue;
+      const cards = this.holeIndexes(k)
+        .filter((i) => this.holeFinal.has(i))
+        .map((i) => ({ deckIndex: i, point: this.holeFinal.get(i)! }));
+      if (cards.length) bySeat.set(s.seat, { userId: s.userId, pubkey: s.pubkey, commit, cards });
+    }
+    return { handId: this.id, bySeat };
   }
 
   // ---------- commit + shuffle ----------
@@ -438,6 +653,7 @@ class Hand {
       return this.err(info.userId, 'bad commit point');
     }
     this.commits.set(info.seat, commit);
+    this.retriesLeft = this.opts.cryptoRetries ?? 3;
     this.appendPlayer('key_commit', info.pubkey, { commit: commitHex }, sig);
     this.room.broadcast({ t: 'key_commit_applied', handId: this.id, seat: info.seat, commit: commitHex });
     if (this.commits.size === this.n) {
@@ -470,6 +686,7 @@ class Hand {
     }
     if (new Set(deckHexes).size !== 52) return this.abort('shuffled deck has duplicates', info.seat);
     this.deck = points;
+    this.retriesLeft = this.opts.cryptoRetries ?? 3;
     this.appendPlayer('shuffle_deck', info.pubkey, { deck: deckHexes }, sig);
     this.room.broadcast({ t: 'deck_state', handId: this.id, seat: info.seat, deck: deckHexes });
     this.shuffleIdx++;
@@ -534,6 +751,7 @@ class Hand {
     if (!verifyUnmask(commit, chain.current, out, proof)) {
       return this.abort('invalid unmask proof', info.seat);
     }
+    this.retriesLeft = this.opts.cryptoRetries ?? 3;
     this.appendPlayer('unmask_share', info.pubkey, { deckIndex, out: outHex, proof }, sig);
     this.room.broadcast({
       t: 'share_applied',
@@ -624,7 +842,8 @@ class Hand {
       actionSeq: this.actionSeq,
       state: this.betting!,
       board: this.currentBoard(),
-      deadline: this.opts.actionTimeoutMs > 0 ? Date.now() + this.opts.actionTimeoutMs : null,
+      deadline: (this.lastDeadline =
+        this.opts.actionTimeoutMs > 0 ? Date.now() + this.opts.actionTimeoutMs : null),
     });
   }
 

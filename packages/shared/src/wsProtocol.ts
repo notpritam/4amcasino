@@ -30,6 +30,15 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('action'), handId: z.string(), action: playerActionSchema, sig: hex(128) }),
   z.object({ t: z.literal('reveal_key'), handId: z.string(), key: z.string().regex(/^[0-9a-f]+$/), sig: hex(128) }),
   z.object({
+    t: z.literal('show_cards'),
+    handId: z.string(),
+    shares: z
+      .array(z.object({ deckIndex: z.number().int().min(0).max(51), out: hex(64), proof: dleqProofSchema }))
+      .min(1)
+      .max(2),
+    sig: hex(128),
+  }),
+  z.object({
     t: z.literal('chat'),
     text: z.string().min(1).max(500),
     kind: z.enum(['text', 'sticker', 'phrase']).optional(),
@@ -52,6 +61,8 @@ export function signedBody(msg: ClientMsg): unknown {
       return { action: msg.action };
     case 'reveal_key':
       return { key: msg.key };
+    case 'show_cards':
+      return { shares: msg.shares };
     default:
       return null;
   }
@@ -115,6 +126,7 @@ export type ServerMsg =
       awards: { seat: number; amount: number }[];
     }
   | { t: 'hand_end'; handId: string; head: string; stacks: { seat: number; stack: number }[]; deltas: { seat: number; delta: number }[] }
+  | { t: 'cards_shown'; handId: string; seat: number; cards: CardId[] }
   | { t: 'hand_abort'; handId: string; reason: string; blamedSeat: number | null }
   | { t: 'need_keys'; handId: string }
   | { t: 'transcript_entry'; handId: string; seq: number; type: string; from: string; head: string };

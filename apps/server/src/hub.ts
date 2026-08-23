@@ -7,7 +7,8 @@ import { userForToken } from './auth.js';
 import { isMember, roomEvents } from './rooms.js';
 import { GameRoom, type GameOpts } from './game.js';
 
-const DEFAULT_OPTS: GameOpts = { cryptoTimeoutMs: 30_000, actionTimeoutMs: 45_000 };
+// 10s per attempt with 3 retries: a stalled player gets a fixed ~40s to rejoin
+const DEFAULT_OPTS: GameOpts = { cryptoTimeoutMs: 10_000, actionTimeoutMs: 45_000 };
 
 export function attachHub(
   app: FastifyInstance,

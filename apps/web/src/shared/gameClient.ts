@@ -34,9 +34,10 @@ function mySeatIn(seats: { seat: number; userId: number }[]): number | null {
   return seats.find((s) => s.userId === userId)?.seat ?? null;
 }
 
-function signed(t: string, body: unknown): string {
+/** Sign against the hand named in the server's message, not local state, so
+ *  crypto responses still work right after a reconnect or page reload. */
+function signed(handId: string, t: string, body: unknown): string {
   const { auth } = useStore.getState();
-  const handId = useStore.getState().hand.handId!;
   return signContent(auth.identity!.secretKey, handId, t, body);
 }
 
@@ -44,7 +45,19 @@ function signed(t: string, body: unknown): string {
 export function act(action: PlayerAction): void {
   const handId = useStore.getState().hand.handId;
   if (!handId) return;
-  wsClient.send({ t: 'action', handId, action, sig: signed('action', { action }) });
+  wsClient.send({ t: 'action', handId, action, sig: signed(handId, 'action', { action }) });
+}
+
+/** Voluntarily reveal your hole cards to the table (after folding, or once the hand is over). */
+export function showMyCards(): void {
+  const { hand } = useStore.getState();
+  if (!hand.handId || hand.myCardPoints.length === 0) return;
+  const k = handKeyFor(hand.handId);
+  const shares = hand.myCardPoints.map(({ deckIndex, point }) => {
+    const { out, proof } = proveUnmask(k, pointFromHex(point));
+    return { deckIndex, out: pointHex(out), proof };
+  });
+  wsClient.send({ t: 'show_cards', handId: hand.handId, shares, sig: signed(hand.handId, 'show_cards', { shares }) });
 }
 
 export function sit(seat: number): void {
@@ -105,13 +118,25 @@ function handle(msg: ServerMsg): void {
 
     case 'hand_start': {
       const mySeat = mySeatIn(msg.seats);
-      store.resetHand({
-        handId: msg.handId,
-        seats: msg.seats,
-        buttonSeat: msg.buttonSeat,
-      });
+      // re-sent on reconnect: never wipe state we already have for this hand
+      const fresh = useStore.getState().hand.handId !== msg.handId;
+      if (fresh) {
+        store.resetHand({
+          handId: msg.handId,
+          seats: msg.seats,
+          buttonSeat: msg.buttonSeat,
+        });
+        // previous hands' keys are no longer needed: the voluntary-show window
+        // for the last hand closes when a new one is dealt
+        for (let i = sessionStorage.length - 1; i >= 0; i--) {
+          const key = sessionStorage.key(i);
+          if (key?.startsWith('4am/handkey/') && key !== `4am/handkey/${msg.handId}`) {
+            sessionStorage.removeItem(key);
+          }
+        }
+      }
       if (mySeat === null) return; // spectator
-      play('shuffle');
+      if (fresh) play('shuffle');
       const k = handKeyFor(msg.handId);
       const commit = pointHex(handKeyCommit(k));
       wsClient.send({
@@ -128,7 +153,7 @@ function handle(msg: ServerMsg): void {
       if (msg.seat !== mySeatIn(hand.seats)) return;
       const k = handKeyFor(msg.handId);
       const deck = maskAndShuffle(msg.deck.map(pointFromHex), k, randomPerm(52)).map(pointHex);
-      wsClient.send({ t: 'shuffle_deck', handId: msg.handId, deck, sig: signed('shuffle_deck', { deck }) });
+      wsClient.send({ t: 'shuffle_deck', handId: msg.handId, deck, sig: signed(msg.handId, 'shuffle_deck', { deck }) });
       return;
     }
 
@@ -136,11 +161,13 @@ function handle(msg: ServerMsg): void {
       const k = handKeyFor(msg.handId);
       const { out, proof } = proveUnmask(k, pointFromHex(msg.point));
       const body = { deckIndex: msg.deckIndex, out: pointHex(out), proof };
-      wsClient.send({ t: 'unmask_share', handId: msg.handId, ...body, sig: signed('unmask_share', body) });
+      wsClient.send({ t: 'unmask_share', handId: msg.handId, ...body, sig: signed(msg.handId, 'unmask_share', body) });
       return;
     }
 
     case 'your_card': {
+      const h = useStore.getState().hand;
+      if (h.myCardPoints.some((c) => c.deckIndex === msg.deckIndex)) return; // re-delivered on reconnect
       const k = handKeyFor(msg.handId);
       const plain = mulPoint(pointFromHex(msg.point), invScalar(k));
       const card = recoverCard(plain, lookup);
@@ -149,7 +176,10 @@ function handle(msg: ServerMsg): void {
         return;
       }
       play('deal');
-      store.patchHand({ myCards: [...useStore.getState().hand.myCards, card] });
+      store.patchHand({
+        myCards: [...h.myCards, card],
+        myCardPoints: [...h.myCardPoints, { deckIndex: msg.deckIndex, point: msg.point }],
+      });
       return;
     }
 
@@ -190,6 +220,14 @@ function handle(msg: ServerMsg): void {
       return;
     }
 
+    case 'cards_shown': {
+      const h = useStore.getState().hand;
+      if (h.handId !== msg.handId) return;
+      play('flip');
+      store.patchHand({ shown: { ...h.shown, [msg.seat]: msg.cards } });
+      return;
+    }
+
     case 'showdown':
       store.patchHand({ showdown: msg });
       return;
@@ -199,20 +237,19 @@ function handle(msg: ServerMsg): void {
       const myDelta = msg.deltas.find((d) => d.seat === mySeat)?.delta ?? 0;
       play(myDelta > 0 ? 'win' : 'end');
       store.patchHand({ result: msg, deadline: null });
-      sessionStorage.removeItem(`4am/handkey/${msg.handId}`);
+      // the hand key stays until the next deal so "Show cards" can still prove reveals
       return;
     }
 
     case 'hand_abort': {
       store.patchHand({ abort: msg, deadline: null });
-      sessionStorage.removeItem(`4am/handkey/${msg.handId}`);
       return;
     }
 
     case 'need_keys': {
       const k = handKeyFor(msg.handId);
       const key = k.toString(16);
-      wsClient.send({ t: 'reveal_key', handId: msg.handId, key, sig: signed('reveal_key', { key }) });
+      wsClient.send({ t: 'reveal_key', handId: msg.handId, key, sig: signed(msg.handId, 'reveal_key', { key }) });
       return;
     }
 

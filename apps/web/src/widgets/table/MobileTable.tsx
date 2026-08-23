@@ -9,7 +9,7 @@ import {
   rankOf,
   type CardId,
 } from '@4am/shared';
-import { act, startHand } from '../../shared/gameClient.ts';
+import { act, showMyCards, startHand } from '../../shared/gameClient.ts';
 import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
@@ -69,7 +69,7 @@ function OpponentColumn({ p, urgent }: { p: SeatView; urgent: boolean }) {
             {p.lastAction.type}
           </span>
         )}
-        {p.inHand && !p.folded && p.revealed && (
+        {p.inHand && p.revealed && (
           <div className="absolute -right-3 -top-2 flex gap-0.5">
             {p.revealed.map((c) => (
               <PlayingCard key={c} card={c} size="xs" deal />
@@ -103,6 +103,7 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
   const [raiseOpen, setRaiseOpen] = useState(false);
   const [raiseTo, setRaiseTo] = useState(0);
   const [sentAtSeq, setSentAtSeq] = useState<number | null>(null);
+  const [showSentFor, setShowSentFor] = useState<string | null>(null);
 
   const st = hand.betting;
   const la = st ? legalActions(st) : null;
@@ -135,25 +136,53 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
     'flex-1 rounded-full border border-white/25 px-4 py-3 text-center text-sm font-semibold text-white active:scale-[0.98]';
 
   const myStack = room?.players.find((pl) => pl.seat === mySeat)?.stack ?? 0;
+
+  // voluntary card show: available once you folded, or when the hand is over
+  const iFolded = !!st?.seats.find((s) => s.seat === mySeat)?.folded;
+  const dealtIn = mySeat !== null && hand.seats.some((s) => s.seat === mySeat) && hand.myCards.length > 0;
+  const alreadyPublic =
+    mySeat !== null &&
+    (!!hand.shown[mySeat] || !!hand.showdown?.reveals.some((r) => r.seat === mySeat));
+  const canShow = dealtIn && !alreadyPublic && (iFolded || handOver);
+  const showBtn = canShow ? (
+    <button
+      disabled={showSentFor === hand.handId}
+      onClick={() => {
+        setShowSentFor(hand.handId);
+        showMyCards();
+      }}
+      className="mx-auto block rounded-full border border-white/25 px-4 py-1.5 text-xs font-semibold text-white/80 active:scale-[0.98] disabled:opacity-50"
+    >
+      Show cards
+    </button>
+  ) : null;
+
   if (handIdle) {
-    if (mySeat !== null && myStack === 0) {
-      return (
-        <p className="py-2 text-center text-sm font-semibold text-rose-300">
-          You are out of chips. Buy points from the bank (menu, top right).
-        </p>
-      );
-    }
-    return isHost ? (
-      <button onClick={startHand} className="w-full rounded-full bg-white py-3 text-sm font-bold text-slate-900 active:scale-[0.98]">
-        Start hand
-      </button>
-    ) : (
-      <p className="py-2 text-center text-sm text-white/50">Waiting for the host to deal.</p>
+    return (
+      <div className="space-y-2">
+        {showBtn}
+        {mySeat !== null && myStack === 0 ? (
+          <p className="py-2 text-center text-sm font-semibold text-rose-300">
+            You are out of chips. Buy points from the bank (menu, top right).
+          </p>
+        ) : isHost ? (
+          <button onClick={startHand} className="w-full rounded-full bg-white py-3 text-sm font-bold text-slate-900 active:scale-[0.98]">
+            Start hand
+          </button>
+        ) : (
+          <p className="py-2 text-center text-sm text-white/50">Waiting for the host to deal.</p>
+        )}
+      </div>
     );
   }
 
   if (!myTurn || !la || !st) {
-    return <p className="py-2 text-center text-sm text-white/50">{statusText ?? 'Waiting…'}</p>;
+    return (
+      <div className="space-y-2">
+        {showBtn}
+        <p className="py-2 text-center text-sm text-white/50">{statusText ?? 'Waiting…'}</p>
+      </div>
+    );
   }
 
   const potRaise = (frac: number) => {
@@ -253,7 +282,7 @@ export function MobileTable({
   const myCommitted = useStore(
     (s) => s.hand.betting?.seats.find((x) => x.seat === mySeat)?.committed ?? 0,
   );
-  const strength = me && me.inHand && !me.folded ? strengthLabel(myCards, board) : null;
+  const strength = me && me.inHand ? strengthLabel(myCards, board) : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3 text-white">
@@ -300,7 +329,7 @@ export function MobileTable({
       {/* hole cards + identity tile */}
       <div className="mt-4 flex items-end justify-between gap-3">
         <div className={cn('flex', me?.folded && 'opacity-40')}>
-          {me && me.inHand && !me.folded ? (
+          {me && me.inHand && (myCards.length > 0 || !me.folded) ? (
             myCards.length ? (
               myCards.map((c, i) => (
                 <PlayingCard key={c} card={c} size="xl" deal className={cn('shadow-2xl', i === 1 && '-ml-7')} />

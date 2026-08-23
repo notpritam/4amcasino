@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import NumberFlow from '@number-flow/react';
 import { legalActions, type PlayerAction } from '@4am/shared';
-import { act, startHand } from '../../shared/gameClient.ts';
+import { act, showMyCards, startHand } from '../../shared/gameClient.ts';
 import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
 import { Button } from '../../shared/ui/index.tsx';
@@ -26,6 +26,26 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
 
   const handIdle = !hand.handId || handOver;
   const sb = room?.room.sb ?? 1;
+
+  // voluntary card show: available once you folded, or when the hand is over
+  const iFolded = !!st?.seats.find((s) => s.seat === mySeat)?.folded;
+  const dealtIn = mySeat !== null && hand.seats.some((s) => s.seat === mySeat) && hand.myCards.length > 0;
+  const alreadyPublic =
+    mySeat !== null &&
+    (!!hand.shown[mySeat] || !!hand.showdown?.reveals.some((r) => r.seat === mySeat));
+  const canShow = dealtIn && !alreadyPublic && (iFolded || handOver);
+  const [showSentFor, setShowSentFor] = useState<string | null>(null);
+
+  // players still in the hand whose connection dropped: the hand holds for them
+  const disconnected =
+    !handIdle && room
+      ? hand.seats
+          .filter((s) => !hand.betting?.seats.find((b) => b.seat === s.seat)?.folded)
+          .filter((s) => room.players.some((p) => p.userId === s.userId && !p.connected))
+          .map(
+            (s) => room.players.find((p) => p.userId === s.userId)?.displayName ?? s.username,
+          )
+      : [];
 
   // pending: an action left this device but the table has not updated yet
   const [sentAtSeq, setSentAtSeq] = useState<number | null>(null);
@@ -156,13 +176,29 @@ export function ActionBar({ mySeat, isHost, urgent }: { mySeat: number | null; i
                 : isHost
                   ? 'Deal when everyone is seated.'
                   : 'Waiting for the host to deal.'
-              : st
-                ? `Waiting for ${
-                    room?.players.find((p) => p.seat === st.toAct)?.displayName ??
-                    `seat ${st.toAct !== null ? st.toAct + 1 : '-'}`
-                  }…`
-                : 'Shuffling: everyone is encrypting the deck…'}
+              : disconnected.length > 0
+                ? `${disconnected.join(', ')} lost connection. Holding the hand about 40 seconds for them to rejoin…`
+                : st
+                  ? `Waiting for ${
+                      room?.players.find((p) => p.seat === st.toAct)?.displayName ??
+                      `seat ${st.toAct !== null ? st.toAct + 1 : '-'}`
+                    }…`
+                  : 'Shuffling: everyone is encrypting the deck…'}
           </div>
+        )}
+
+        {canShow && (
+          <Button
+            variant="secondary"
+            className="border-0 bg-white/15 text-white hover:bg-white/25 dark:bg-white/15 dark:text-white dark:hover:bg-white/25"
+            disabled={showSentFor === hand.handId}
+            onClick={() => {
+              setShowSentFor(hand.handId);
+              showMyCards();
+            }}
+          >
+            Show cards
+          </Button>
         )}
 
         {handIdle && isHost && (

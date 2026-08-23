@@ -50,6 +50,8 @@ interface HandView {
   seats: HandStartMsg['seats'];
   buttonSeat: number | null;
   myCards: CardId[];
+  myCardPoints: { deckIndex: number; point: string }[];
+  shown: Record<number, CardId[]>;
   board: CardId[];
   betting: BettingState | null;
   actionSeq: number;
@@ -65,6 +67,8 @@ export const emptyHand: HandView = {
   seats: [],
   buttonSeat: null,
   myCards: [],
+  myCardPoints: [],
+  shown: {},
   board: [],
   betting: null,
   actionSeq: 0,

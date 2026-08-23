@@ -107,7 +107,7 @@ export function PlayerRow({ p, urgent }: { p: SeatView; urgent: boolean }) {
           <Badge tone="indigo">ALL-IN</Badge>
         ) : null}
       </div>
-      {p.inHand && !p.folded && (
+      {p.inHand && (!p.folded || p.revealed) && (
         <div className="flex gap-1">
           {p.revealed ? (
             p.revealed.map((c) => <PlayingCard key={c} card={c} size="xs" deal />)
@@ -156,7 +156,7 @@ export function YouRow({ p, cards, urgent }: { p: SeatView; cards: CardId[]; urg
         {p.broke ? <Badge tone="rose">OUT OF CHIPS</Badge> : p.lastAction && actionChip(p.lastAction)}
       </div>
       <div className="ml-auto flex gap-2">
-        {p.inHand && !p.folded ? (
+        {p.inHand && (cards.length > 0 || !p.folded) ? (
           cards.length ? (
             cards.map((c) => <PlayingCard key={c} card={c} size="md" deal />)
           ) : (
