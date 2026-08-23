@@ -9,6 +9,7 @@ import {
   rankOf,
   type CardId,
 } from '@4am/shared';
+import { Crown } from '@phosphor-icons/react';
 import { act, showMyCards, startHand } from '../../shared/gameClient.ts';
 import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
@@ -62,6 +63,14 @@ function OpponentColumn({ p, urgent }: { p: SeatView; urgent: boolean }) {
         {p.isButton && (
           <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[0.55rem] font-bold text-slate-900">
             D
+          </span>
+        )}
+        {p.isLeader && (
+          <span
+            title="Chip leader"
+            className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white"
+          >
+            <Crown size={9} weight="fill" />
           </span>
         )}
         {p.lastAction && (
@@ -384,11 +393,19 @@ export function MobileTable({
               'flex min-w-28 flex-col items-center gap-1 rounded-2xl border border-white/20 px-4 py-3',
               me.isToAct && 'turn-stripes-dark border-indigo-400 bg-indigo-500/10',
               me.isToAct && urgent && 'turn-stripes-dark-rose border-rose-500 bg-rose-500/10 animate-urgent',
+              me.isLeader && !me.isToAct && 'border-amber-400/80',
               me.won && 'animate-winner',
             )}
           >
             {strength && <span className="text-xs font-semibold text-white/80">{strength}</span>}
-            <Avatar userId={me.userId} name={me.displayName} version={me.avatarVersion} size="sm" speaking={me.speaking} />
+            <span className="relative">
+              <Avatar userId={me.userId} name={me.displayName} version={me.avatarVersion} size="sm" speaking={me.speaking} />
+              {me.isLeader && (
+                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white">
+                  <Crown size={9} weight="fill" />
+                </span>
+              )}
+            </span>
             <span className={cn('font-display text-lg font-bold', me.broke && 'text-rose-400')}>
               <NumberFlow value={me.stack} />
             </span>

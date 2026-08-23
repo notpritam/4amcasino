@@ -5,7 +5,7 @@ import { Badge } from '../../shared/ui/index.tsx';
 import { cn, fmt } from '../../shared/lib/cn.ts';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
 import { Avatar } from '../../entities/user/Avatar.tsx';
-import { MicrophoneSlash } from '@phosphor-icons/react';
+import { Crown, MicrophoneSlash } from '@phosphor-icons/react';
 import { TurnProgress } from './TurnProgress.tsx';
 
 export interface SeatView {
@@ -22,6 +22,8 @@ export interface SeatView {
   inHand: boolean;
   broke: boolean;
   sittingOut: boolean;
+  /** Currently up the most chips in this room (stack minus buy-ins). */
+  isLeader: boolean;
   connected: boolean;
   speaking: boolean;
   voiceMuted: boolean;
@@ -47,6 +49,18 @@ function actionChip(a: PlayerAction & { auto?: boolean }) {
   return <Badge tone={tone}>{label}</Badge>;
 }
 
+function LeaderCrown({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <span
+      title="Chip leader"
+      className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-white ring-2 ring-white dark:ring-slate-900"
+    >
+      <Crown size={11} weight="fill" />
+    </span>
+  );
+}
+
 function VoiceDot({ muted }: { muted: boolean }) {
   if (!muted) return null;
   return (
@@ -66,6 +80,7 @@ export function PlayerRow({ p, urgent }: { p: SeatView; urgent: boolean }) {
         'relative flex items-center gap-3 rounded-2xl bg-white p-3 pb-4 pr-4 ring-1 ring-slate-200/70 transition-all dark:bg-slate-900 dark:ring-slate-700/70',
         p.isToAct && 'turn-stripes bg-indigo-50/80 ring-2 ring-indigo-500 shadow-md dark:bg-indigo-950/40',
         p.isToAct && urgent && 'turn-stripes-rose bg-rose-50/80 ring-rose-500 animate-urgent dark:bg-rose-950/40',
+        p.isLeader && !p.isToAct && 'ring-2 ring-amber-400/70',
         p.won && 'animate-winner',
         (p.folded || !p.connected) && 'opacity-50',
         p.broke && 'opacity-60 saturate-50',
@@ -77,6 +92,7 @@ export function PlayerRow({ p, urgent }: { p: SeatView; urgent: boolean }) {
           <Avatar userId={p.userId} name={p.displayName} version={p.avatarVersion} speaking={p.speaking} />
         </Link>
         <VoiceDot muted={p.voiceMuted} />
+        <LeaderCrown show={p.isLeader} />
         {p.isButton && (
           <span
             title="Dealer button"
@@ -133,6 +149,7 @@ export function YouRow({ p, cards, urgent }: { p: SeatView; cards: CardId[]; urg
         'relative flex items-center gap-4 rounded-2xl bg-white p-4 pb-5 ring-1 ring-slate-200/70 dark:bg-slate-900 dark:ring-slate-700/70',
         p.isToAct && 'turn-stripes bg-indigo-50/80 ring-2 ring-indigo-500 shadow-lg dark:bg-indigo-950/40',
         p.isToAct && urgent && 'turn-stripes-rose bg-rose-50/80 ring-rose-500 animate-urgent dark:bg-rose-950/40',
+        p.isLeader && !p.isToAct && 'ring-2 ring-amber-400/70',
         p.won && 'animate-winner',
         p.folded && 'opacity-60',
       )}
@@ -141,6 +158,7 @@ export function YouRow({ p, cards, urgent }: { p: SeatView; cards: CardId[]; urg
       <div className="relative">
         <Avatar userId={p.userId} name={p.displayName} version={p.avatarVersion} size="lg" speaking={p.speaking} className="bg-indigo-600 text-white" />
         <VoiceDot muted={p.voiceMuted} />
+        <LeaderCrown show={p.isLeader} />
       </div>
       <div>
         <div className="text-sm font-semibold">

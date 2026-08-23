@@ -59,6 +59,7 @@ function seatVariant(over: Partial<SeatView>): SeatView {
     inHand: true,
     broke: false,
     sittingOut: false,
+    isLeader: false,
     connected: true,
     speaking: false,
     voiceMuted: false,

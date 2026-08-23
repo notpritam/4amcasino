@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { ArrowLeft, ChatCircle, DotsThreeVertical, Microphone, MicrophoneSlash, Moon, ShareNetwork, Sun, Timer, X } from '@phosphor-icons/react';
+import { ArrowLeft, ChatCircle, DotsThreeVertical, Microphone, MicrophoneSlash, Moon, ShareNetwork, Sun, Timer, Trophy, X } from '@phosphor-icons/react';
 import NumberFlow from '@number-flow/react';
 import confetti from 'canvas-confetti';
 import { HAND_CATEGORY_NAMES, bestFive, describeScore, evaluate7, handCategory } from '@4am/shared';
@@ -12,7 +12,7 @@ import { api } from '../../shared/api.ts';
 import { voice } from '../../shared/voice.ts';
 import { play } from '../../shared/sounds.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
-import { Badge, Button, Panel, Spinner } from '../../shared/ui/index.tsx';
+import { Badge, Button, Dialog, Panel, Spinner } from '../../shared/ui/index.tsx';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
 import { PlayerRow, YouRow, type SeatView } from '../../widgets/table/players.tsx';
 import { ActionBar } from '../../widgets/table/ActionBar.tsx';
@@ -20,6 +20,7 @@ import { ChatPanel } from '../../widgets/table/ChatPanel.tsx';
 import { MobileTable } from '../../widgets/table/MobileTable.tsx';
 import { BankControls } from '../../widgets/table/BankControls.tsx';
 import { BrokeBuyInDialog } from '../../features/bank/BrokeBuyInDialog.tsx';
+import { LeaderboardTable, type LeaderboardRow } from '../leaderboard/LeaderboardPage.tsx';
 import { ShareHandDialog } from '../../features/share/ShareHandDialog.tsx';
 import type { ShareData } from '../../features/share/shareCard.ts';
 
@@ -65,6 +66,8 @@ export function TablePage() {
   const [peekAmtStr, setPeekAmtStr] = useState('');
   const [peekSent, setPeekSent] = useState<Record<number, boolean>>({});
   const [shareOpen, setShareOpen] = useState(false);
+  const [standingsOpen, setStandingsOpen] = useState(false);
+  const [standings, setStandings] = useState<LeaderboardRow[] | null>(null);
   const [floats, setFloats] = useState<FloatingReaction[]>([]);
   const floatId = useRef(0);
   const lastChatLen = useRef(0);
@@ -138,6 +141,12 @@ export function TablePage() {
     setPeekSent({});
   }, [hand.handId]);
 
+  useEffect(() => {
+    if (!standingsOpen) return;
+    setStandings(null);
+    api.roomLeaderboard(roomId!).then((r) => setStandings(r.rows)).catch(() => setStandings([]));
+  }, [standingsOpen, roomId]);
+
   // re-arm the buy-in prompt whenever the broke state resolves (approval landed / stood up)
   useEffect(() => {
     if (!amBroke) setBrokeDismissed(false);
@@ -154,6 +163,11 @@ export function TablePage() {
 
   const seatViews = useMemo((): SeatView[] => {
     if (!room) return [];
+    // the chip leader: up the most against their buy-ins right now
+    const seated = room.players.filter((p) => p.seat !== null);
+    const netOf = (p: (typeof seated)[number]) => p.stack - p.totalBought;
+    const bestNet = seated.length ? Math.max(...seated.map(netOf)) : 0;
+    const leaderId = bestNet > 0 ? seated.find((p) => netOf(p) === bestNet)?.userId ?? null : null;
     return room.players
       .filter((p) => p.seat !== null)
       .sort((a, b) => a.seat! - b.seat!)
@@ -177,6 +191,7 @@ export function TablePage() {
           allIn: !!engineSeat?.allIn,
           inHand,
           sittingOut: !!p.sittingOut,
+          isLeader: p.userId === leaderId,
           connected: p.connected,
           speaking: !!voiceState.speakingByUser[p.userId],
           voiceMuted: !!voiceState.mutedByUser[p.userId],
@@ -685,6 +700,16 @@ export function TablePage() {
                   {prefs.theme === 'dark' ? 'Light mode' : 'Dark mode'}
                 </Button>
               </div>
+              <Button
+                variant="secondary"
+                className="w-full"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setStandingsOpen(true);
+                }}
+              >
+                <Trophy size={16} /> Standings
+              </Button>
               {isHost && (
                 <label className="flex items-center justify-between text-sm text-white/70">
                   Turn timer{handLive && ' (next hand)'}
@@ -775,6 +800,14 @@ export function TablePage() {
               {meSittingOut ? 'Deal me in' : 'Sit out'}
             </Button>
           )}
+          <Button
+            variant="ghost"
+            onClick={() => setStandingsOpen(true)}
+            title="Room standings"
+            aria-label="Room standings"
+          >
+            <Trophy size={16} />
+          </Button>
           <Button
             variant="ghost"
             onClick={toggleTheme}
@@ -897,6 +930,15 @@ export function TablePage() {
         onClose={() => setBrokeDismissed(true)}
       />
       <ShareHandDialog open={shareOpen} onClose={() => setShareOpen(false)} data={shareData} />
+      <Dialog open={standingsOpen} onClose={() => setStandingsOpen(false)} title="Room standings">
+        {standings === null ? (
+          <Spinner label="Counting the chips…" />
+        ) : standings.length === 0 ? (
+          <p className="text-sm text-slate-500">No completed hands yet. Deal one and check back.</p>
+        ) : (
+          <LeaderboardTable rows={standings} />
+        )}
+      </Dialog>
 
       {/* connection state */}
       {room && !wsConnected && (
