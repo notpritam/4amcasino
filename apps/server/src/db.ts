@@ -86,6 +86,8 @@ function migrate(db: DB): void {
   ensureColumn(db, 'rooms', 'action_secs', 'INTEGER');
   ensureColumn(db, 'rooms', 'co_banker_id', 'INTEGER');
   ensureColumn(db, 'rooms', 'min_settle_hands', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'rooms', 'seven_deuce_bonus', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'users', 'private_mode', 'INTEGER NOT NULL DEFAULT 0');
 }
 
 function ensureColumn(db: DB, table: string, column: string, decl: string): void {

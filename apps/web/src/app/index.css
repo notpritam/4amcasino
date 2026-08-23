@@ -78,6 +78,25 @@ body {
   animation: turn-stripes-move 0.7s linear infinite;
 }
 
+/* one-off gold shimmer across the winning five */
+@keyframes shine-sweep {
+  from { transform: translateX(-130%); }
+  to { transform: translateX(260%); }
+}
+.shine-once {
+  position: relative;
+  overflow: hidden;
+}
+.shine-once::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  background: linear-gradient(105deg, transparent, rgb(251 191 36 / 0.35), transparent);
+  animation: shine-sweep 1.1s ease-out 0.55s 1 both;
+  pointer-events: none;
+}
+
 /* interaction */
 @keyframes deal-in {
   from { opacity: 0; transform: translateY(-14px) scale(0.85) rotate(-4deg); }

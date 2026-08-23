@@ -46,6 +46,7 @@ const mockRoom = {
     actionSecs: 30,
     coBankerId: null,
     minSettleHands: 0,
+    sevenDeuceBonus: 0,
   },
   players: CAST.map((p) => ({
     ...p,
@@ -54,6 +55,7 @@ const mockRoom = {
     sittingOut: false,
     connected: p.username !== 'arjun', // one disconnected player, for the dimmed state
     totalBought: 2000,
+    privateStats: false,
   })),
   handActive: true,
 };

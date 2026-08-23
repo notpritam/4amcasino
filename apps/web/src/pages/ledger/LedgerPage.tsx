@@ -20,6 +20,7 @@ interface SessionPlayer {
   net: number;
   biggestWin: number;
   biggestLoss: number;
+  hidden: boolean;
 }
 
 interface SessionReport {
@@ -149,7 +150,7 @@ export function LedgerPage() {
           </p>
           <div className="space-y-2">
             {(() => {
-              const active = session.players.filter((p) => p.handsPlayed > 0 || p.net !== 0);
+              const active = session.players.filter((p) => !p.hidden && (p.handsPlayed > 0 || p.net !== 0));
               const maxAbs = Math.max(1, ...active.map((p) => Math.abs(p.net)));
               const topId = active.find((p) => p.net > 0)?.userId;
               return active.map((p) => (
@@ -201,6 +202,11 @@ export function LedgerPage() {
                   <tr key={p.userId} className="border-b border-slate-50 dark:border-slate-800">
                     <td className="py-2.5 pr-3">
                       <span className="font-medium">{p.displayName}</span>
+                      {p.hidden && (
+                        <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[0.65rem] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                          private
+                        </span>
+                      )}
                       {minSettleHands > 0 && p.handsPlayed < minSettleHands && (
                         <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[0.65rem] font-semibold text-amber-700 dark:bg-amber-950 dark:text-amber-300">
                           {minSettleHands - p.handsPlayed} more to qualify
@@ -208,23 +214,22 @@ export function LedgerPage() {
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-right font-display">{p.handsPlayed}</td>
-                    <td className="px-3 py-2.5 text-right font-display">{p.wins}</td>
+                    <td className="px-3 py-2.5 text-right font-display">{p.hidden ? '\u2014' : p.wins}</td>
                     <td className="px-3 py-2.5 text-right font-display text-emerald-600">
-                      {p.biggestWin > 0 ? `+${fmt(p.biggestWin)}` : '\u2014'}
+                      {!p.hidden && p.biggestWin > 0 ? `+${fmt(p.biggestWin)}` : '\u2014'}
                     </td>
                     <td className="px-3 py-2.5 text-right font-display text-rose-600">
-                      {p.biggestLoss < 0 ? `\u2212${fmt(-p.biggestLoss)}` : '\u2014'}
+                      {!p.hidden && p.biggestLoss < 0 ? `\u2212${fmt(-p.biggestLoss)}` : '\u2014'}
                     </td>
-                    <td className="px-3 py-2.5 text-right font-display">{fmt(p.bought)}</td>
+                    <td className="px-3 py-2.5 text-right font-display">{p.hidden ? '\u2014' : fmt(p.bought)}</td>
                     <td className="px-3 py-2.5 text-right font-display">{fmt(p.stack)}</td>
                     <td
                       className={cn(
                         'py-2.5 pl-3 text-right font-display font-bold',
-                        p.net > 0 ? 'text-emerald-600' : p.net < 0 ? 'text-rose-600' : 'text-slate-400',
+                        p.hidden || p.net === 0 ? 'text-slate-400' : p.net > 0 ? 'text-emerald-600' : 'text-rose-600',
                       )}
                     >
-                      {p.net > 0 ? '+' : p.net < 0 ? '\u2212' : ''}
-                      {fmt(Math.abs(p.net))}
+                      {p.hidden ? '\u2014' : `${p.net > 0 ? '+' : p.net < 0 ? '\u2212' : ''}${fmt(Math.abs(p.net))}`}
                     </td>
                   </tr>
                 ))}

@@ -108,18 +108,33 @@ export function BankControls({ roomId }: { roomId: string }) {
 
       <Dialog open={inboxOpen} onClose={() => setInboxOpen(false)} title="Pending purchases">
         {isBanker && (
-          <label className="mb-4 block text-sm">
-            <span className="mb-1 block text-slate-500">
-              Hands required before winnings count in settle-up (0 = everyone counts)
-            </span>
-            <Input
-              type="number"
-              min={0}
-              max={500}
-              defaultValue={room?.room.minSettleHands ?? 0}
-              onBlur={(e) => void api.setMinSettleHands(roomId, Math.max(0, +e.target.value)).catch(() => {})}
-            />
-          </label>
+          <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm">
+              <span className="mb-1 block text-slate-500">
+                Hands required before winnings count in settle-up (0 = everyone counts)
+              </span>
+              <Input
+                type="number"
+                min={0}
+                max={500}
+                defaultValue={room?.room.minSettleHands ?? 0}
+                onBlur={(e) => void api.setMinSettleHands(roomId, Math.max(0, +e.target.value)).catch(() => {})}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-slate-500">
+                7-2 offsuit bounty per player (0 = off). Winning with 7-2 offsuit collects this from
+                everyone; fold-winners claim it by showing their cards.
+              </span>
+              <Input
+                type="number"
+                min={0}
+                max={100000}
+                defaultValue={room?.room.sevenDeuceBonus ?? 0}
+                onBlur={(e) => void api.setSevenDeuceBonus(roomId, Math.max(0, +e.target.value)).catch(() => {})}
+              />
+            </label>
+          </div>
         )}
         {isMainBanker && (
           <label className="mb-4 block text-sm">

@@ -65,6 +65,8 @@ export const api = {
   userProfile: (userId: number) => req(`/api/users/${userId}/profile`),
   setMinSettleHands: (roomId: string, minSettleHands: number) =>
     req(`/api/rooms/${roomId}/settings`, { minSettleHands }, 'PUT'),
+  setSevenDeuceBonus: (roomId: string, sevenDeuceBonus: number) =>
+    req(`/api/rooms/${roomId}/settings`, { sevenDeuceBonus }, 'PUT'),
   roomSettings: (roomId: string, actionSecs: number) =>
     req(`/api/rooms/${roomId}/settings`, { actionSecs }, 'PUT'),
 };

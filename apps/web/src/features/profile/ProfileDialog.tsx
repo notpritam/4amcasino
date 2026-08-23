@@ -61,6 +61,7 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
         bio,
         cardBack: prefs.cardBack,
         fourColor: prefs.fourColor,
+        privateMode: prefs.privateMode,
         theme: prefs.theme,
         quickPhrases,
       });
@@ -145,6 +146,20 @@ export function ProfileDialog({ open, onClose }: { open: boolean; onClose: () =>
             <PlayingCard card={cardFromName('Td')} size="sm" />
           </div>
         </div>
+
+        <label className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <input
+            type="checkbox"
+            checked={prefs.privateMode}
+            onChange={(e) => setPrefs({ privateMode: e.target.checked })}
+            className="mt-0.5"
+          />
+          <span>
+            Private mode: hide my winnings from other players. Leaderboards, the session report,
+            and the chip-leader crown skip you; bankers still see everything so the group can
+            settle up.
+          </span>
+        </label>
 
         <label className="block text-sm">
           <span className="mb-1 block text-slate-500">Your quick chat phrases (one per line, max 8)</span>

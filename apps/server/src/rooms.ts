@@ -18,6 +18,7 @@ export interface RoomRow {
   action_secs: number | null;
   co_banker_id: number | null;
   min_settle_hands: number;
+  seven_deuce_bonus: number;
   created_at: number;
 }
 
@@ -62,7 +63,8 @@ export function roomPlayers(db: DB, roomId: string) {
     .prepare(
       `SELECT rp.user_id as userId, u.username, COALESCE(u.display_name, u.username) as displayName,
               u.avatar_version as avatarVersion, u.pubkey as publicKey, rp.seat, rp.stack,
-              rp.sitting_out as sittingOut, COALESCE(b.total, 0) as totalBought
+              rp.sitting_out as sittingOut, u.private_mode as privateMode,
+              COALESCE(b.total, 0) as totalBought
        FROM room_players rp
        JOIN users u ON u.id = rp.user_id
        LEFT JOIN (
@@ -80,6 +82,7 @@ export function roomPlayers(db: DB, roomId: string) {
     seat: number | null;
     stack: number;
     sittingOut: number;
+    privateMode: number;
     totalBought: number;
   }[];
 }
@@ -97,7 +100,13 @@ function roomJson(db: DB, room: RoomRow) {
     actionSecs: room.action_secs,
     coBankerId: room.co_banker_id,
     minSettleHands: room.min_settle_hands,
-    players: roomPlayers(db, room.id),
+    sevenDeuceBonus: room.seven_deuce_bonus,
+    players: roomPlayers(db, room.id).map((p) => ({
+      ...p,
+      privateMode: undefined,
+      privateStats: !!p.privateMode,
+      totalBought: p.privateMode ? 0 : p.totalBought,
+    })),
   };
 }
 
@@ -278,7 +287,11 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
   app.put('/api/rooms/:id/settings', authed, async (req, reply) => {
     const { id } = req.params as { id: string };
     const parsed = z
-      .object({ actionSecs: actionSecsSchema.optional(), minSettleHands: minSettleSchema.optional() })
+      .object({
+        actionSecs: actionSecsSchema.optional(),
+        minSettleHands: minSettleSchema.optional(),
+        sevenDeuceBonus: z.number().int().min(0).max(100_000).optional(),
+      })
       .safeParse(req.body);
     if (!parsed.success)
       return reply.code(400).send({ error: 'turn time must be 0 (no limit) or 5-180 seconds' });
@@ -290,6 +303,8 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
       db.prepare('UPDATE rooms SET action_secs = ? WHERE id = ?').run(parsed.data.actionSecs, id);
     if (parsed.data.minSettleHands !== undefined)
       db.prepare('UPDATE rooms SET min_settle_hands = ? WHERE id = ?').run(parsed.data.minSettleHands, id);
+    if (parsed.data.sevenDeuceBonus !== undefined)
+      db.prepare('UPDATE rooms SET seven_deuce_bonus = ? WHERE id = ?').run(parsed.data.sevenDeuceBonus, id);
     roomEvents.emit('changed', id);
     return { ok: true };
   });

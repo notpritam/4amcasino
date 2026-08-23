@@ -108,15 +108,17 @@ export interface RoomStatePlayer {
   stack: number;
   sittingOut: boolean;
   connected: boolean;
-  /** Net chips bought from the bank in this room (purchases minus reverts). */
+  /** Net chips bought from the bank in this room (purchases minus reverts). 0 when privateStats. */
   totalBought: number;
+  /** The player asked for their winnings to stay hidden. */
+  privateStats: boolean;
 }
 
 export type ServerMsg =
   | { t: 'hello'; serverPublicKey: string }
   | {
       t: 'room_state';
-      room: { id: string; name: string; joinCode: string; hostId: number; bankerId: number; sb: number; bb: number; auditMode: string; actionTimeoutMs: number; actionSecs: number | null; coBankerId: number | null; minSettleHands: number };
+      room: { id: string; name: string; joinCode: string; hostId: number; bankerId: number; sb: number; bb: number; auditMode: string; actionTimeoutMs: number; actionSecs: number | null; coBankerId: number | null; minSettleHands: number; sevenDeuceBonus: number };
       players: RoomStatePlayer[];
       handActive: boolean;
     }
@@ -125,6 +127,7 @@ export type ServerMsg =
   | { t: 'rtc'; from: number; data: unknown }
   | { t: 'voice_state'; userId: number; muted: boolean }
   | { t: 'auto_deal'; inMs: number }
+  | { t: 'seven_deuce'; handId: string; seat: number; amount: number }
   | { t: 'hand_start'; handId: string; seats: HandSeat[]; buttonSeat: number; sb: number; bb: number; auditMode: string }
   | { t: 'key_commit_applied'; handId: string; seat: number; commit: string }
   | { t: 'shuffle_turn'; handId: string; seat: number; deck: string[] }

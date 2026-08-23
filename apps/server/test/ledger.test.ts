@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { verifyLedger } from '../src/ledger.js';
+import { isSevenDeuce } from '../src/game.js';
+import { cardFromName } from '@4am/shared';
 
 let ctx: ReturnType<typeof createApp>;
 beforeEach(() => {
@@ -348,5 +350,106 @@ describe('backup banker', () => {
     ).json();
     expect(state.players.find((p: any) => p.username === 'buyer').stack).toBe(0);
     expect(verifyLedger(ctx.db, room.id).ok).toBe(true);
+  });
+});
+
+describe('seven-deuce rule', () => {
+  it('recognizes exactly 7-2 offsuit', () => {
+    const h = (a: string, b: string) => [cardFromName(a), cardFromName(b)];
+    expect(isSevenDeuce(h('7c', '2d'))).toBe(true);
+    expect(isSevenDeuce(h('2s', '7h'))).toBe(true);
+    expect(isSevenDeuce(h('7c', '2c'))).toBe(false); // suited does not count
+    expect(isSevenDeuce(h('7c', '3d'))).toBe(false);
+    expect(isSevenDeuce(h('Ac', '2d'))).toBe(false);
+  });
+
+  it('the banker can set the bounty and it lands in room state', async () => {
+    const host = await user('bounty_host');
+    const room = (
+      await ctx.app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: auth(host.token),
+        payload: { name: 'Bounty', sb: 10, bb: 20 },
+      })
+    ).json();
+    const set = await ctx.app.inject({
+      method: 'PUT',
+      url: `/api/rooms/${room.id}/settings`,
+      headers: auth(host.token),
+      payload: { sevenDeuceBonus: 50 },
+    });
+    expect(set.statusCode).toBe(200);
+    const state = (
+      await ctx.app.inject({ method: 'GET', url: `/api/rooms/${room.id}`, headers: auth(host.token) })
+    ).json();
+    expect(state.sevenDeuceBonus).toBe(50);
+  });
+});
+
+describe('private mode', () => {
+  it('hides winnings from other players but not from the banker', async () => {
+    const host = await user('pm_host');
+    const alice = await user('pm_alice');
+    const bob = await user('pm_bob');
+    const room = (
+      await ctx.app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: auth(host.token),
+        payload: { name: 'Private', sb: 10, bb: 20 },
+      })
+    ).json();
+    for (const u of [alice, bob]) {
+      await ctx.app.inject({
+        method: 'POST',
+        url: '/api/rooms/join',
+        headers: auth(u.token),
+        payload: { joinCode: room.joinCode },
+      });
+    }
+    // alice buys 500 and turns on private mode
+    const buyReq = (
+      await ctx.app.inject({
+        method: 'POST',
+        url: `/api/rooms/${room.id}/buy`,
+        headers: auth(alice.token),
+        payload: { amount: 500 },
+      })
+    ).json();
+    await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/approve`,
+      headers: auth(host.token),
+      payload: { requestId: buyReq.id, approve: true },
+    });
+    await ctx.app.inject({
+      method: 'PUT',
+      url: '/api/profile',
+      headers: auth(alice.token),
+      payload: { privateMode: true },
+    });
+
+    // room state masks her buy-in for everyone
+    const state = (
+      await ctx.app.inject({ method: 'GET', url: `/api/rooms/${room.id}`, headers: auth(bob.token) })
+    ).json();
+    const aliceRow = state.players.find((p: any) => p.username === 'pm_alice');
+    expect(aliceRow.privateStats).toBe(true);
+    expect(aliceRow.totalBought).toBe(0);
+
+    // session report: masked for bob, visible for the banker
+    const asBob = (
+      await ctx.app.inject({ method: 'GET', url: `/api/rooms/${room.id}/session`, headers: auth(bob.token) })
+    ).json();
+    const bobView = asBob.players.find((p: any) => p.username === 'pm_alice');
+    expect(bobView.hidden).toBe(true);
+    expect(bobView.bought).toBe(0);
+    const asBanker = (
+      await ctx.app.inject({ method: 'GET', url: `/api/rooms/${room.id}/session`, headers: auth(host.token) })
+    ).json();
+    const bankerView = asBanker.players.find((p: any) => p.username === 'pm_alice');
+    expect(bankerView.hidden).toBe(false);
+    expect(bankerView.bought).toBe(500);
   });
 });

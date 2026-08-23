@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { ArrowLeft, ChatCircle, DotsThreeVertical, Microphone, MicrophoneSlash, Moon, ShareNetwork, Sun, Timer, Trophy, X } from '@phosphor-icons/react';
 import NumberFlow from '@number-flow/react';
 import confetti from 'canvas-confetti';
@@ -73,6 +73,25 @@ export function TablePage() {
   const lastChatLen = useRef(0);
   const beepedUrgent = useRef<string | null>(null);
   const now = useNow();
+  const reduceMotion = useReducedMotion();
+
+  // winner-reveal choreography: parent staggers, items spring in, cards drop in
+  const revealParent = {
+    hidden: {},
+    show: { transition: { staggerChildren: reduceMotion ? 0 : 0.09, delayChildren: reduceMotion ? 0 : 0.12 } },
+  };
+  const revealItem = reduceMotion
+    ? { hidden: { opacity: 1 }, show: { opacity: 1 } }
+    : {
+        hidden: { opacity: 0, y: 12, scale: 0.94 },
+        show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', stiffness: 380, damping: 24 } as const },
+      };
+  const revealCard = reduceMotion
+    ? revealItem
+    : {
+        hidden: { opacity: 0, y: -20, rotate: -8 },
+        show: { opacity: 1, y: 0, rotate: 0, transition: { type: 'spring', stiffness: 300, damping: 17 } as const },
+      };
 
   useEffect(() => {
     bindGameClient();
@@ -164,7 +183,7 @@ export function TablePage() {
   const seatViews = useMemo((): SeatView[] => {
     if (!room) return [];
     // the chip leader: up the most against their buy-ins right now
-    const seated = room.players.filter((p) => p.seat !== null);
+    const seated = room.players.filter((p) => p.seat !== null && !p.privateStats);
     const netOf = (p: (typeof seated)[number]) => p.stack - p.totalBought;
     const bestNet = seated.length ? Math.max(...seated.map(netOf)) : 0;
     const leaderId = bestNet > 0 ? seated.find((p) => netOf(p) === bestNet)?.userId ?? null : null;
@@ -431,35 +450,48 @@ export function TablePage() {
               } did not come back in time; all bets were returned.`}
           </div>
         ) : (
-          <div className="space-y-2">
-            {reasoning && <p className="text-sm font-medium">{reasoning.headline}</p>}
+          <motion.div
+            key={hand.handId ?? 'result'}
+            variants={revealParent}
+            initial="hidden"
+            animate="show"
+            className="space-y-2"
+          >
+            {reasoning && (
+              <motion.p variants={revealItem} className="text-sm font-medium">
+                {reasoning.headline}
+              </motion.p>
+            )}
             {reasoning?.winningFive && (
-              <div className="flex items-center gap-2">
+              <motion.div variants={revealItem} className="shine-once flex items-center gap-2 rounded-lg py-0.5">
                 <span className="text-xs uppercase tracking-wide text-slate-400">Winning five</span>
                 <div className="flex gap-1">
                   {reasoning.winningFive.map((c) => (
-                    <PlayingCard key={c} card={c} size="xs" />
+                    <motion.span key={c} variants={revealCard}>
+                      <PlayingCard card={c} size="xs" />
+                    </motion.span>
                   ))}
                 </div>
-              </div>
+              </motion.div>
             )}
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            <span className="font-display font-semibold">
+            <motion.span variants={revealItem} className="font-display font-semibold">
               {hand.showdown ? 'Showdown' : 'Everyone folded'}
-            </span>
+            </motion.span>
             {hand.showdown?.reveals.map((r) => (
-              <span key={r.seat} className="flex items-center gap-1.5 text-sm">
+              <motion.span key={r.seat} variants={revealItem} className="flex items-center gap-1.5 text-sm">
                 <span className="text-slate-500">
                   {seatViews.find((s) => s.seat === r.seat)?.displayName}
                 </span>
                 <Badge tone="slate">{HAND_CATEGORY_NAMES[handCategory(r.score)]}</Badge>
-              </span>
+              </motion.span>
             ))}
             {hand.result?.deltas
               .filter((d) => d.delta !== 0)
               .map((d) => (
-                <span
+                <motion.span
                   key={d.seat}
+                  variants={revealItem}
                   className={cn(
                     'font-display text-sm font-bold',
                     d.delta > 0 ? 'text-emerald-600' : 'text-rose-600',
@@ -467,15 +499,17 @@ export function TablePage() {
                 >
                   {seatViews.find((s) => s.seat === d.seat)?.displayName} {d.delta > 0 ? '+' : ''}
                   {fmt(d.delta)}
-                </span>
+                </motion.span>
               ))}
             {shareData && (
-              <Button variant="ghost" onClick={() => setShareOpen(true)}>
-                <ShareNetwork size={16} /> Share
-              </Button>
+              <motion.span variants={revealItem}>
+                <Button variant="ghost" onClick={() => setShareOpen(true)}>
+                  <ShareNetwork size={16} /> Share
+                </Button>
+              </motion.span>
             )}
           </div>
-          </div>
+          </motion.div>
         )}
       </Panel>
     </motion.div>
@@ -517,17 +551,29 @@ export function TablePage() {
           {hand.abort.blamedSeat !== null && `. Seat ${hand.abort.blamedSeat + 1}; stacks rolled back.`}
         </span>
       ) : (
-        <div className="space-y-2">
-          {reasoning && <p className="font-medium">{reasoning.headline}</p>}
+        <motion.div
+          key={hand.handId ?? 'result'}
+          variants={revealParent}
+          initial="hidden"
+          animate="show"
+          className="space-y-2"
+        >
+          {reasoning && (
+            <motion.p variants={revealItem} className="font-medium">
+              {reasoning.headline}
+            </motion.p>
+          )}
           {reasoning?.winningFive && (
-            <div className="flex items-center gap-2">
+            <motion.div variants={revealItem} className="shine-once flex items-center gap-2 rounded-lg py-0.5">
               <span className="text-[0.6rem] uppercase tracking-wide text-white/40">Winning five</span>
               <div className="flex gap-1">
                 {reasoning.winningFive.map((c) => (
-                  <PlayingCard key={c} card={c} size="xs" />
+                  <motion.span key={c} variants={revealCard}>
+                    <PlayingCard card={c} size="xs" />
+                  </motion.span>
                 ))}
               </div>
-            </div>
+            </motion.div>
           )}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
           <span className="font-display font-semibold">
@@ -553,8 +599,16 @@ export function TablePage() {
                 {fmt(d.delta)}
               </span>
             ))}
+          {shareData && (
+            <button
+              onClick={() => setShareOpen(true)}
+              className="flex items-center gap-1 rounded-full border border-white/25 px-2.5 py-1 text-xs font-semibold text-white/80"
+            >
+              <ShareNetwork size={13} /> Share
+            </button>
+          )}
         </div>
-        </div>
+        </motion.div>
       )}
     </div>
   );

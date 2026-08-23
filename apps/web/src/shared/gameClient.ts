@@ -267,6 +267,25 @@ function handle(msg: ServerMsg): void {
       return;
     }
 
+    case 'seven_deuce': {
+      const h = useStore.getState().hand;
+      const roomState = useStore.getState().room;
+      const seatInfo = h.seats.find((s) => s.seat === msg.seat);
+      const name =
+        roomState?.players.find((p) => p.userId === seatInfo?.userId)?.displayName ??
+        seatInfo?.username ??
+        `Seat ${msg.seat + 1}`;
+      play('win');
+      store.pushChat({
+        from: 'House rule',
+        userId: 0,
+        text: `7-2 offsuit! ${name} collects ${msg.amount} in bounties.`,
+        kind: 'phrase',
+        ts: Date.now(),
+      });
+      return;
+    }
+
     case 'auto_deal': {
       store.patchHand({ autoDealAt: Date.now() + msg.inMs });
       return;

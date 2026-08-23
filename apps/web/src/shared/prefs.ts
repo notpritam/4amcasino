@@ -18,6 +18,7 @@ export async function loadPrefs(): Promise<void> {
       fourColor: p.fourColor,
       theme: p.theme,
       quickPhrases: p.quickPhrases ?? [],
+      privateMode: !!p.privateMode,
     });
     applyTheme(p.theme);
   } catch {

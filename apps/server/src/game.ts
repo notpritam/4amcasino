@@ -63,6 +63,14 @@ interface Chain {
   remaining: number[]; // seats yet to apply their unmask, in order
 }
 
+/** The classic house rule: 7-2 offsuit wins collect a bounty from everyone. */
+export function isSevenDeuce(cards: CardId[]): boolean {
+  if (cards.length !== 2) return false;
+  const ranks = cards.map((c) => Math.floor(c / 4)).sort((a, b) => a - b);
+  const suits = cards.map((c) => c % 4);
+  return ranks[0] === 0 && ranks[1] === 5 && suits[0] !== suits[1]; // 2 and 7, offsuit
+}
+
 interface SnapshotSeat {
   userId: number;
   pubkey: string;
@@ -74,6 +82,8 @@ interface ShowSnapshot {
   handId: string;
   bySeat: Map<number, SnapshotSeat>;
   revealedSeats: Set<number>;
+  winnerSeats: number[];
+  reveals: Map<number, CardId[]>;
 }
 
 type Share = { deckIndex: number; out: string; proof: { A1: string; A2: string; z: string } };
@@ -114,6 +124,7 @@ export class GameRoom {
   private shownHandId: string | null = null;
   private lastHandShow: ShowSnapshot | null = null;
   private peekOffers = new Map<string, { handId: string; fromUserId: number; targetSeat: number; amount: number }>();
+  private sevenDeucePaid = new Set<string>();
   private autoDeal: NodeJS.Timeout | null = null;
   private lookup = cardLookup();
 
@@ -191,7 +202,8 @@ export class GameRoom {
       stack: p.stack,
       sittingOut: !!p.sittingOut,
       connected: this.sockets.has(p.userId),
-      totalBought: p.totalBought,
+      totalBought: p.privateMode ? 0 : p.totalBought,
+      privateStats: !!p.privateMode,
     }));
     this.broadcast({
       t: 'room_state',
@@ -208,6 +220,7 @@ export class GameRoom {
         actionSecs: room.action_secs,
         coBankerId: room.co_banker_id,
         minSettleHands: room.min_settle_hands,
+        sevenDeuceBonus: room.seven_deuce_bonus,
       },
       players,
       handActive: this.hand !== null,
@@ -339,6 +352,14 @@ export class GameRoom {
       this.lastButton = button;
       this.lastHandShow = this.hand?.showSnapshot() ?? null;
       this.hand = null;
+      // showdown winners already revealed their cards: the 7-2 bounty applies now
+      const snap = this.lastHandShow;
+      if (snap) {
+        for (const seat of snap.winnerSeats) {
+          const cards = snap.reveals.get(seat);
+          if (cards) this.trySevenDeuce(snap.handId, seat, cards);
+        }
+      }
       this.broadcastRoomState();
       this.scheduleAutoDeal();
     });
@@ -354,7 +375,63 @@ export class GameRoom {
     if (this.shown.has(seat)) return false;
     this.shown.set(seat, cards);
     this.broadcast({ t: 'cards_shown', handId, seat, cards });
+    // a fold-winner proving 7-2 offsuit collects the bounty too
+    this.trySevenDeuce(handId, seat, cards);
     return true;
+  }
+
+  /** Pays the 7-2 offsuit bounty to a verified winner, once per hand. */
+  private trySevenDeuce(handId: string, seat: number, cards: CardId[]): void {
+    const snap = this.lastHandShow;
+    if (!snap || snap.handId !== handId || this.sevenDeucePaid.has(handId)) return;
+    if (!snap.winnerSeats.includes(seat) || !isSevenDeuce(cards)) return;
+    const room = getRoom(this.db, this.roomId);
+    if (!room || room.seven_deuce_bonus <= 0) return;
+    const winner = snap.bySeat.get(seat);
+    if (!winner) return;
+    this.sevenDeucePaid.add(handId);
+    const bonus = room.seven_deuce_bonus;
+    let total = 0;
+    const apply = this.db.transaction(() => {
+      for (const [payerSeat, payer] of snap.bySeat) {
+        if (payerSeat === seat) continue;
+        const row = this.db
+          .prepare('SELECT stack FROM room_players WHERE room_id = ? AND user_id = ?')
+          .get(this.roomId, payer.userId) as { stack: number } | undefined;
+        const amt = Math.min(bonus, row?.stack ?? 0);
+        if (amt <= 0) continue;
+        appendLedger(this.db, {
+          roomId: this.roomId,
+          userId: payer.userId,
+          delta: -amt,
+          kind: 'seven-deuce',
+          ref: handId,
+          note: 'paid the 7-2 offsuit bounty',
+        });
+        this.db
+          .prepare('UPDATE room_players SET stack = stack - ? WHERE room_id = ? AND user_id = ?')
+          .run(amt, this.roomId, payer.userId);
+        total += amt;
+      }
+      if (total > 0) {
+        appendLedger(this.db, {
+          roomId: this.roomId,
+          userId: winner.userId,
+          delta: total,
+          kind: 'seven-deuce',
+          ref: handId,
+          note: 'won with 7-2 offsuit',
+        });
+        this.db
+          .prepare('UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?')
+          .run(total, this.roomId, winner.userId);
+      }
+    });
+    apply();
+    if (total > 0) {
+      this.broadcast({ t: 'seven_deuce', handId, seat, amount: total });
+      this.broadcastRoomState();
+    }
   }
 
   /** A show after the hand ended: verified against the finished hand's snapshot. */
@@ -797,7 +874,16 @@ class Hand {
         .map((i) => ({ deckIndex: i, point: this.holeFinal.get(i)! }));
       if (cards.length) bySeat.set(s.seat, { userId: s.userId, pubkey: s.pubkey, commit, cards });
     }
-    return { handId: this.id, bySeat, revealedSeats: new Set(this.reveals.keys()) };
+    const winnerSeats = this.settlement
+      ? [...this.settlement.awards.entries()].filter(([, amt]) => amt > 0).map(([seat]) => seat)
+      : [];
+    return {
+      handId: this.id,
+      bySeat,
+      revealedSeats: new Set(this.reveals.keys()),
+      winnerSeats,
+      reveals: new Map(this.reveals),
+    };
   }
 
   // ---------- commit + shuffle ----------

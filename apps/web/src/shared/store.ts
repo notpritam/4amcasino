@@ -25,6 +25,8 @@ export interface Prefs {
   fourColor: boolean;
   theme: 'light' | 'dark';
   quickPhrases: string[];
+  /** Hide my winnings from other players (leaderboards, session report, crown). */
+  privateMode: boolean;
 }
 
 export const defaultPrefs: Prefs = {
@@ -36,6 +38,7 @@ export const defaultPrefs: Prefs = {
   fourColor: false,
   theme: 'light',
   quickPhrases: [],
+  privateMode: false,
 };
 
 export interface AuthState {

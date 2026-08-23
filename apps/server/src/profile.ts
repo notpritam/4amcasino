@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from './db.js';
 import { requireUser } from './auth.js';
-import { getRoom, isMember } from './rooms.js';
+import { canBank, getRoom, isMember } from './rooms.js';
 
 const MAX_AVATAR_BYTES = 300_000;
 const AVATAR_MIMES = ['image/png', 'image/jpeg', 'image/webp'] as const;
@@ -16,6 +16,7 @@ const profileSchema = z.object({
   fourColor: z.boolean().optional(),
   theme: z.enum(['light', 'dark']).optional(),
   quickPhrases: z.array(z.string().trim().min(1).max(60)).max(8).optional(),
+  privateMode: z.boolean().optional(),
 });
 
 const avatarSchema = z.object({
@@ -26,7 +27,7 @@ const LEADERBOARD_SQL = `
   SELECT u.id as userId, u.username, u.display_name as displayName, u.avatar_version as avatarVersion,
          SUM(l.delta) as net, COUNT(*) as handsPlayed, MAX(l.delta) as biggestWin
   FROM ledger l JOIN users u ON u.id = l.user_id
-  WHERE l.kind = 'hand-settlement' %ROOM%
+  WHERE l.kind = 'hand-settlement' AND u.private_mode = 0 %ROOM%
   GROUP BY u.id ORDER BY net DESC, handsPlayed DESC
 `;
 
@@ -36,7 +37,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
   app.get('/api/profile', authed, async (req) => {
     const row = db
       .prepare(
-        'SELECT id, username, display_name, bio, avatar_version, card_back, four_color, theme, quick_phrases, avatar IS NOT NULL as hasAvatar FROM users WHERE id = ?',
+        'SELECT id, username, display_name, bio, avatar_version, card_back, four_color, theme, quick_phrases, private_mode, avatar IS NOT NULL as hasAvatar FROM users WHERE id = ?',
       )
       .get(req.userId) as {
       id: number;
@@ -48,6 +49,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       four_color: number;
       theme: string;
       quick_phrases: string | null;
+      private_mode: number;
       hasAvatar: number;
     };
     return {
@@ -61,13 +63,16 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       fourColor: !!row.four_color,
       theme: row.theme,
       quickPhrases: row.quick_phrases ? (JSON.parse(row.quick_phrases) as string[]) : [],
+      privateMode: !!row.private_mode,
     };
   });
 
   app.put('/api/profile', authed, async (req, reply) => {
     const parsed = profileSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid profile' });
-    const { displayName, bio, cardBack, fourColor, theme, quickPhrases } = parsed.data;
+    const { displayName, bio, cardBack, fourColor, theme, quickPhrases, privateMode } = parsed.data;
+    if (privateMode !== undefined)
+      db.prepare('UPDATE users SET private_mode = ? WHERE id = ?').run(privateMode ? 1 : 0, req.userId);
     if (theme !== undefined)
       db.prepare('UPDATE users SET theme = ? WHERE id = ?').run(theme, req.userId);
     if (quickPhrases !== undefined)
@@ -229,7 +234,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
     const players = db
       .prepare(
         `SELECT u.id as userId, u.username, COALESCE(u.display_name, u.username) as displayName,
-                u.avatar_version as avatarVersion, rp.stack, rp.seat,
+                u.avatar_version as avatarVersion, u.private_mode as privateMode, rp.stack, rp.seat,
                 COALESCE(b.bought, 0) as bought,
                 COALESCE(st.handsPlayed, 0) as handsPlayed,
                 COALESCE(st.wins, 0) as wins,
@@ -254,13 +259,21 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
          WHERE rp.room_id = @roomId
          ORDER BY net DESC`,
       )
-      .all({ roomId: id });
+      .all({ roomId: id }) as (Record<string, unknown> & { userId: number; privateMode: number })[];
+    // private mode: winnings stay visible to the player themself and the bankers
+    const room = getRoom(db, id)!;
+    const requesterCanSettle = canBank(room, req.userId);
+    const masked = players.map((p) => {
+      const { privateMode, ...rest } = p;
+      if (!privateMode || p.userId === req.userId || requesterCanSettle) return { ...rest, hidden: false };
+      return { ...rest, net: 0, wins: 0, biggestWin: 0, biggestLoss: 0, bought: 0, hidden: true };
+    });
     return {
       hands: span.hands,
       firstTs: span.firstTs,
       lastTs: span.lastTs,
       biggestPot: pot.biggestPot ?? 0,
-      players,
+      players: masked,
     };
   });
 }
