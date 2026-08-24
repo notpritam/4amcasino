@@ -10,6 +10,8 @@ export type SoundName =
   | 'deal'
   | 'flip'
   | 'chip'
+  | 'chips-slide'
+  | 'pot-collect'
   | 'knock'
   | 'muck'
   | 'turn'
@@ -141,6 +143,21 @@ const recipes: Record<SoundName, (c: AudioContext, t: number) => void> = {
   chip: (c, t) => {
     tone(c, t, 0.07, 2093, 0.12, 'triangle');
     tone(c, t + 0.045, 0.09, 2637 + Math.random() * 60, 0.1, 'triangle');
+  },
+  // a bet pushed across the felt: low slide + chips settling in a stack
+  'chips-slide': (c, t) => {
+    noiseBurst(c, t, 0.14, 900, 0.8, 0.12, 420);
+    tone(c, t + 0.08, 0.06, 1976, 0.1, 'triangle');
+    tone(c, t + 0.13, 0.07, 2349, 0.09, 'triangle');
+    tone(c, t + 0.19, 0.08, 2637 + Math.random() * 50, 0.08, 'triangle');
+  },
+  // street over: every bet cascades into the pot
+  'pot-collect': (c, t) => {
+    noiseBurst(c, t, 0.2, 1100, 0.7, 0.1, 500);
+    for (let i = 0; i < 5; i++) {
+      const at = t + 0.05 + i * (0.055 - i * 0.004);
+      tone(c, at, 0.06, 1760 + i * 180 + Math.random() * 40, 0.09 - i * 0.008, 'triangle');
+    }
   },
   // the classic double knuckle-tap for a check
   knock: (c, t) => {

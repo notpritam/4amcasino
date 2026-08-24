@@ -1429,8 +1429,18 @@ export function TablePage() {
               bankerId={room.room.bankerId}
               coBankerId={room.room.coBankerId}
             >
-            <div className="rounded-xl bg-indigo-600 px-5 py-2.5 font-display text-lg font-semibold text-white shadow-[0_12px_30px_rgba(79,70,229,0.22)]">
-              POT <NumberFlow value={pot} />
+            <div className="relative">
+              <motion.div
+                key={pot}
+                initial={pot > 0 ? { scale: 1.14 } : false}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 320, damping: 18 }}
+                className="absolute inset-0 rounded-xl bg-indigo-600 shadow-[0_12px_30px_rgba(79,70,229,0.22)]"
+                aria-hidden="true"
+              />
+              <div className="relative px-5 py-2.5 font-display text-lg font-semibold text-white">
+                POT <NumberFlow value={pot} />
+              </div>
             </div>
             {showResult ? (
               <div className="max-h-[44vh] w-full overflow-y-auto">{resultBanner}</div>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import NumberFlow from '@number-flow/react';
 import { Crown, Coins, MicrophoneSlash, X } from '@phosphor-icons/react';
@@ -67,6 +68,7 @@ export function RoundTable({
 }) {
   // two-tap kick: first tap arms, second confirms, so a stray click never stands anyone up
   const [kickArmed, setKickArmed] = useState<number | null>(null);
+  const reduce = useReducedMotion();
   const rotation = mySeat ?? 0;
   const displayIndex = (seat: number) => (seat - rotation + SEATS) % SEATS;
   const bySeat = new Map(seats.map((s) => [s.seat, s]));
@@ -126,15 +128,47 @@ export function RoundTable({
         const isCoBanker = coBankerId !== null && p.userId === coBankerId;
         return (
           <div key={seat}>
-            {/* chips this player has pushed toward the pot this street */}
-            {committed > 0 && (
-              <div
-                className="absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-600/90 px-2 py-0.5 font-display text-[0.68rem] font-bold text-white shadow-sm"
-                style={{ left: `${bet.x}%`, top: `${bet.y}%` }}
-              >
-                {fmt(committed)}
-              </div>
-            )}
+            {/* chips this player has pushed toward the pot this street: they
+                slide in from the seat on every bet, and sweep into the pot
+                when the street closes */}
+            <AnimatePresence>
+              {committed > 0 && (
+                <motion.div
+                  exit={
+                    reduce
+                      ? { opacity: 0 }
+                      : { left: '50%', top: '44%', opacity: 0, scale: 0.5 }
+                  }
+                  transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                  className="absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1"
+                  style={{ left: `${bet.x}%`, top: `${bet.y}%` }}
+                >
+                  <motion.div
+                    key={committed}
+                    initial={
+                      reduce
+                        ? false
+                        : {
+                            x: (x - bet.x) * 3.2,
+                            y: (y - bet.y) * 3.2,
+                            opacity: 0.4,
+                          }
+                    }
+                    animate={{ x: 0, y: 0, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 26 }}
+                    className="flex items-center gap-1"
+                  >
+                    <span className="relative h-4 w-5" aria-hidden="true">
+                      <span className="absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 border-dashed border-white/60 bg-indigo-500 shadow-sm" />
+                      <span className="absolute left-1.5 top-0 h-3.5 w-3.5 rounded-full border-2 border-dashed border-white/60 bg-indigo-600 shadow-sm" />
+                    </span>
+                    <span className="rounded-full bg-indigo-600/90 px-1.5 py-0.5 font-display text-[0.68rem] font-bold text-white shadow-sm">
+                      {fmt(committed)}
+                    </span>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <div
               className="absolute z-20 -translate-x-1/2 -translate-y-1/2"
               style={{ left: `${x}%`, top: `${y}%` }}

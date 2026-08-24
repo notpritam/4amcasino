@@ -12,4 +12,5 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | Banker sees every seat and can stand a player up (two-tap kick) | **notpritam** |
 | Banker badge on seats, docked side chat, fullscreen toggle, controls merged onto the table | **notpritam** |
 | Leaderboard rank (#1, #2, #3...) on player profiles; profile header merged for space | **notpritam** |
+| Chip physics: bets slide chip stacks to the pot, sweep in at street end, pot pulses; chip-slide and pot-collect sounds | **notpritam** |
 | Everything before 2026-08-24 (mental poker core, ledger and banking, friends and spectating, cyberpunk theme, MCP seat, fairness tour, auto-approve buys, ...) | **notpritam** |

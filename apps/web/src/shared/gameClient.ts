@@ -243,6 +243,8 @@ function handle(msg: ServerMsg): void {
         board: msg.board,
         ...(streetChanged ? { lastActions: {}, preAction: null, preActionCallAt: null } : {}),
       });
+      // the street closed with chips out front: they sweep into the pot
+      if (streetChanged && prev.betting?.seats.some((s) => s.committed > 0)) play('pot-collect');
       let pre = streetChanged ? null : prev.preAction;
       // the table moved: disarm any selection the new price invalidates, so a
       // raise can never turn 'Check' or a price-armed 'Call' into a surprise
@@ -273,7 +275,7 @@ function handle(msg: ServerMsg): void {
 
     case 'action_applied': {
       const { hand } = useStore.getState();
-      const soundFor = { fold: 'muck', check: 'knock', call: 'chip', bet: 'chip', raise: 'chip' } as const;
+      const soundFor = { fold: 'muck', check: 'knock', call: 'chip', bet: 'chips-slide', raise: 'chips-slide' } as const;
       play(soundFor[msg.action.type]);
       store.patchHand({
         lastActions: { ...hand.lastActions, [msg.seat]: { ...msg.action, auto: msg.auto } },
