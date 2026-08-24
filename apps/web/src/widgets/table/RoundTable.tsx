@@ -49,6 +49,7 @@ export function RoundTable({
   onKick,
   bankerId,
   coBankerId,
+  onMyCardsClick,
   children,
 }: {
   seats: SeatView[];
@@ -64,6 +65,7 @@ export function RoundTable({
   onKick: (userId: number) => void;
   bankerId: number;
   coBankerId: number | null;
+  onMyCardsClick?: () => void;
   children: React.ReactNode;
 }) {
   // two-tap kick: first tap arms, second confirms, so a stray click never stands anyone up
@@ -74,19 +76,19 @@ export function RoundTable({
   const bySeat = new Map(seats.map((s) => [s.seat, s]));
 
   return (
-    <div className="relative min-h-[26rem] w-full flex-1">
+    <div className="relative min-h-[30rem] w-full flex-1">
       {/* faux-isometric table: a darker rim sits a step below the felt surface */}
       <div
         aria-hidden="true"
-        className="absolute left-1/2 top-[calc(50%+14px)] h-[68%] w-[74%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] bg-slate-400/40 dark:bg-black/60"
+        className="absolute left-1/2 top-[calc(50%+14px)] h-[76%] w-[86%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] bg-slate-400/40 dark:bg-black/60"
       />
       <div
         aria-hidden="true"
-        className="absolute left-1/2 top-1/2 h-[68%] w-[74%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-slate-300/60 bg-gradient-to-b from-slate-100/60 to-slate-200/40 shadow-[inset_0_2px_0_rgba(255,255,255,0.08)] dark:border-slate-700/60 dark:from-slate-900/50 dark:to-slate-950/40"
+        className="absolute left-1/2 top-1/2 h-[76%] w-[86%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-slate-300/60 bg-gradient-to-b from-slate-100/60 to-slate-200/40 shadow-[inset_0_2px_0_rgba(255,255,255,0.08)] dark:border-slate-700/60 dark:from-slate-900/50 dark:to-slate-950/40"
       />
 
       {/* pot, board, and status live at the center */}
-      <div className="absolute left-1/2 top-1/2 z-10 flex w-[58%] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-5">
+      <div className="absolute left-1/2 top-1/2 z-10 flex w-[66%] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-5">
         {children}
       </div>
 
@@ -187,7 +189,11 @@ export function RoundTable({
             >
               {/* my hole cards ride above my pod; opponents show backs or reveals */}
               {p.inHand && (isMe ? myCards.length > 0 || !p.folded : !p.folded || p.revealed) && (
-                <div className={cn('flex', isMe ? 'gap-1' : '-space-x-2')}>
+                <div
+                  className={cn('flex', isMe ? 'cursor-pointer gap-1' : '-space-x-2')}
+                  onClick={isMe ? onMyCardsClick : undefined}
+                  title={isMe ? 'Show big cards' : undefined}
+                >
                   {isMe && myCards.length > 0 ? (
                     myCards.map((c) => <PlayingCard key={c} card={c} size="sm" deal />)
                   ) : p.revealed ? (

@@ -47,6 +47,7 @@ import { ActionBar } from '../../widgets/table/ActionBar.tsx';
 import { ChatPanel } from '../../widgets/table/ChatPanel.tsx';
 import { MobileTable } from '../../widgets/table/MobileTable.tsx';
 import { RoundTable } from '../../widgets/table/RoundTable.tsx';
+import { FloatingCards } from '../../widgets/table/FloatingCards.tsx';
 import { BankControls } from '../../widgets/table/BankControls.tsx';
 import { BrokeBuyInDialog } from '../../features/bank/BrokeBuyInDialog.tsx';
 import { InviteFriendsDialogBody } from '../../features/friends/FriendsPanel.tsx';
@@ -141,6 +142,8 @@ export function TablePage() {
   const wsConnected = useStore((s) => s.wsConnected);
   const [chatOpen, setChatOpen] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // your hole cards as a big draggable panel; hide/show is remembered
+  const [bigCards, setBigCards] = useState(() => localStorage.getItem('4am-big-cards') !== 'off');
   useEffect(() => {
     const sync = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', sync);
@@ -686,20 +689,25 @@ export function TablePage() {
             className="space-y-2"
           >
             {reasoning && (
-              <motion.p variants={revealItem} className="text-sm font-medium">
+              <motion.p
+                variants={revealItem}
+                className="font-display text-xl font-bold leading-snug sm:text-2xl"
+              >
                 {reasoning.headline}
               </motion.p>
             )}
             {reasoning?.winningFive && (
               <motion.div
                 variants={revealItem}
-                className="shine-once flex items-center gap-2 rounded-lg py-0.5"
+                className="shine-once flex flex-col gap-1.5 rounded-lg py-1"
               >
-                <span className="text-xs uppercase tracking-wide text-slate-400">Winning five</span>
-                <div className="flex gap-1">
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-500">
+                  The winning five
+                </span>
+                <div className="flex gap-1.5">
                   {reasoning.winningFive.map((c) => (
                     <motion.span key={c} variants={revealCard}>
-                      <PlayingCard card={c} size="xs" />
+                      <PlayingCard card={c} size="md" />
                     </motion.span>
                   ))}
                 </div>
@@ -1391,7 +1399,7 @@ export function TablePage() {
           <section
             aria-label="Poker board"
             className={cn(
-              'relative flex min-h-[clamp(34rem,72vh,54rem)] flex-col gap-5 overflow-hidden rounded-[2rem] bg-slate-200/50 px-3 pb-3 pt-8 ring-1 ring-slate-200 dark:bg-slate-900/60 dark:ring-slate-800 sm:px-5 lg:px-8',
+              'relative flex min-h-[clamp(38rem,78vh,62rem)] flex-col gap-3 overflow-hidden rounded-[2rem] bg-slate-200/50 px-2 pb-2 pt-4 ring-1 ring-slate-200 dark:bg-slate-900/60 dark:ring-slate-800 sm:px-4 lg:px-6',
               notInHand && 'opacity-60 saturate-50',
             )}
           >
@@ -1428,6 +1436,10 @@ export function TablePage() {
               }
               bankerId={room.room.bankerId}
               coBankerId={room.room.coBankerId}
+              onMyCardsClick={() => {
+                localStorage.setItem('4am-big-cards', 'on');
+                setBigCards(true);
+              }}
             >
             <div className="relative">
               <motion.div
@@ -1509,6 +1521,16 @@ export function TablePage() {
           </section>
 
           {peekPanel}
+
+          {bigCards && handLive && hand.myCards.length > 0 && !notInHand && (
+            <FloatingCards
+              cards={hand.myCards}
+              onClose={() => {
+                localStorage.setItem('4am-big-cards', 'off');
+                setBigCards(false);
+              }}
+            />
+          )}
         </main>
 
         {/* chat rides beside the table as a real column, never an overlay */}
