@@ -865,3 +865,11 @@ html.cyber body::after,
 .cyber-card-pop {
   filter: drop-shadow(0.26rem 0.28rem 0 rgb(255 60 142 / 0.55));
 }
+
+/* card-back colorways tuned to the theme */
+.cyber .card-back-indigo {
+  --back-color: #17843a;
+}
+.cyber .card-back-crimson {
+  --back-color: #c9166a;
+}

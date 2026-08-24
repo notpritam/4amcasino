@@ -81,7 +81,15 @@ function migrate(db: DB): void {
   ensureColumn(db, 'users', 'avatar_version', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'users', 'card_back', "TEXT NOT NULL DEFAULT 'indigo'");
   ensureColumn(db, 'users', 'four_color', 'INTEGER NOT NULL DEFAULT 0');
-  ensureColumn(db, 'users', 'theme', "TEXT NOT NULL DEFAULT 'light'");
+  ensureColumn(db, 'users', 'theme', "TEXT NOT NULL DEFAULT 'cyber'");
+  // 2026-08-24 redesign: cyber becomes the game's look for everyone, once.
+  // Settings still offers light/dark, so a later explicit choice sticks.
+  db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
+  const cyberFlag = db.prepare("SELECT value FROM meta WHERE key = 'cyber-theme-migrated'").get();
+  if (!cyberFlag) {
+    db.prepare("UPDATE users SET theme = 'cyber'").run();
+    db.prepare("INSERT INTO meta (key, value) VALUES ('cyber-theme-migrated', '1')").run();
+  }
   ensureColumn(db, 'users', 'quick_phrases', 'TEXT');
   ensureColumn(db, 'rooms', 'action_secs', 'INTEGER');
   ensureColumn(db, 'rooms', 'co_banker_id', 'INTEGER');
