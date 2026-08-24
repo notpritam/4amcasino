@@ -17,17 +17,6 @@ import { ChipStack } from './ChipStack.tsx';
 
 const SEATS = 9;
 
-/** Display slot for index i (0 = bottom center, clockwise around an oval). */
-function slot(i: number): { x: number; y: number } {
-  const a = (Math.PI / 180) * (90 + i * (360 / SEATS));
-  return { x: 50 + 44 * Math.cos(a), y: 50 + 42 * Math.sin(a) };
-}
-
-function betSpot(i: number): { x: number; y: number } {
-  const a = (Math.PI / 180) * (90 + i * (360 / SEATS));
-  return { x: 50 + 26 * Math.cos(a), y: 50 + 25 * Math.sin(a) };
-}
-
 function actionLabel(a: PlayerAction & { auto?: boolean }): string {
   if (a.type === 'fold') return a.auto ? 'timed out' : 'fold';
   if (a.type === 'check') return 'check';
@@ -74,9 +63,40 @@ export function RoundTable({
   // two-tap kick: first tap arms, second confirms, so a stray click never stands anyone up
   const [kickArmed, setKickArmed] = useState<number | null>(null);
   const reduce = useReducedMotion();
-  const rotation = mySeat ?? 0;
-  const displayIndex = (seat: number) => (seat - rotation + SEATS) % SEATS;
-  const bySeat = new Map(seats.map((s) => [s.seat, s]));
+  // only occupied seats show, auto-spread evenly around the oval; when seated,
+  // the order rotates so YOUR seat sits bottom-center
+  const occupied = [...seats].sort((a, b) => a.seat - b.seat);
+  let order = occupied;
+  if (mySeat !== null) {
+    const i = occupied.findIndex((x) => x.seat === mySeat);
+    if (i > 0) order = [...occupied.slice(i), ...occupied.slice(0, i)];
+  }
+  const n = Math.max(order.length, 1);
+  const angleOf = (idx: number) => (Math.PI / 180) * (90 + (idx / n) * 360);
+  // an unseated member sees where they can join: one + per cyclic gap that
+  // still has a free seat number in it, placed between the neighbors
+  const sitSpots: { seat: number; x: number; y: number }[] = [];
+  if (canSit && !handLive) {
+    if (order.length === 0) {
+      sitSpots.push({ seat: 0, x: 50, y: 92 });
+    } else {
+      for (let i = 0; i < order.length; i++) {
+        const from = order[i]!.seat;
+        const to = order[(i + 1) % order.length]!.seat;
+        let free: number | null = null;
+        for (let c = (from + 1) % SEATS; c !== to; c = (c + 1) % SEATS) {
+          if (!seats.some((x) => x.seat === c)) {
+            free = c;
+            break;
+          }
+        }
+        if (free !== null) {
+          const a = (Math.PI / 180) * (90 + ((i + 0.5) / n) * 360);
+          sitSpots.push({ seat: free, x: 50 + 44 * Math.cos(a), y: 50 + 42 * Math.sin(a) });
+        }
+      }
+    }
+  }
 
   return (
     <div className="relative min-h-[30rem] w-full flex-1">
@@ -95,39 +115,29 @@ export function RoundTable({
         {children}
       </div>
 
-      {Array.from({ length: SEATS }, (_, seat) => {
-        const p = bySeat.get(seat);
-        const i = displayIndex(seat);
-        const { x, y } = slot(i);
-        const committed = committedBySeat[seat] ?? 0;
-        const bet = betSpot(i);
-        const isMe = p?.userId === myUserId;
+      {sitSpots.map((spot) => (
+        <div
+          key={`sit-${spot.seat}`}
+          className="absolute z-10 -translate-x-1/2 -translate-y-1/2"
+          style={{ left: `${spot.x}%`, top: `${spot.y}%` }}
+        >
+          <button
+            onClick={() => onSit(spot.seat)}
+            className="flex h-14 w-14 flex-col items-center justify-center rounded-full border-2 border-dashed border-indigo-400/50 text-xs font-semibold text-indigo-500 transition-colors hover:border-indigo-400 hover:bg-indigo-500/10 dark:text-indigo-300"
+          >
+            Sit
+          </button>
+        </div>
+      ))}
 
-        if (!p) {
-          return (
-            <div
-              key={seat}
-              className="absolute z-10 -translate-x-1/2 -translate-y-1/2"
-              style={{ left: `${x}%`, top: `${y}%` }}
-            >
-              {canSit && !handLive ? (
-                <button
-                  onClick={() => onSit(seat)}
-                  className="flex h-14 w-14 flex-col items-center justify-center rounded-full border-2 border-dashed border-indigo-400/50 text-xs font-semibold text-indigo-500 transition-colors hover:border-indigo-400 hover:bg-indigo-500/10 dark:text-indigo-300"
-                >
-                  Sit
-                </button>
-              ) : (
-                <div
-                  aria-hidden="true"
-                  className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-dashed border-slate-300/50 text-[0.6rem] text-slate-400/70 dark:border-slate-700/50"
-                >
-                  {seat + 1}
-                </div>
-              )}
-            </div>
-          );
-        }
+      {order.map((p, i) => {
+        const seat = p.seat;
+        const a = angleOf(i);
+        const x = 50 + 44 * Math.cos(a);
+        const y = 50 + 42 * Math.sin(a);
+        const committed = committedBySeat[seat] ?? 0;
+        const bet = { x: 50 + 26 * Math.cos(a), y: 50 + 25 * Math.sin(a) };
+        const isMe = p.userId === myUserId;
 
         const isBanker = p.userId === bankerId;
         const isCoBanker = coBankerId !== null && p.userId === coBankerId;

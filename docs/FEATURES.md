@@ -18,4 +18,5 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | Blinking turn highlight: breathing glow, PLAYING pill, scale-up on the to-act seat | **notpritam** |
 | Real chip stacks: denominations colored by tier off the big blind, isometric piles that grow with bets and the pot | **notpritam** |
 | Pending buys shown at the seat (+N soon until the banker approves); seated / in-hand player counts in the header | **notpritam** |
+| Auto-organised seating: only occupied seats, evenly spread; unseated members see + spots in the gaps | **notpritam** |
 | Everything before 2026-08-24 (mental poker core, ledger and banking, friends and spectating, cyberpunk theme, MCP seat, fairness tour, auto-approve buys, ...) | **notpritam** |
