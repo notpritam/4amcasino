@@ -6,7 +6,7 @@ import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
 import { Coins, HourglassMedium, Wallet } from '@phosphor-icons/react';
 import { Button } from '../../shared/ui/index.tsx';
-import { preActionOptions, togglePreAction } from '../../features/table/preActions.ts';
+import { myToCall, togglePreAction } from '../../features/table/preActions.ts';
 
 export function ActionBar({
   mySeat,
@@ -222,26 +222,47 @@ export function ActionBar({
         )}
 
         {canPreAct && (
-          <div className="flex items-center gap-1.5">
-            <HourglassMedium
-              size={15}
-              className="text-slate-400"
-              aria-label="Ahead of turn"
-            />
-            {preActionOptions(st!, mySeat!).map((pa) => (
-              <button
-                key={pa.key}
-                onClick={() => togglePreAction(pa.key, st!, mySeat!)}
-                className={cn(
-                  'rounded-full px-3 py-1 text-xs font-semibold transition-colors',
-                  hand.preAction === pa.key
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700',
-                )}
-              >
-                {pa.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <HourglassMedium size={15} className="text-slate-400" aria-label="Ahead of turn" />
+            <button
+              onClick={() => togglePreAction('call-any', st!, mySeat!)}
+              className={cn(
+                'rounded-full px-3 py-1 text-xs font-semibold transition-colors',
+                hand.preAction === 'call-any'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700',
+              )}
+            >
+              Call any
+            </button>
+            {(() => {
+              const toCall = myToCall(st!, mySeat!);
+              const armedFold = hand.preAction === 'check-fold';
+              const armedCall = hand.preAction === 'call' || hand.preAction === 'check';
+              return (
+                <>
+                  <Button
+                    variant="secondary"
+                    className={cn(armedFold && 'ring-2 ring-indigo-500')}
+                    title="Arms now, acts on your turn"
+                    onClick={() => togglePreAction('check-fold', st!, mySeat!)}
+                  >
+                    {toCall > 0 ? 'Fold' : 'Check / Fold'}
+                  </Button>
+                  <Button
+                    variant="success"
+                    className={cn('opacity-90', armedCall && 'ring-2 ring-indigo-500')}
+                    title="Arms now, acts on your turn"
+                    onClick={() => togglePreAction(toCall > 0 ? 'call' : 'check', st!, mySeat!)}
+                  >
+                    {toCall > 0 ? `Call ${fmt(toCall)}` : 'Check'}
+                  </Button>
+                  <Button variant="secondary" disabled title="Raising unlocks on your turn">
+                    Raise
+                  </Button>
+                </>
+              );
+            })()}
           </div>
         )}
 
