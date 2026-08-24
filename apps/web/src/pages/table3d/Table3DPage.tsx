@@ -15,6 +15,7 @@ import { api } from '../../shared/api.ts';
 import { play } from '../../shared/sounds.ts';
 import { cn } from '../../shared/lib/cn.ts';
 import { ActionBar } from '../../widgets/table/ActionBar.tsx';
+import { ATTACKS, EMOTES } from './emotes.ts';
 
 /* ── the character wardrobe ─────────────────────────────────────────────── */
 
@@ -88,6 +89,23 @@ function buildCharacter(cfg: Avatar3D, dimmed: boolean): THREE.Group {
   const visor = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.07, 0.05), trim);
   visor.position.set(0, 1.29, cfg.head === 'cube' ? 0.22 : 0.24);
   g.add(visor);
+
+  // articulated arms: shoulder pivots so emotes can wave, clap, flex, slap
+  for (const side of [-1, 1] as const) {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(side * 0.36, 1.0, 0);
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.34, 4, 10), mat);
+    arm.position.y = -0.24;
+    shoulder.add(arm);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), trim);
+    hand.position.y = -0.5;
+    shoulder.add(hand);
+    shoulder.rotation.z = side * 0.16; // resting pose, slightly out
+    g.add(shoulder);
+    if (side === -1) g.userData.armL = shoulder;
+    else g.userData.armR = shoulder;
+  }
+  g.userData.head = head;
 
   if (cfg.hat === 'cap') {
     const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 18), trim);
@@ -288,6 +306,10 @@ export function Table3DPage() {
   const auth = useStore((s) => s.auth);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const flyRef = useRef<((pos: [number, number, number], look: [number, number, number]) => void) | null>(null);
+  const [emoteOpen, setEmoteOpen] = useState(false);
+  const [targetMenu, setTargetMenu] = useState<{ seat: number; name: string; x: number; y: number } | null>(null);
+  const targetMenuRef = useRef(setTargetMenu);
+  targetMenuRef.current = setTargetMenu;
   const [draft, setDraft] = useState<Avatar3D>(DEFAULT_AVATAR);
   const [saved, setSaved] = useState(false);
 
@@ -624,9 +646,11 @@ export function Table3DPage() {
 
     /* fun: pokes, fold slumps, bust-out blasts */
     interface Anim {
-      kind: 'poke' | 'fold' | 'boom' | 'rocket' | 'sparks';
+      kind: 'poke' | 'slap' | 'chip' | 'fold' | 'boom' | 'rocket' | 'sparks' | 'emote';
+      emote?: string;
       seat: number;
       t0: number;
+      fired?: boolean;
     }
     const anims: Anim[] = [];
     const charBySeat = new Map<number, THREE.Group>();
@@ -676,6 +700,84 @@ export function Table3DPage() {
     };
     window.addEventListener('4am-poke', onPoke);
 
+    const emoteSprite = (at: THREE.Vector3, text: string) => {
+      const sc = document.createElement('canvas');
+      sc.width = 128;
+      sc.height = 128;
+      const sx = sc.getContext('2d')!;
+      sx.font = '92px system-ui';
+      sx.textAlign = 'center';
+      sx.fillText(text, 64, 96);
+      const tex = new THREE.CanvasTexture(sc);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+      sp.scale.set(0.9, 0.9, 1);
+      sp.position.copy(at).add(new THREE.Vector3(0, 2.3, 0));
+      scene.add(sp);
+      const born = performance.now();
+      const rise = () => {
+        const lifeP = (performance.now() - born) / 1400;
+        if (lifeP >= 1) {
+          scene.remove(sp);
+          tex.dispose();
+          sp.material.dispose();
+          return;
+        }
+        sp.position.y += 0.012;
+        sp.material.opacity = 1 - lifeP;
+        requestAnimationFrame(rise);
+      };
+      rise();
+    };
+
+    const onEmote = (e: Event) => {
+      const d = (e as CustomEvent<{ fromSeat: number | null; kind: string; targetSeat?: number }>).detail;
+      if (d.kind in ATTACKS && d.targetSeat !== undefined) {
+        // wind-up on the attacker, impact on the target
+        if (d.fromSeat !== null)
+          anims.push({ kind: 'emote', emote: 'wave', seat: d.fromSeat, t0: performance.now() });
+        anims.push({ kind: d.kind as 'slap' | 'chip', seat: d.targetSeat, t0: performance.now() });
+        play(ATTACKS[d.kind]!.sound);
+        const home = homeBySeat.get(d.targetSeat);
+        if (home) powSprite(home);
+        if (d.kind === 'chip' && d.fromSeat !== null) {
+          const from = homeBySeat.get(d.fromSeat);
+          if (from && home) {
+            const chip = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.13, 0.13, 0.05, 16),
+              new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xb45309, emissiveIntensity: 0.4 }),
+            );
+            scene.add(chip);
+            const born = performance.now();
+            const flyChip = () => {
+              const fp = (performance.now() - born) / 500;
+              if (fp >= 1) {
+                scene.remove(chip);
+                chip.geometry.dispose();
+                (chip.material as THREE.Material).dispose();
+                return;
+              }
+              chip.position.lerpVectors(from, home, fp);
+              chip.position.y = 1.4 + Math.sin(Math.PI * fp) * 1.6;
+              chip.rotation.x += 0.4;
+              requestAnimationFrame(flyChip);
+            };
+            flyChip();
+          }
+        }
+        return;
+      }
+      const def = EMOTES[d.kind];
+      if (def && d.fromSeat !== null) {
+        anims.push({ kind: 'emote', emote: d.kind, seat: d.fromSeat, t0: performance.now() });
+        if (def.sound) play(def.sound);
+        const home = homeBySeat.get(d.fromSeat);
+        if (home) emoteSprite(home, def.sprite ?? def.emoji);
+      }
+    };
+    window.addEventListener('4am-emote', onEmote);
+    (window as unknown as Record<string, unknown>).__dbg = { anims, charBySeat, homeBySeat };
+
     /* tap a player to shove them (a click, not an orbit-drag) */
     const ray = new THREE.Raycaster();
     let downAt: [number, number] | null = null;
@@ -698,12 +800,18 @@ export function Table3DPage() {
         let o: THREE.Object3D | null = hit.object;
         while (o) {
           if (o.userData.pokeSeat !== undefined) {
-            wsClient.send({ t: 'poke', targetSeat: o.userData.pokeSeat as number });
+            targetMenuRef.current({
+              seat: o.userData.pokeSeat as number,
+              name: (o.userData.pokeName as string) ?? 'player',
+              x: e.clientX,
+              y: e.clientY,
+            });
             return;
           }
           o = o.parent;
         }
       }
+      targetMenuRef.current(null as never);
     };
     renderer.domElement.addEventListener('pointerdown', onDown);
     renderer.domElement.addEventListener('pointerup', onUp);
@@ -754,7 +862,10 @@ export function Table3DPage() {
         const char = buildCharacter(cfg, folded || !!p.sittingOut);
         char.position.set(px, 0, pz);
         char.lookAt(0, 0.6, 0);
-        if (p.userId !== myId) char.userData.pokeSeat = p.seat;
+        if (p.userId !== myId) {
+          char.userData.pokeSeat = p.seat;
+          char.userData.pokeName = p.displayName;
+        }
         charBySeat.set(p.seat!, char);
         homeBySeat.set(p.seat!, new THREE.Vector3(px, 0, pz));
         dynamic.add(char);
@@ -764,6 +875,17 @@ export function Table3DPage() {
         if (folded && h.handId && !seen.has(foldKey)) {
           seen.add(foldKey);
           anims.push({ kind: 'fold', seat: p.seat!, t0: performance.now() });
+        }
+        // the winner celebrates for everyone
+        if (h.result && h.handId) {
+          const winDelta = h.result.deltas.find((x) => x.seat === p.seat)?.delta ?? 0;
+          const winKey = `${h.handId}:win:${p.seat}`;
+          if (winDelta > 0 && !seen.has(winKey)) {
+            seen.add(winKey);
+            anims.push({ kind: 'emote', emote: 'celebrate', seat: p.seat!, t0: performance.now() });
+            play('fanfare');
+            burst(new THREE.Vector3(px, 1.6, pz), 0xfbbf24, 80, 3, 4);
+          }
         }
         // busting out fires the player's chosen blast
         if (h.result && h.handId) {
@@ -814,17 +936,19 @@ export function Table3DPage() {
           dynamic.add(chips);
         }
 
-        // opponents' face-down cards on the felt in front of them
-        if (inHand && !folded && p.userId !== myId) {
+        // players in the hand hold their two cards up like humans do
+        if (inHand && !folded) {
+          const held = new THREE.Group();
           for (let ci = 0; ci < 2; ci++) {
-            const back = makeCard(null, 0.42, 0);
-            back.position.x = Math.cos(a) * 4.15 + (ci - 0.5) * 0.3;
-            back.position.y = FELT_TOP + 0.015 + ci * 0.004;
-            back.position.z = Math.sin(a) * 2.95;
-            back.rotation.set(-Math.PI / 2, 0, -a + Math.PI / 2);
-            dynamic.add(back);
+            const hc = makeCard(null, 0.22, 0);
+            hc.rotation.set(-0.5, 0, (ci - 0.5) * 0.35);
+            hc.position.set((ci - 0.5) * 0.14, 0, 0.02 * ci);
+            held.add(hc);
           }
+          held.position.set(0, 0.95, 0.4);
+          char.add(held);
         }
+
       });
 
       /* board and my cards */
@@ -893,38 +1017,82 @@ export function Table3DPage() {
       }
 
       const nowMs = performance.now();
+      // every character starts each frame at its base pose, breathes a little,
+      // then active animations write absolute offsets on top - nothing drifts
+      for (const [seat, char] of charBySeat) {
+        const home = homeBySeat.get(seat);
+        if (!home) continue;
+        char.position.copy(home);
+        char.rotation.set(0, 0, 0);
+        char.scale.setScalar(1);
+        char.lookAt(0, 0.6, 0);
+        const armL = char.userData.armL as THREE.Group | undefined;
+        const armR = char.userData.armR as THREE.Group | undefined;
+        const headObj = char.userData.head as THREE.Object3D | undefined;
+        if (armL) armL.rotation.set(0, 0, -0.16 + Math.sin(t * 1.1 + seat) * 0.05);
+        if (armR) armR.rotation.set(0, 0, 0.16 - Math.sin(t * 1.1 + seat) * 0.05);
+        if (headObj) headObj.rotation.set(0, Math.sin(t * 0.4 + seat * 2) * 0.22, 0);
+        char.scale.setScalar(1 + Math.sin(t * 1.3 + seat) * 0.012);
+      }
       for (let i = anims.length - 1; i >= 0; i--) {
         const anim = anims[i]!;
         const char = charBySeat.get(anim.seat);
         const home = homeBySeat.get(anim.seat);
-        const dur = anim.kind === 'poke' ? 1100 : anim.kind === 'fold' ? 900 : 1700;
+        const dur =
+          anim.kind === 'emote'
+            ? (EMOTES[anim.emote ?? '']?.dur ?? 1600)
+            : anim.kind === 'poke'
+              ? 1100
+              : anim.kind === 'slap'
+                ? 1300
+                : anim.kind === 'chip'
+                  ? 1500
+                  : anim.kind === 'fold'
+                    ? 900
+                    : 1700;
         const prog = (nowMs - anim.t0) / dur;
         if (!char || !home || prog >= 1) {
-          if (char && home) {
-            char.position.copy(home);
-            char.rotation.set(0, char.rotation.y, 0);
-            char.lookAt(0, 0.6, 0);
-          }
           anims.splice(i, 1);
           continue;
         }
         const wave = Math.sin(Math.PI * prog);
         const away = home.clone().normalize();
-        if (anim.kind === 'poke') {
+        if (anim.kind === 'emote') {
+          const def = EMOTES[anim.emote ?? ''];
+          if (def) {
+            def.apply(char, prog, t);
+            if (def.burst && !anim.fired && prog > 0.4) {
+              anim.fired = true;
+              burst(home.clone().setY(1.4), def.burst, 40, 2.2, 3);
+            }
+          }
+        } else if (anim.kind === 'poke') {
           char.position.copy(home).addScaledVector(away, wave * 2.1);
           char.position.y = wave * 1.4;
-          char.rotation.y += 0.35; // tumble
+          char.rotation.y = prog * Math.PI * 4;
           char.rotation.z = wave * 0.9;
+        } else if (anim.kind === 'slap') {
+          // a harder hit: long arc sideways with a full flat spin
+          char.position.copy(home).addScaledVector(away, wave * 3.1);
+          char.position.y = wave * 2.2;
+          char.rotation.z = prog * Math.PI * 6;
+        } else if (anim.kind === 'chip') {
+          if (prog > 0.35) {
+            const kp = (prog - 0.35) / 0.65;
+            const kw = Math.sin(Math.PI * kp);
+            char.position.copy(home).addScaledVector(away, kw * 0.9);
+            char.rotation.x = -kw * 0.5;
+          }
         } else if (anim.kind === 'fold') {
-          char.rotation.x = wave * 0.65; // slump forward over the mucked hand
-          char.position.y = -wave * 0.18;
+          char.rotation.x = wave * 0.65;
+          char.position.y = home.y - wave * 0.18;
         } else if (anim.kind === 'rocket') {
-          char.position.y = prog * 9;
-          char.rotation.y += 0.5;
+          char.position.y = home.y + prog * 9;
+          char.rotation.y = prog * Math.PI * 8;
           if (Math.random() < 0.5) burst(char.position.clone(), 0xa78bfa, 3, 0.4, -1);
         } else {
           char.scale.setScalar(Math.max(0.05, 1 - prog * 1.1));
-          char.rotation.y += anim.kind === 'sparks' ? 0.2 : 0.45;
+          char.rotation.y = prog * Math.PI * (anim.kind === 'sparks' ? 3 : 7);
         }
       }
       for (let i = particles.length - 1; i >= 0; i--) {
@@ -1109,6 +1277,76 @@ export function Table3DPage() {
             className="w-full rounded-lg bg-fuchsia-500 py-2 text-sm font-bold text-white hover:bg-fuchsia-400"
           >
             {saved ? 'Saved - the table sees it' : 'Save character'}
+          </button>
+        </div>
+      )}
+
+      {/* emotes: everyone at the table sees yours */}
+      <div className="absolute bottom-28 right-3 z-10 flex flex-col items-end gap-2">
+        {emoteOpen && (
+          <div className="grid max-h-72 w-64 grid-cols-4 gap-1 overflow-y-auto rounded-2xl bg-[#1d1033]/95 p-2 ring-1 ring-violet-400/30 backdrop-blur">
+            {Object.entries(EMOTES)
+              .filter(([k]) => k !== 'celebrate')
+              .map(([kind, def]) => (
+                <button
+                  key={kind}
+                  title={def.label}
+                  onClick={() => {
+                    wsClient.send({ t: 'emote', kind });
+                    setEmoteOpen(false);
+                  }}
+                  className="flex flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-lg hover:bg-white/10"
+                >
+                  {def.emoji}
+                  <span className="text-[0.55rem] leading-none text-violet-300/80">{def.label}</span>
+                </button>
+              ))}
+          </div>
+        )}
+        <button
+          onClick={() => setEmoteOpen((v) => !v)}
+          className={cn(
+            'rounded-full px-4 py-2 text-sm font-semibold backdrop-blur',
+            emoteOpen ? 'bg-fuchsia-500 text-white' : 'bg-white/10 hover:bg-white/20',
+          )}
+        >
+          🎭 Emotes
+        </button>
+      </div>
+
+      {/* tap a player: pick your mischief */}
+      {targetMenu && (
+        <div
+          className="fixed z-20 w-40 overflow-hidden rounded-xl bg-[#1d1033]/95 ring-1 ring-violet-400/40 backdrop-blur"
+          style={{ left: Math.min(targetMenu.x, window.innerWidth - 170), top: Math.min(targetMenu.y, window.innerHeight - 160) }}
+        >
+          <div className="border-b border-violet-400/20 px-3 py-1.5 text-xs font-bold text-violet-200">
+            {targetMenu.name}
+          </div>
+          {(
+            [
+              ['👉 Shove', 'shove'],
+              ['🖐️ Slap', 'slap'],
+              ['🪙 Throw a chip', 'chip'],
+            ] as const
+          ).map(([label, kind]) => (
+            <button
+              key={kind}
+              onClick={() => {
+                if (kind === 'shove') wsClient.send({ t: 'poke', targetSeat: targetMenu.seat });
+                else wsClient.send({ t: 'emote', kind, targetSeat: targetMenu.seat });
+                setTargetMenu(null);
+              }}
+              className="block w-full px-3 py-2 text-left text-sm hover:bg-white/10"
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            onClick={() => setTargetMenu(null)}
+            className="block w-full px-3 py-1.5 text-left text-xs text-violet-300/60 hover:bg-white/10"
+          >
+            Never mind
           </button>
         </div>
       )}

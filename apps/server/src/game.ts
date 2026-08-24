@@ -270,6 +270,26 @@ export class GameRoom {
         this.broadcast({ t: 'poke', fromUserId: userId, fromName: pokeUser.name, targetSeat: msg.targetSeat });
         return;
       }
+      case 'emote': {
+        const nowEmote = Date.now();
+        if (nowEmote - (this.lastPoke.get(userId) ?? 0) < 700) return;
+        this.lastPoke.set(userId, nowEmote);
+        const emoteUser = this.db
+          .prepare('SELECT COALESCE(display_name, username) as name FROM users WHERE id = ?')
+          .get(userId) as { name: string };
+        const emoteSeat = this.db
+          .prepare('SELECT seat FROM room_players WHERE room_id = ? AND user_id = ?')
+          .get(this.roomId, userId) as { seat: number | null } | undefined;
+        this.broadcast({
+          t: 'emote',
+          fromUserId: userId,
+          fromName: emoteUser.name,
+          fromSeat: emoteSeat?.seat ?? null,
+          kind: msg.kind,
+          targetSeat: msg.targetSeat,
+        });
+        return;
+      }
       case 'rtc': {
         // voice-chat signaling: relay verbatim to one room member; server never sees audio
         this.send(msg.to, { t: 'rtc', from: userId, data: msg.data });

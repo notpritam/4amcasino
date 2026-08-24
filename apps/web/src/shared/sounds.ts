@@ -14,6 +14,9 @@ export type SoundName =
   | 'pot-collect'
   | 'thwack'
   | 'boom'
+  | 'slap'
+  | 'boing'
+  | 'fanfare'
   | 'knock'
   | 'muck'
   | 'turn'
@@ -171,6 +174,21 @@ const recipes: Record<SoundName, (c: AudioContext, t: number) => void> = {
     noiseBurst(c, t, 0.5, 400, 0.5, 0.32, 60);
     tone(c, t, 0.4, 90, 0.3, 'sine', 32);
     for (let i = 0; i < 4; i++) tone(c, t + 0.1 + i * 0.07, 0.1, 900 + i * 350, 0.06, 'triangle');
+  },
+  // an open-palm slap connecting
+  slap: (c, t) => {
+    noiseBurst(c, t, 0.04, 1600, 1.6, 0.34, 500);
+    tone(c, t + 0.015, 0.09, 240, 0.2, 'sine', 90);
+  },
+  // cartoon spring
+  boing: (c, t) => {
+    tone(c, t, 0.28, 300, 0.2, 'sine', 90);
+    tone(c, t, 0.28, 620, 0.12, 'triangle', 170);
+  },
+  // a little victory fanfare
+  fanfare: (c, t) => {
+    const notes = [523, 659, 784, 1047];
+    notes.forEach((f, i) => tone(c, t + i * 0.09, i === 3 ? 0.4 : 0.12, f, 0.13, 'triangle'));
   },
   // the classic double knuckle-tap for a check
   knock: (c, t) => {

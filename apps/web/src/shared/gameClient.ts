@@ -289,6 +289,11 @@ function handle(msg: ServerMsg): void {
       return;
     }
 
+    case 'emote': {
+      window.dispatchEvent(new CustomEvent('4am-emote', { detail: msg }));
+      return;
+    }
+
     case 'seven_deuce': {
       const h = useStore.getState().hand;
       const roomState = useStore.getState().room;
