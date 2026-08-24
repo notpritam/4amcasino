@@ -90,6 +90,17 @@ function migrate(db: DB): void {
     db.prepare("UPDATE users SET theme = 'cyber'").run();
     db.prepare("INSERT INTO meta (key, value) VALUES ('cyber-theme-migrated', '1')").run();
   }
+  // heal balances damaged by the old absolute-stack settlement write (a buy
+  // approved mid-hand was erased at hand end): the hash-chained ledger is the
+  // source of truth, so recompute any stack that disagrees with it, once
+  const healFlag = db.prepare("SELECT value FROM meta WHERE key = 'stack-ledger-heal-1'").get();
+  if (!healFlag) {
+    db.prepare(
+      `UPDATE room_players SET stack = COALESCE((SELECT SUM(l.delta) FROM ledger l WHERE l.room_id = room_players.room_id AND l.user_id = room_players.user_id), 0)
+       WHERE stack != COALESCE((SELECT SUM(l.delta) FROM ledger l WHERE l.room_id = room_players.room_id AND l.user_id = room_players.user_id), 0)`,
+    ).run();
+    db.prepare("INSERT INTO meta (key, value) VALUES ('stack-ledger-heal-1', '1')").run();
+  }
   ensureColumn(db, 'users', 'quick_phrases', 'TEXT');
   ensureColumn(db, 'rooms', 'action_secs', 'INTEGER');
   ensureColumn(db, 'rooms', 'co_banker_id', 'INTEGER');

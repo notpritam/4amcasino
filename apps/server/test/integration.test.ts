@@ -362,6 +362,26 @@ describe('full hand integration', () => {
     expect(mine.voided).toBe(false);
   });
 
+  it('a mid-hand buy survives the hand settlement', async () => {
+    const { players, room, host } = await setupRoom(['heala', 'healb', 'healc']);
+    host.send({ t: 'start_hand' });
+    // the shuffle is still running: this purchase lands while the hand is live
+    const req = await host.api(`/api/rooms/${room.id}/buy`, { amount: 500 });
+    await host.api(`/api/rooms/${room.id}/approve`, { requestId: req.id, approve: true });
+    await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null)));
+
+    const hostDelta = players[0]!.handEnd!.deltas.find((d: { seat: number }) => d.seat === 0)!.delta;
+    const state = await host.api(`/api/rooms/${room.id}`);
+    const me = state.players.find((p: { username: string }) => p.username === 'heala');
+    // 1000 buy-in at setup, plus the hand's result, plus the mid-hand 500
+    expect(me.stack).toBe(1000 + hostDelta + 500);
+    // and the ledger agrees with the stack exactly
+    const sum = ctx.db
+      .prepare('SELECT SUM(delta) as s FROM ledger WHERE room_id = ? AND user_id = ?')
+      .get(room.id, me.userId) as { s: number };
+    expect(sum.s).toBe(me.stack);
+  });
+
   it('fold-out ends the hand without any reveal', async () => {
     const { players, host } = await setupRoom(['host', 'bob'], ['fold-first', 'fold-first']);
     // heads-up: button/SB acts first and folds; BB wins blinds without showdown

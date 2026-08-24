@@ -1329,11 +1329,16 @@ class Hand {
     const { deltas, stacks } = this.settlement;
     const head = this.transcript.head;
     const write = this.db.transaction(() => {
-      for (const s of stacks) {
-        const info = this.seats.find((x) => x.seat === s.seat)!;
-        this.db
-          .prepare('UPDATE room_players SET stack = ? WHERE room_id = ? AND user_id = ?')
-          .run(s.stack, this.roomId, info.userId);
+      // settle by DELTA, never by absolute stack: the hand's snapshot predates
+      // anything credited while it ran (a mid-hand buy, a banker revert), and
+      // an absolute write would silently erase those chips
+      for (const d of deltas) {
+        if (d.delta !== 0) {
+          const info = this.seats.find((x) => x.seat === d.seat)!;
+          this.db
+            .prepare('UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?')
+            .run(d.delta, this.roomId, info.userId);
+        }
       }
       for (const d of deltas) {
         if (d.delta === 0) continue;
