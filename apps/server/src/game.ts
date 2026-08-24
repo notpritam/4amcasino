@@ -208,6 +208,7 @@ export class GameRoom {
       connected: this.sockets.has(p.userId),
       totalBought: p.privateMode ? 0 : p.totalBought,
       privateStats: !!p.privateMode,
+      pendingBuy: p.pendingBuy,
     }));
     const state: ServerMsg = {
       t: 'room_state',

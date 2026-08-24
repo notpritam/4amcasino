@@ -83,16 +83,21 @@ export function roomPlayers(db: DB, roomId: string) {
       `SELECT rp.user_id as userId, u.username, COALESCE(u.display_name, u.username) as displayName,
               u.avatar_version as avatarVersion, u.pubkey as publicKey, rp.seat, rp.stack,
               rp.sitting_out as sittingOut, u.private_mode as privateMode,
-              COALESCE(b.total, 0) as totalBought
+              COALESCE(b.total, 0) as totalBought,
+              COALESCE(pr.pending, 0) as pendingBuy
        FROM room_players rp
        JOIN users u ON u.id = rp.user_id
        LEFT JOIN (
          SELECT user_id, SUM(delta) as total FROM ledger
          WHERE room_id = ? AND kind IN ('purchase', 'revert') GROUP BY user_id
        ) b ON b.user_id = rp.user_id
+       LEFT JOIN (
+         SELECT user_id, SUM(amount) as pending FROM buy_requests
+         WHERE room_id = ? AND status = 'pending' GROUP BY user_id
+       ) pr ON pr.user_id = rp.user_id
        WHERE rp.room_id = ? ORDER BY rp.seat`,
     )
-    .all(roomId, roomId) as {
+    .all(roomId, roomId, roomId) as {
     userId: number;
     username: string;
     displayName: string;
@@ -103,6 +108,7 @@ export function roomPlayers(db: DB, roomId: string) {
     sittingOut: number;
     privateMode: number;
     totalBought: number;
+    pendingBuy: number;
   }[];
 }
 
@@ -130,6 +136,7 @@ function roomJson(db: DB, room: RoomRow) {
       privateMode: undefined,
       privateStats: !!p.privateMode,
       totalBought: p.privateMode ? 0 : p.totalBought,
+      pendingBuy: p.pendingBuy,
     })),
   };
 }
@@ -215,6 +222,7 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
       .prepare('INSERT INTO buy_requests (room_id, user_id, amount, note, ts) VALUES (?, ?, ?, ?, ?)')
       .run(id, req.userId, parsed.data.amount, parsed.data.note ?? null, Date.now());
     const requestId = Number(info.lastInsertRowid);
+    if (!room.auto_approve_buys) roomEvents.emit('changed', id);
     if (room.auto_approve_buys) {
       // the banker pre-approved buys for this room; settle it like a banker click,
       // attributed to the standing banker so the ledger names who vouched

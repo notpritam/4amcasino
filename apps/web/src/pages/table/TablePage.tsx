@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   CornersIn,
   CornersOut,
+  UsersThree,
   CardsThree,
   ChatCircle,
   DotsThreeVertical,
@@ -432,6 +433,7 @@ export function TablePage() {
           displayName: p.displayName,
           avatarVersion: p.avatarVersion,
           stack: stackShown,
+          pendingBuy: p.pendingBuy ?? 0,
           broke: stackShown === 0 && !(handLive && inHand),
           isButton: inHand && hand.buttonSeat === p.seat,
           isToAct: handLive && hand.betting?.toAct === p.seat,
@@ -1277,6 +1279,10 @@ export function TablePage() {
               )}
               <span>
                 blinds {room.room.sb}/{room.room.bb}
+              </span>
+              <span className="flex items-center gap-1" title="Seated players / in this hand">
+                <UsersThree size={13} /> {seatViews.length}
+                {handLive ? ` · ${hand.seats.length} in hand` : ''}
               </span>
             </div>
           </div>

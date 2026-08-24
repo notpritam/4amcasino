@@ -274,6 +274,14 @@ export function RoundTable({
               >
                 <NumberFlow value={p.stack} />
               </div>
+              {p.pendingBuy > 0 && (
+                <div
+                  title="Buy waiting for banker approval"
+                  className="rounded-full bg-amber-400/15 px-1.5 py-px font-display text-[0.62rem] font-bold text-amber-500"
+                >
+                  +{fmt(p.pendingBuy)} soon
+                </div>
+              )}
               {(p.broke || p.sittingOut || !p.connected || p.allIn || p.lastAction) && (
                 <div
                   className={cn(

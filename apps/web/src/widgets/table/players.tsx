@@ -29,6 +29,8 @@ export interface SeatView {
   voiceMuted: boolean;
   revealed?: CardId[];
   won: boolean;
+  /** Chips requested from the bank, still waiting for approval. */
+  pendingBuy: number;
   lastAction?: PlayerAction & { auto?: boolean };
 }
 

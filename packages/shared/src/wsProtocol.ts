@@ -112,6 +112,8 @@ export interface RoomStatePlayer {
   totalBought: number;
   /** The player asked for their winnings to stay hidden. */
   privateStats: boolean;
+  /** Chips requested from the bank, still waiting for banker approval. */
+  pendingBuy: number;
 }
 
 export type ServerMsg =
