@@ -407,13 +407,88 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     return { rooms: rows };
   });
 
+  // Each hand carries YOUR result: net chips from the settlement ledger plus
+  // how the hand ended for you (folded and where, showdown, quiet win, sat
+  // out). Highly requested by siwans - see docs/FEATURES.md.
   app.get('/api/rooms/:id/hands', authed, async (req, reply) => {
     const { id } = req.params as { id: string };
     if (!getRoom(db, id)) return reply.code(404).send({ error: 'no such room' });
     if (!isMember(db, id, req.userId)) return reply.code(403).send({ error: 'not a member' });
-    const hands = db
-      .prepare('SELECT hand_id as handId, head, ts FROM transcripts WHERE room_id = ? ORDER BY ts DESC')
-      .all(id);
+    const rows = db
+      .prepare(
+        'SELECT hand_id as handId, head, entries, ts FROM transcripts WHERE room_id = ? ORDER BY ts DESC',
+      )
+      .all(id) as { handId: string; head: string; entries: string; ts: number }[];
+    const nets = new Map(
+      (
+        db
+          .prepare(
+            `SELECT ref, SUM(delta) as net FROM ledger
+             WHERE room_id = ? AND user_id = ? AND kind = 'hand-settlement' GROUP BY ref`,
+          )
+          .all(id, req.userId) as { ref: string; net: number }[]
+      ).map((r) => [r.ref, r.net]),
+    );
+    const voidedHeads = new Set(
+      (
+        db
+          .prepare(`SELECT DISTINCT ref FROM ledger WHERE room_id = ? AND kind = 'void-hand'`)
+          .all(id) as { ref: string | null }[]
+      ).map((r) => r.ref),
+    );
+    const STREETS = ['preflop', 'on the flop', 'on the turn', 'on the river'];
+    const hands = rows.map((row) => {
+      let outcome = 'played';
+      try {
+        const entries = JSON.parse(row.entries) as {
+          type: string;
+          payload: Record<string, unknown>;
+        }[];
+        const hs = entries.find((e) => e.type === 'hand_start');
+        const seats = (hs?.payload?.seats ?? []) as { seat: number; userId: number }[];
+        const seat = seats.find((x) => x.userId === req.userId)?.seat;
+        if (seat === undefined) {
+          outcome = 'sat out';
+        } else {
+          let street = 0;
+          let foldedAt: number | null = null;
+          let revealed = false;
+          let award = 0;
+          let anyReveals = false;
+          for (const e of entries) {
+            if (e.type === 'street') street++;
+            if (e.type === 'action' && (e.payload.seat as number) === seat) {
+              const a = e.payload.action as { type: string };
+              if (a.type === 'fold') foldedAt = Math.min(street, 3);
+            }
+            if (e.type === 'settlement') {
+              const p = e.payload as {
+                awards?: { seat: number; amount: number }[];
+                reveals?: { seat: number }[];
+              };
+              anyReveals = (p.reveals ?? []).length > 0;
+              revealed = (p.reveals ?? []).some((r) => r.seat === seat);
+              award = (p.awards ?? []).find((a) => a.seat === seat)?.amount ?? 0;
+            }
+          }
+          if (foldedAt !== null) outcome = `folded ${STREETS[foldedAt]}`;
+          else if (award > 0 && revealed) outcome = 'won at showdown';
+          else if (award > 0 && !anyReveals) outcome = 'won, everyone folded';
+          else if (award > 0) outcome = 'won';
+          else if (revealed) outcome = 'lost at showdown';
+        }
+      } catch {
+        /* unreadable transcript: keep the neutral label */
+      }
+      return {
+        handId: row.handId,
+        head: row.head,
+        ts: row.ts,
+        myNet: nets.get(row.head) ?? null,
+        outcome,
+        voided: voidedHeads.has(row.head),
+      };
+    });
     return { hands };
   });
 

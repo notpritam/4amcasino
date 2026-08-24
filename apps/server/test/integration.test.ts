@@ -350,6 +350,16 @@ describe('full hand integration', () => {
     expect(session.biggestPot).toBeGreaterThan(0);
     const nets = session.players.reduce((s: number, p: { net: number }) => s + p.net, 0);
     expect(nets).toBe(0);
+
+    // the hands list carries YOUR per-hand result (net + outcome)
+    const hands = await host.api(`/api/rooms/${room.id}/hands`);
+    const mine = hands.hands.find(
+      (h: { handId: string }) => h.handId === players[0]!.handEnd!.handId,
+    );
+    const hostDelta = players[0]!.handEnd!.deltas.find((d: { seat: number }) => d.seat === 0)!;
+    expect(mine.myNet).toBe(hostDelta.delta);
+    expect(['won at showdown', 'lost at showdown']).toContain(mine.outcome);
+    expect(mine.voided).toBe(false);
   });
 
   it('fold-out ends the hand without any reveal', async () => {

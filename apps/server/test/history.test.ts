@@ -60,7 +60,9 @@ describe('my-rooms and hand history', () => {
     const list = (
       await ctx.app.inject({ method: 'GET', url: `/api/rooms/${room.id}/hands`, headers: auth(host.token) })
     ).json();
-    expect(list.hands).toEqual([{ handId: 'hand1', head: 'deadbeef', ts: 123 }]);
+    expect(list.hands).toEqual([
+      { handId: 'hand1', head: 'deadbeef', ts: 123, myNet: null, outcome: 'sat out', voided: false },
+    ]);
 
     const detail = (
       await ctx.app.inject({

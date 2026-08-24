@@ -1,19 +1,36 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { verifyHandTranscript, type TranscriptEntry } from '@4am/mental-poker';
 import { api } from '../../shared/api.ts';
+import { cn, fmt } from '../../shared/lib/cn.ts';
 import { Badge, Button, Dialog, Panel, Spinner } from '../../shared/ui/index.tsx';
 
 interface HandRef {
   handId: string;
   head: string;
   ts: number;
+  /** Your net chips for the hand from the settlement ledger; null if you had no stake. */
+  myNet: number | null;
+  /** How the hand ended for you: folded (and where), showdown, quiet win, sat out. */
+  outcome: string;
+  voided: boolean;
 }
 
 interface HandDetail {
   handId: string;
   head: string;
   entries: TranscriptEntry[];
+}
+
+function netTone(net: number | null): string {
+  if (net === null || net === 0) return 'text-slate-400';
+  return net > 0 ? 'text-emerald-500' : 'text-rose-500';
+}
+
+function netLabel(net: number | null): string {
+  if (net === null) return '—';
+  if (net === 0) return '±0';
+  return `${net > 0 ? '+' : '−'}${fmt(Math.abs(net))}`;
 }
 
 export function HandsPage() {
@@ -24,6 +41,17 @@ export function HandsPage() {
   useEffect(() => {
     api.hands(roomId!).then((r) => setHands(r.hands));
   }, [roomId]);
+
+  // your session in numbers, voided hands excluded (they cancel on the ledger)
+  const totals = useMemo(() => {
+    const live = (hands ?? []).filter((h) => !h.voided && h.outcome !== 'sat out');
+    const net = live.reduce((sum, h) => sum + (h.myNet ?? 0), 0);
+    const folded = live.filter((h) => h.outcome.startsWith('folded'));
+    const foldBleed = folded.reduce((sum, h) => sum + Math.min(0, h.myNet ?? 0), 0);
+    const showdowns = live.filter((h) => h.outcome.includes('showdown'));
+    const won = live.filter((h) => (h.myNet ?? 0) > 0).length;
+    return { played: live.length, net, folds: folded.length, foldBleed, showdowns: showdowns.length, won };
+  }, [hands]);
 
   function download(d: HandDetail) {
     const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
@@ -51,9 +79,34 @@ export function HandsPage() {
         <h1 className="font-display text-xl font-bold">Hand history</h1>
       </header>
       <p className="text-sm text-slate-500">
-        Every completed hand stores its full signed transcript. Download one to audit the shuffle,
-        every unmask proof, and every action offline.
+        Every completed hand stores its full signed transcript with your result on it. Download one
+        to audit the shuffle, every unmask proof, and every action offline.
       </p>
+
+      {totals.played > 0 && (
+        <Panel className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div>
+            <div className="text-xs text-slate-500">Your net · {totals.played} hands</div>
+            <div className={cn('font-display text-lg font-bold', netTone(totals.net))}>
+              {netLabel(totals.net)}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500">Hands won</div>
+            <div className="font-display text-lg font-bold">{totals.won}</div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500">Folds</div>
+            <div className="font-display text-lg font-bold">{totals.folds}</div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500">Paid to fold (blinds and bets)</div>
+            <div className={cn('font-display text-lg font-bold', netTone(totals.foldBleed))}>
+              {netLabel(totals.foldBleed)}
+            </div>
+          </div>
+        </Panel>
+      )}
 
       {hands.length === 0 ? (
         <Panel className="text-sm text-slate-500">No completed hands yet.</Panel>
@@ -63,13 +116,27 @@ export function HandsPage() {
             <button
               key={h.handId}
               onClick={() => api.hand(roomId!, h.handId).then(setDetail)}
-              className="flex w-full items-center justify-between rounded-xl bg-white p-4 text-left ring-1 ring-slate-200/70 hover:shadow-md dark:bg-slate-900 dark:ring-slate-700/70"
+              className={cn(
+                'flex w-full items-center justify-between gap-3 rounded-xl bg-white p-4 text-left ring-1 ring-slate-200/70 hover:shadow-md dark:bg-slate-900 dark:ring-slate-700/70',
+                h.voided && 'opacity-60',
+              )}
             >
-              <div>
+              <div className="min-w-0">
                 <div className="font-display text-sm font-semibold">hand {h.handId.slice(0, 8)}</div>
                 <div className="text-xs text-slate-500">{new Date(h.ts).toLocaleString()}</div>
               </div>
-              <span className="font-mono text-xs text-slate-400">{h.head.slice(0, 12)}…</span>
+              <div className="flex shrink-0 items-center gap-2.5">
+                {h.voided && <Badge tone="rose">voided</Badge>}
+                <span className="text-xs text-slate-500">{h.outcome}</span>
+                <span
+                  className={cn(
+                    'w-16 text-right font-display text-sm font-bold tabular-nums',
+                    netTone(h.myNet),
+                  )}
+                >
+                  {netLabel(h.myNet)}
+                </span>
+              </div>
             </button>
           ))}
         </div>
@@ -95,7 +162,7 @@ export function HandsPage() {
                 ▶ Watch replay
               </Button>
             </Link>
-            <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg bg-slate-50 p-3">
+            <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg bg-slate-50 p-3 dark:bg-slate-950/60">
               {detail.entries.map((e) => (
                 <div key={e.seq} className="flex gap-2 text-xs">
                   <span className="w-8 text-right font-mono text-slate-400">{e.seq}</span>
