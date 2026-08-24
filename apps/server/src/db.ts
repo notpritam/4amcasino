@@ -82,6 +82,7 @@ function migrate(db: DB): void {
   ensureColumn(db, 'users', 'card_back', "TEXT NOT NULL DEFAULT 'indigo'");
   ensureColumn(db, 'users', 'four_color', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'users', 'theme', "TEXT NOT NULL DEFAULT 'cyber'");
+  ensureColumn(db, 'users', 'avatar3d', 'TEXT');
   // 2026-08-24 redesign: cyber becomes the game's look for everyone, once.
   // Settings still offers light/dark, so a later explicit choice sticks.
   db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");

@@ -33,6 +33,9 @@ const PlayerPage = lazy(() =>
 const ReplayPage = lazy(() =>
   import('../pages/replay/ReplayPage.tsx').then((module) => ({ default: module.ReplayPage })),
 );
+const Table3DPage = lazy(() =>
+  import('../pages/table3d/Table3DPage.tsx').then((module) => ({ default: module.Table3DPage })),
+);
 const SettingsPage = lazy(() =>
   import('../pages/settings/SettingsPage.tsx').then((module) => ({ default: module.SettingsPage })),
 );
@@ -88,6 +91,14 @@ export function App() {
             element={
               <RequireAuth>
                 <TablePage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/room/:id/3d"
+            element={
+              <RequireAuth>
+                <Table3DPage />
               </RequireAuth>
             }
           />

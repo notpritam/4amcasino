@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   CornersIn,
   CornersOut,
+  Cube,
   UsersThree,
   CardsThree,
   ChatCircle,
@@ -1340,6 +1341,14 @@ export function TablePage() {
               <ChatCircle size={20} weight={chatOpen ? 'fill' : 'regular'} />
             </DesktopIconButton>
 
+            <Link
+              to={`/room/${roomId}/3d`}
+              className={desktopIconClass}
+              aria-label="3D table"
+              title="3D table"
+            >
+              <Cube size={19} />
+            </Link>
             <DesktopIconButton
               label={isFullscreen ? 'Exit full screen' : 'Full screen'}
               onClick={() => {

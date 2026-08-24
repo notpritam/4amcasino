@@ -209,6 +209,7 @@ export class GameRoom {
       totalBought: p.privateMode ? 0 : p.totalBought,
       privateStats: !!p.privateMode,
       pendingBuy: p.pendingBuy,
+      avatar3d: p.avatar3d,
     }));
     const state: ServerMsg = {
       t: 'room_state',

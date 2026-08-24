@@ -114,6 +114,8 @@ export interface RoomStatePlayer {
   privateStats: boolean;
   /** Chips requested from the bank, still waiting for banker approval. */
   pendingBuy: number;
+  /** JSON blob describing the player's 3D character (color, head, hat). */
+  avatar3d: string | null;
 }
 
 export type ServerMsg =

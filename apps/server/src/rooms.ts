@@ -84,7 +84,8 @@ export function roomPlayers(db: DB, roomId: string) {
               u.avatar_version as avatarVersion, u.pubkey as publicKey, rp.seat, rp.stack,
               rp.sitting_out as sittingOut, u.private_mode as privateMode,
               COALESCE(b.total, 0) as totalBought,
-              COALESCE(pr.pending, 0) as pendingBuy
+              COALESCE(pr.pending, 0) as pendingBuy,
+              u.avatar3d as avatar3d
        FROM room_players rp
        JOIN users u ON u.id = rp.user_id
        LEFT JOIN (
@@ -109,6 +110,7 @@ export function roomPlayers(db: DB, roomId: string) {
     privateMode: number;
     totalBought: number;
     pendingBuy: number;
+    avatar3d: string | null;
   }[];
 }
 

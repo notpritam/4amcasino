@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from './db.js';
 import { requireUser } from './auth.js';
-import { canBank, getRoom, isMember } from './rooms.js';
+import { canBank, getRoom, isMember, roomEvents } from './rooms.js';
 
 const MAX_AVATAR_BYTES = 300_000;
 const AVATAR_MIMES = ['image/png', 'image/jpeg', 'image/webp'] as const;
@@ -15,6 +15,7 @@ const profileSchema = z.object({
   cardBack: z.enum(CARD_BACKS).optional(),
   fourColor: z.boolean().optional(),
   theme: z.enum(['light', 'dark', 'cyber']).optional(),
+  avatar3d: z.string().max(300).optional(),
   quickPhrases: z.array(z.string().trim().min(1).max(60)).max(8).optional(),
   privateMode: z.boolean().optional(),
   autoJoinInvites: z.boolean().optional(),
@@ -39,7 +40,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
   app.get('/api/profile', authed, async (req) => {
     const row = db
       .prepare(
-        'SELECT id, username, display_name, bio, avatar_version, card_back, four_color, theme, quick_phrases, private_mode, auto_join_invites, avatar IS NOT NULL as hasAvatar FROM users WHERE id = ?',
+        'SELECT id, username, display_name, bio, avatar_version, card_back, four_color, theme, avatar3d, quick_phrases, private_mode, auto_join_invites, avatar IS NOT NULL as hasAvatar FROM users WHERE id = ?',
       )
       .get(req.userId) as {
       id: number;
@@ -50,6 +51,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       card_back: string;
       four_color: number;
       theme: string;
+      avatar3d: string | null;
       quick_phrases: string | null;
       private_mode: number;
       auto_join_invites: number;
@@ -65,6 +67,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       cardBack: row.card_back,
       fourColor: !!row.four_color,
       theme: row.theme,
+      avatar3d: row.avatar3d,
       quickPhrases: row.quick_phrases ? (JSON.parse(row.quick_phrases) as string[]) : [],
       privateMode: !!row.private_mode,
       autoJoinInvites: !!row.auto_join_invites,
@@ -82,6 +85,12 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
         parsed.data.autoJoinInvites ? 1 : 0,
         req.userId,
       );
+    if (parsed.data.avatar3d !== undefined) {
+      db.prepare('UPDATE users SET avatar3d = ? WHERE id = ?').run(parsed.data.avatar3d, req.userId);
+      // the character changed: every table they sit at repaints live
+      const memberRooms = db.prepare('SELECT room_id FROM room_players WHERE user_id = ?').all(req.userId) as { room_id: string }[];
+      for (const r of memberRooms) roomEvents.emit('changed', r.room_id);
+    }
     if (theme !== undefined)
       db.prepare('UPDATE users SET theme = ? WHERE id = ?').run(theme, req.userId);
     if (quickPhrases !== undefined)

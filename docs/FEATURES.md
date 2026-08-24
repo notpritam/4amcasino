@@ -22,4 +22,5 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | Controls never hide mid-hand: Fold / Call / Raise stay in place off-turn and arm as pre-actions | **notpritam** |
 | Mid-hand kick: the banker can stand anyone up any time; it means auto-kicked from the next deal | **notpritam** |
 | Raise highlight: amber glowing badge that pops on the raiser seat; quiet chips for calls, bold ALL-IN | **notpritam** |
+| The 3D world: three.js purple-cyberpunk table at /room/:id/3d, customisable characters (color, head, hat) synced to everyone, fully playable via the HUD | **notpritam** |
 | Everything before 2026-08-24 (mental poker core, ledger and banking, friends and spectating, cyberpunk theme, MCP seat, fairness tour, auto-approve buys, ...) | **notpritam** |
