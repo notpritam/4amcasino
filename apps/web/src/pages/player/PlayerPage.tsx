@@ -66,10 +66,19 @@ export function PlayerPage() {
   const { id } = useParams<{ id: string }>();
   const [p, setP] = useState<PlayerProfile | null>(null);
   const [style, setStyle] = useState<PlayStyle | null>(null);
+  const [rank, setRank] = useState<number | null>(null);
 
   useEffect(() => {
     api.userProfile(Number(id)).then(setP);
     api.playStyle(Number(id)).then(setStyle).catch(() => {});
+    // global leaderboard position: #1, #2, #3... (absent for private mode)
+    api
+      .leaderboard()
+      .then((r) => {
+        const i = (r.rows as { userId: number }[]).findIndex((x) => x.userId === Number(id));
+        setRank(i >= 0 ? i + 1 : null);
+      })
+      .catch(() => {});
   }, [id]);
 
   if (!p) {
@@ -82,30 +91,59 @@ export function PlayerPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
-      <Panel className="flex items-center gap-5">
-        <Avatar userId={p.userId} name={p.displayName} version={p.avatarVersion} size="xl" />
-        <div className="min-w-0">
-          <h1 className="truncate font-display text-2xl font-bold">{p.displayName}</h1>
-          <div className="text-sm text-slate-400">
-            @{p.username} · joined {new Date(p.createdAt).toLocaleDateString()}
+      <Panel className="flex flex-wrap items-center gap-x-6 gap-y-4">
+        <div className="flex min-w-[18rem] flex-1 items-center gap-5">
+          <div className="relative shrink-0">
+            <Avatar userId={p.userId} name={p.displayName} version={p.avatarVersion} size="xl" />
+            {rank !== null && (
+              <span
+                title={`#${rank} on the leaderboard`}
+                className={cn(
+                  'absolute -bottom-1.5 -right-1.5 flex min-w-7 items-center justify-center rounded-full px-1.5 py-0.5 font-display text-xs font-bold ring-2 ring-white dark:ring-slate-900',
+                  rank === 1
+                    ? 'bg-amber-400 text-amber-950'
+                    : rank === 2
+                      ? 'bg-slate-300 text-slate-800'
+                      : rank === 3
+                        ? 'bg-amber-700 text-amber-50'
+                        : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-200',
+                )}
+              >
+                #{rank}
+              </span>
+            )}
           </div>
-          {p.bio && <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{p.bio}</p>}
+          <div className="min-w-0">
+            <h1 className="truncate font-display text-2xl font-bold">{p.displayName}</h1>
+            <div className="text-sm text-slate-400">
+              @{p.username}
+              {rank !== null && (
+                <>
+                  {' '}
+                  · <span className="font-semibold text-indigo-500 dark:text-indigo-300">
+                    #{rank} on the leaderboard
+                  </span>
+                </>
+              )}{' '}
+              · joined {new Date(p.createdAt).toLocaleDateString()}
+            </div>
+            {p.bio && <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{p.bio}</p>}
+          </div>
+        </div>
+        <div className="grid shrink-0 grid-cols-3 gap-2.5">
+          <Stat
+            label="Net points"
+            value={`${p.stats.net > 0 ? '+' : ''}${fmt(p.stats.net)}`}
+            tone={p.stats.net > 0 ? 'up' : p.stats.net < 0 ? 'down' : undefined}
+          />
+          <Stat label="Hands played" value={fmt(p.stats.handsPlayed)} />
+          <Stat
+            label="Biggest win"
+            value={p.stats.biggestWin > 0 ? `+${fmt(p.stats.biggestWin)}` : '0'}
+            tone={p.stats.biggestWin > 0 ? 'up' : undefined}
+          />
         </div>
       </Panel>
-
-      <div className="grid grid-cols-3 gap-3">
-        <Stat
-          label="Net points"
-          value={`${p.stats.net > 0 ? '+' : ''}${fmt(p.stats.net)}`}
-          tone={p.stats.net > 0 ? 'up' : p.stats.net < 0 ? 'down' : undefined}
-        />
-        <Stat label="Hands played" value={fmt(p.stats.handsPlayed)} />
-        <Stat
-          label="Biggest win"
-          value={p.stats.biggestWin > 0 ? `+${fmt(p.stats.biggestWin)}` : '0'}
-          tone={p.stats.biggestWin > 0 ? 'up' : undefined}
-        />
-      </div>
 
       {style && style.hands > 0 && (
         <Panel>

@@ -11,4 +11,5 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | Round table: seats positioned live around an isometric oval, your seat pinned at the bottom | **notpritam** |
 | Banker sees every seat and can stand a player up (two-tap kick) | **notpritam** |
 | Banker badge on seats, docked side chat, fullscreen toggle, controls merged onto the table | **notpritam** |
+| Leaderboard rank (#1, #2, #3...) on player profiles; profile header merged for space | **notpritam** |
 | Everything before 2026-08-24 (mental poker core, ledger and banking, friends and spectating, cyberpunk theme, MCP seat, fairness tour, auto-approve buys, ...) | **notpritam** |
