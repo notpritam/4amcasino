@@ -598,6 +598,171 @@ export function Table3DPage() {
     });
     scene.add(bar);
 
+    // a roulette wheel spinning in the corner
+    const rouletteCanvas = document.createElement('canvas');
+    rouletteCanvas.width = 256;
+    rouletteCanvas.height = 256;
+    const rc = rouletteCanvas.getContext('2d')!;
+    for (let i = 0; i < 18; i++) {
+      rc.fillStyle = i % 2 ? '#7c3aed' : i % 3 ? '#1c1132' : '#e879f9';
+      rc.beginPath();
+      rc.moveTo(128, 128);
+      rc.arc(128, 128, 126, (i / 18) * Math.PI * 2, ((i + 1) / 18) * Math.PI * 2);
+      rc.fill();
+    }
+    rc.fillStyle = '#f5d0fe';
+    rc.beginPath();
+    rc.arc(128, 128, 26, 0, Math.PI * 2);
+    rc.fill();
+    const rouletteTex = new THREE.CanvasTexture(rouletteCanvas);
+    rouletteTex.colorSpace = THREE.SRGBColorSpace;
+    const roulette = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.5, 1.6, 0.28, 36),
+      [
+        new THREE.MeshStandardMaterial({ color: 0x2b1650, roughness: 0.4 }),
+        new THREE.MeshStandardMaterial({ map: rouletteTex, roughness: 0.5 }),
+        new THREE.MeshStandardMaterial({ color: 0x2b1650 }),
+      ],
+    );
+    roulette.position.set(-R + 5, 1.05, -R + 7.5);
+    roulette.castShadow = true;
+    scene.add(roulette);
+    const rouletteStand = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.5, 0.9, 0.95, 16),
+      new THREE.MeshStandardMaterial({ color: 0x190d2e }),
+    );
+    rouletteStand.position.set(-R + 5, 0.45, -R + 7.5);
+    scene.add(rouletteStand);
+
+    // holo cards orbiting above the bar
+    const holoGroup = new THREE.Group();
+    for (let i = 0; i < 3; i++) {
+      const holo = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.9, 1.25),
+        new THREE.MeshBasicMaterial({
+          map: cardTexture(((i * 17 + 12) % 52) as CardId),
+          transparent: true,
+          opacity: 0.85,
+          side: THREE.DoubleSide,
+        }),
+      );
+      holo.userData.phase = (i / 3) * Math.PI * 2;
+      holoGroup.add(holo);
+    }
+    holoGroup.position.set(0, 3.4, R - 3.4);
+    scene.add(holoGroup);
+
+    // JACKPOT sign that blinks
+    const jkCanvas = document.createElement('canvas');
+    jkCanvas.width = 512;
+    jkCanvas.height = 128;
+    const jk = jkCanvas.getContext('2d')!;
+    jk.shadowColor = '#fbbf24';
+    jk.shadowBlur = 26;
+    jk.fillStyle = '#fde68a';
+    jk.font = '700 84px system-ui';
+    jk.textAlign = 'center';
+    jk.fillText('JACKPOT', 256, 94);
+    const jkTex = new THREE.CanvasTexture(jkCanvas);
+    jkTex.colorSpace = THREE.SRGBColorSpace;
+    const jackpot = new THREE.Sprite(new THREE.SpriteMaterial({ map: jkTex, transparent: true }));
+    jackpot.scale.set(4.4, 1.1, 1);
+    jackpot.position.set(-(R - 1.4) * 0.7, 6.2, -(R - 1.4) * 0.7);
+    scene.add(jackpot);
+
+    // two spotlights slowly sweeping the room
+    const sweepers: { light: THREE.SpotLight; phase: number }[] = [];
+    for (let i = 0; i < 2; i++) {
+      const spot = new THREE.SpotLight(i ? 0xe879f9 : 0xa78bfa, 120, 30, 0.35, 0.5);
+      spot.position.set(0, 8.6, 0);
+      const target = new THREE.Object3D();
+      scene.add(target);
+      spot.target = target;
+      scene.add(spot);
+      sweepers.push({ light: spot, phase: i * Math.PI });
+    }
+
+    // drifting dust motes
+    const moteCount = 220;
+    const motePos = new Float32Array(moteCount * 3);
+    for (let i = 0; i < moteCount; i++)
+      motePos.set(
+        [(Math.random() - 0.5) * 30, Math.random() * 7 + 0.5, (Math.random() - 0.5) * 30],
+        i * 3,
+      );
+    const moteGeo = new THREE.BufferGeometry();
+    moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
+    const motes = new THREE.Points(
+      moteGeo,
+      new THREE.PointsMaterial({ color: 0xc4b5fd, size: 0.045, transparent: true, opacity: 0.5 }),
+    );
+    scene.add(motes);
+
+    // framed wall art
+    for (const [glyph, ang] of [
+      ['♛', 0.95],
+      ['♚', 2.2],
+      ['★', 4.1],
+    ] as const) {
+      const artCanvas = document.createElement('canvas');
+      artCanvas.width = 128;
+      artCanvas.height = 160;
+      const ac = artCanvas.getContext('2d')!;
+      ac.fillStyle = '#241245';
+      ac.fillRect(0, 0, 128, 160);
+      ac.fillStyle = '#c4b5fd';
+      ac.font = '84px system-ui';
+      ac.textAlign = 'center';
+      ac.fillText(glyph, 64, 110);
+      const artTex = new THREE.CanvasTexture(artCanvas);
+      artTex.colorSpace = THREE.SRGBColorSpace;
+      const art = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.6, 2),
+        new THREE.MeshStandardMaterial({ map: artTex, emissive: 0x4c1d95, emissiveIntensity: 0.35 }),
+      );
+      const frame = new THREE.Mesh(
+        new THREE.BoxGeometry(1.85, 2.25, 0.08),
+        new THREE.MeshStandardMaterial({ color: 0x3b2168, metalness: 0.5, roughness: 0.4 }),
+      );
+      const artAngle = ang;
+      frame.position.set(Math.cos(artAngle) * (R - 0.35), 4.4, Math.sin(artAngle) * (R - 0.35));
+      frame.lookAt(0, 4.4, 0);
+      art.position.copy(frame.position).addScaledVector(frame.position.clone().setY(0).normalize(), -0.06);
+      art.position.y = 4.4;
+      art.lookAt(0, 4.4, 0);
+      scene.add(frame);
+      scene.add(art);
+    }
+
+    // the bar cat, obviously
+    const cat = new THREE.Group();
+    const catMat = new THREE.MeshStandardMaterial({ color: 0x312244, roughness: 0.9 });
+    const catBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.3, 4, 10), catMat);
+    catBody.rotation.z = Math.PI / 2;
+    catBody.position.y = 0.13;
+    cat.add(catBody);
+    const catHead = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), catMat);
+    catHead.position.set(0.28, 0.22, 0);
+    cat.add(catHead);
+    for (const side of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.09, 6), catMat);
+      ear.position.set(0.28, 0.34, side * 0.06);
+      cat.add(ear);
+    }
+    const catEyes = new THREE.Mesh(
+      new THREE.BoxGeometry(0.02, 0.02, 0.14),
+      new THREE.MeshStandardMaterial({ color: 0xe879f9, emissive: 0xe879f9, emissiveIntensity: 1.6 }),
+    );
+    catEyes.position.set(0.38, 0.24, 0);
+    cat.add(catEyes);
+    const catTail = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 0.4, 8), catMat);
+    catTail.position.set(-0.3, 0.28, 0);
+    catTail.rotation.z = -0.7;
+    cat.add(catTail);
+    cat.position.set(1.9, 1.16, R - 3.4);
+    cat.rotation.y = Math.PI * 0.8;
+    scene.add(cat);
+
     /* the table: oval felt with a neon rim */
     const felt = new THREE.Mesh(
       new THREE.CylinderGeometry(3, 3.15, 0.35, 48),
@@ -861,7 +1026,7 @@ export function Table3DPage() {
         const cfg = parseAvatar(p.avatar3d);
         const char = buildCharacter(cfg, folded || !!p.sittingOut);
         char.position.set(px, 0, pz);
-        char.lookAt(0, 0.6, 0);
+        char.rotation.y = Math.atan2(px, pz) + Math.PI;
         if (p.userId !== myId) {
           char.userData.pokeSeat = p.seat;
           char.userData.pokeName = p.displayName;
@@ -1023,9 +1188,8 @@ export function Table3DPage() {
         const home = homeBySeat.get(seat);
         if (!home) continue;
         char.position.copy(home);
-        char.rotation.set(0, 0, 0);
+        char.rotation.set(0, Math.atan2(home.x, home.z) + Math.PI, 0); // face center, stand upright
         char.scale.setScalar(1);
-        char.lookAt(0, 0.6, 0);
         const armL = char.userData.armL as THREE.Group | undefined;
         const armR = char.userData.armR as THREE.Group | undefined;
         const headObj = char.userData.head as THREE.Object3D | undefined;
@@ -1118,6 +1282,19 @@ export function Table3DPage() {
         (pt.pts.material as THREE.PointsMaterial).opacity = 1 - life;
       }
       rim.material.emissiveIntensity = 1.0 + Math.sin(t * 1.4) * 0.25;
+      roulette.rotation.y = t * 0.7;
+      holoGroup.children.forEach((holo, hi) => {
+        const ph = (holo.userData.phase as number) + t * 0.6;
+        holo.position.set(Math.cos(ph) * 1.5, Math.sin(t * 1.2 + hi) * 0.25, Math.sin(ph) * 1.5);
+        holo.rotation.y = ph + Math.PI / 2;
+      });
+      jackpot.material.opacity = 0.55 + (Math.sin(t * 4) > 0.4 ? 0.45 : 0);
+      for (const sw of sweepers) {
+        sw.light.target.position.set(Math.cos(t * 0.5 + sw.phase) * 9, 0, Math.sin(t * 0.5 + sw.phase) * 9);
+        sw.light.target.updateMatrixWorld();
+      }
+      motes.rotation.y = t * 0.02;
+      catTail.rotation.x = Math.sin(t * 2.2) * 0.5;
       if (flyPos && flyLook) {
         camera.position.lerp(flyPos, 0.08);
         controls.target.lerp(flyLook, 0.08);
