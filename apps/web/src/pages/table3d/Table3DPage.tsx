@@ -211,6 +211,7 @@ export function Table3DPage() {
   const hand = useStore((s) => s.hand);
   const auth = useStore((s) => s.auth);
   const [customizeOpen, setCustomizeOpen] = useState(false);
+  const flyRef = useRef<((pos: [number, number, number], look: [number, number, number]) => void) | null>(null);
   const [draft, setDraft] = useState<Avatar3D>(DEFAULT_AVATAR);
   const [saved, setSaved] = useState(false);
 
@@ -256,9 +257,21 @@ export function Table3DPage() {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 0.5, 0);
     controls.enableDamping = true;
-    controls.maxPolarAngle = 1.38;
-    controls.minDistance = 4;
-    controls.maxDistance = 16;
+    controls.maxPolarAngle = 1.42;
+    controls.minDistance = 2.2;
+    controls.maxDistance = 18;
+    controls.enablePan = true;
+    controls.keyPanSpeed = 14;
+    controls.listenToKeyEvents(window); // arrow keys walk the room
+
+    // smooth fly-to for the camera preset buttons
+    let flyPos: THREE.Vector3 | null = null;
+    let flyLook: THREE.Vector3 | null = null;
+    const fly = (pos: [number, number, number], look: [number, number, number]) => {
+      flyPos = new THREE.Vector3(...pos);
+      flyLook = new THREE.Vector3(...look);
+    };
+    flyRef.current = fly;
 
     /* the room: violet haze, neon grid floor, glowing pillars */
     scene.add(new THREE.AmbientLight(0x8b7ab8, 0.55));
@@ -379,6 +392,7 @@ export function Table3DPage() {
         }
 
         const stackShown = engine && !h.result ? engine.stack : p.stack;
+        if (p.userId !== myId) {
         const label = new THREE.Sprite(
           new THREE.SpriteMaterial({
             map: labelTexture(
@@ -392,6 +406,7 @@ export function Table3DPage() {
         label.scale.set(1.7, 0.64, 1);
         label.position.set(px, 2.1, pz);
         dynamic.add(label);
+        }
 
         // this street's chips slide toward the middle
         const committed = engine?.committed ?? 0;
@@ -406,7 +421,7 @@ export function Table3DPage() {
           for (let ci = 0; ci < 2; ci++) {
             const back = makeCard(null, 0.42);
             back.position.set(Math.cos(a) * 4.15 + (ci - 0.5) * 0.3, 1.06, Math.sin(a) * 2.95);
-            back.lookAt(0, -2.2, 0);
+            back.rotation.set(-Math.PI / 2, 0, -a + Math.PI / 2);
             dynamic.add(back);
           }
         }
@@ -418,7 +433,8 @@ export function Table3DPage() {
         cardMesh.position.set((i - 2) * 0.74, 1.06, 0.1);
         dynamic.add(cardMesh);
       });
-      if (mySeat !== null && h.myCards.length > 0 && h.handId) {
+      const mySeatNow = r.players.find((p) => p.userId === myId)?.seat ?? null;
+      if (mySeatNow !== null && h.myCards.length > 0 && h.handId) {
         h.myCards.forEach((cardId, i) => {
           const mine = makeCard(cardId, 0.66);
           mine.position.set((i - 0.5) * 0.76, 1.1, 2.05);
@@ -470,6 +486,14 @@ export function Table3DPage() {
         (turnRing.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.2 + Math.sin(t * 5) * 0.7;
       }
       rim.material.emissiveIntensity = 1.0 + Math.sin(t * 1.4) * 0.25;
+      if (flyPos && flyLook) {
+        camera.position.lerp(flyPos, 0.08);
+        controls.target.lerp(flyLook, 0.08);
+        if (camera.position.distanceTo(flyPos) < 0.05) {
+          flyPos = null;
+          flyLook = null;
+        }
+      }
       controls.update();
       renderer.render(scene, camera);
     };
@@ -512,7 +536,7 @@ export function Table3DPage() {
           ← 2D
         </Link>
         <span className="font-display text-lg font-bold text-violet-200">{room?.room.name}</span>
-        <span className="text-xs text-violet-300/70">drag to orbit · scroll to zoom</span>
+        <span className="text-xs text-violet-300/70">drag to orbit · scroll to zoom · arrows to move</span>
         <button
           onClick={() => setCustomizeOpen((v) => !v)}
           className={cn(
@@ -583,6 +607,26 @@ export function Table3DPage() {
           </button>
         </div>
       )}
+
+      {/* camera presets */}
+      <div className="absolute bottom-28 left-3 z-10 flex flex-col gap-1.5">
+        {(
+          [
+            ['Seat', [0, 5.2, 8.6], [0, 0.5, 0]],
+            ['Top', [0, 14, 0.01], [0, 1, 0]],
+            ['Side', [11.5, 3.2, 0], [0, 1, 0]],
+            ['Close', [0, 2.4, 5.2], [0, 1, 0.4]],
+          ] as [string, [number, number, number], [number, number, number]][]
+        ).map(([label, pos, look]) => (
+          <button
+            key={label}
+            onClick={() => flyRef.current?.(pos, look)}
+            className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold backdrop-blur hover:bg-white/20"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       {/* HUD: the same live controls as the 2D table */}
       {room && (
