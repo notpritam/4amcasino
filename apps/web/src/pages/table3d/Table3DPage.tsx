@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { RANKS, rankOf, suitOf, type CardId } from '@4am/shared';
 import { bindGameClient } from '../../shared/gameClient.ts';
 import { wsClient } from '../../shared/ws.ts';
@@ -106,30 +107,44 @@ function buildCharacter(cfg: Avatar3D, dimmed: boolean): THREE.Group {
 
 const SUIT_GLYPHS = ['♣', '♦', '♥', '♠'];
 
+const FELT_TOP = 1.025;
+
 function cardTexture(id: CardId | null): THREE.CanvasTexture {
+  const W = 256;
+  const H = 356;
   const c = document.createElement('canvas');
-  c.width = 128;
-  c.height = 178;
+  c.width = W;
+  c.height = H;
   const x = c.getContext('2d')!;
+  // rounded card silhouette; outside stays transparent
+  x.beginPath();
+  x.roundRect(2, 2, W - 4, H - 4, 26);
+  x.clip();
   if (id === null) {
-    x.fillStyle = '#4c1d95';
-    x.fillRect(0, 0, 128, 178);
-    x.strokeStyle = 'rgba(233,213,255,0.5)';
-    x.lineWidth = 5;
-    x.strokeRect(9, 9, 110, 160);
+    x.fillStyle = '#5b21b6';
+    x.fillRect(0, 0, W, H);
+    x.strokeStyle = 'rgba(233,213,255,0.55)';
+    x.lineWidth = 8;
+    x.strokeRect(20, 20, W - 40, H - 40);
+    x.strokeRect(38, 38, W - 76, H - 76);
   } else {
-    x.fillStyle = '#faf7ff';
-    x.fillRect(0, 0, 128, 178);
+    x.fillStyle = '#fbfaff';
+    x.fillRect(0, 0, W, H);
     const suit = suitOf(id);
-    x.fillStyle = suit === 1 || suit === 2 ? '#dc2626' : '#111827';
-    x.font = '700 44px system-ui';
-    x.fillText(RANKS[rankOf(id)]!, 12, 48);
-    x.font = '84px system-ui';
+    const ink = suit === 1 || suit === 2 ? '#dc2626' : '#0f172a';
+    x.fillStyle = ink;
+    x.textAlign = 'left';
+    x.font = '700 84px system-ui';
+    x.fillText(RANKS[rankOf(id)]!, 20, 92);
+    x.font = '58px system-ui';
+    x.fillText(SUIT_GLYPHS[suit]!, 22, 152);
+    x.font = '150px system-ui';
     x.textAlign = 'center';
-    x.fillText(SUIT_GLYPHS[suit]!, 64, 148);
+    x.fillText(SUIT_GLYPHS[suit]!, W / 2 + 20, H - 62);
   }
   const t = new THREE.CanvasTexture(c);
-  t.anisotropy = 4;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
   return t;
 }
 
@@ -156,12 +171,16 @@ function labelTexture(name: string, sub: string, accent: string): THREE.CanvasTe
   return t;
 }
 
-function makeCard(id: CardId | null, w = 0.55): THREE.Mesh {
+/** A card resting on the felt: the tilt raises the pivot just enough that
+ *  the near edge never clips through the table surface. */
+function makeCard(id: CardId | null, w = 0.55, tilt = 0.14): THREE.Mesh {
+  const h = w * 1.39;
   const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(w, w * 1.39),
-    new THREE.MeshBasicMaterial({ map: cardTexture(id), transparent: false }),
+    new THREE.PlaneGeometry(w, h),
+    new THREE.MeshBasicMaterial({ map: cardTexture(id), transparent: true, side: THREE.DoubleSide }),
   );
-  mesh.rotation.x = -Math.PI / 2 + 0.16;
+  mesh.rotation.x = -Math.PI / 2 + tilt;
+  mesh.position.y = FELT_TOP + 0.02 + Math.sin(tilt) * (h / 2);
   return mesh;
 }
 
@@ -252,7 +271,36 @@ export function Table3DPage() {
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // the Blender-style setup: an environment map for image-based lighting,
+    // filmic tone mapping, and a shadow-casting sun
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.4;
     mount.appendChild(renderer.domElement);
+
+    const sun = new THREE.DirectionalLight(0xd8c7ff, 2.2);
+    sun.position.set(7, 12, 5);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.left = -10;
+    sun.shadow.camera.right = 10;
+    sun.shadow.camera.top = 10;
+    sun.shadow.camera.bottom = -10;
+    sun.shadow.bias = -0.0004;
+    scene.add(sun);
+
+    const shadowCatcher = new THREE.Mesh(
+      new THREE.CircleGeometry(20, 48),
+      new THREE.ShadowMaterial({ opacity: 0.35 }),
+    );
+    shadowCatcher.rotation.x = -Math.PI / 2;
+    shadowCatcher.position.y = 0.001;
+    shadowCatcher.receiveShadow = true;
+    scene.add(shadowCatcher);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 0.5, 0);
@@ -274,8 +322,8 @@ export function Table3DPage() {
     flyRef.current = fly;
 
     /* the room: violet haze, neon grid floor, glowing pillars */
-    scene.add(new THREE.AmbientLight(0x8b7ab8, 0.55));
-    const key = new THREE.PointLight(0xa78bfa, 60, 40);
+    scene.add(new THREE.AmbientLight(0x8b7ab8, 0.35));
+    const key = new THREE.PointLight(0xa78bfa, 40, 40);
     key.position.set(0, 8, 0);
     scene.add(key);
     const magenta = new THREE.PointLight(0xe879f9, 30, 30);
@@ -312,6 +360,8 @@ export function Table3DPage() {
     );
     felt.scale.x = 1.55;
     felt.position.y = 0.85;
+    felt.receiveShadow = true;
+    felt.castShadow = true;
     scene.add(felt);
     const rim = new THREE.Mesh(
       new THREE.TorusGeometry(3.02, 0.075, 12, 64),
@@ -327,6 +377,7 @@ export function Table3DPage() {
     );
     leg.scale.x = 1.4;
     leg.position.y = 0.42;
+    leg.castShadow = true;
     scene.add(leg);
 
     /* everything live rebuilds into this group */
@@ -419,8 +470,10 @@ export function Table3DPage() {
         // opponents' face-down cards on the felt in front of them
         if (inHand && !folded && p.userId !== myId) {
           for (let ci = 0; ci < 2; ci++) {
-            const back = makeCard(null, 0.42);
-            back.position.set(Math.cos(a) * 4.15 + (ci - 0.5) * 0.3, 1.06, Math.sin(a) * 2.95);
+            const back = makeCard(null, 0.42, 0);
+            back.position.x = Math.cos(a) * 4.15 + (ci - 0.5) * 0.3;
+            back.position.y = FELT_TOP + 0.015 + ci * 0.004;
+            back.position.z = Math.sin(a) * 2.95;
             back.rotation.set(-Math.PI / 2, 0, -a + Math.PI / 2);
             dynamic.add(back);
           }
@@ -429,16 +482,17 @@ export function Table3DPage() {
 
       /* board and my cards */
       h.board.forEach((cardId, i) => {
-        const cardMesh = makeCard(cardId, 0.62);
-        cardMesh.position.set((i - 2) * 0.74, 1.06, 0.1);
+        const cardMesh = makeCard(cardId, 0.62, 0.14);
+        cardMesh.position.x = (i - 2) * 0.72;
+        cardMesh.position.z = 0.1;
         dynamic.add(cardMesh);
       });
       const mySeatNow = r.players.find((p) => p.userId === myId)?.seat ?? null;
       if (mySeatNow !== null && h.myCards.length > 0 && h.handId) {
         h.myCards.forEach((cardId, i) => {
-          const mine = makeCard(cardId, 0.66);
-          mine.position.set((i - 0.5) * 0.76, 1.1, 2.05);
-          mine.rotation.x = -Math.PI / 2 + 0.5;
+          const mine = makeCard(cardId, 0.72, 0.55);
+          mine.position.x = (i - 0.5) * 0.8;
+          mine.position.z = 2.0;
           dynamic.add(mine);
         });
       }
@@ -457,6 +511,9 @@ export function Table3DPage() {
         potLabel.position.set(0, 1.85, -1.15);
         dynamic.add(potLabel);
       }
+      dynamic.traverse((o) => {
+        if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = true;
+      });
     };
 
     const unsub = useStore.subscribe(() => {
@@ -505,6 +562,7 @@ export function Table3DPage() {
       ro.disconnect();
       controls.dispose();
       disposeDeep(scene);
+      pmrem.dispose();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
