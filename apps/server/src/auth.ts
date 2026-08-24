@@ -15,9 +15,9 @@ export function createUser(
   const salt = randomBytes(16).toString('hex');
   const info = db
     .prepare(
-      'INSERT INTO users (username, auth_hash, auth_salt, pubkey, created_at) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO users (username, auth_hash, auth_salt, pubkey, created_at, theme) VALUES (?, ?, ?, ?, ?, ?)',
     )
-    .run(username, hashAuthKey(authKey, salt), salt, publicKey, Date.now());
+    .run(username, hashAuthKey(authKey, salt), salt, publicKey, Date.now(), 'cyber');
   return { userId: Number(info.lastInsertRowid) };
 }
 

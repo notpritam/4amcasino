@@ -14,7 +14,7 @@ const profileSchema = z.object({
   bio: z.string().trim().max(280).optional(),
   cardBack: z.enum(CARD_BACKS).optional(),
   fourColor: z.boolean().optional(),
-  theme: z.enum(['light', 'dark']).optional(),
+  theme: z.enum(['light', 'dark', 'cyber']).optional(),
   quickPhrases: z.array(z.string().trim().min(1).max(60)).max(8).optional(),
   privateMode: z.boolean().optional(),
   autoJoinInvites: z.boolean().optional(),

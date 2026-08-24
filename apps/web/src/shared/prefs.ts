@@ -1,8 +1,12 @@
 import { api } from './api.ts';
 import { useStore } from './store.ts';
 
-export function applyTheme(theme: 'light' | 'dark'): void {
-  document.documentElement.classList.toggle('dark', theme === 'dark');
+export type Theme = 'light' | 'dark' | 'cyber';
+
+export function applyTheme(theme: Theme): void {
+  // cyber layers on dark so every dark: variant participates in the reskin
+  document.documentElement.classList.toggle('dark', theme !== 'light');
+  document.documentElement.classList.toggle('cyber', theme === 'cyber');
 }
 
 /** Pull profile prefs from the server into the store (and apply the theme). */

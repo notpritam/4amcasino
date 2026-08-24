@@ -118,13 +118,13 @@ function LiveTablePreview() {
       aria-label="Example of a hand in progress"
     >
       <div className="landing-stage">
-        <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-3 sm:px-5">
+        <div className="flex items-center justify-between border-b border-indigo-400/20 px-4 py-3 sm:px-5">
           <div className="flex items-center gap-2 text-[0.68rem] font-medium text-slate-400">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.7)]" />
             Product preview
           </div>
           <div className="flex items-center gap-1.5 font-display text-[0.68rem] tabular-nums text-slate-500">
-            <LockKey size={13} weight="duotone" /> encrypted hand 07d1
+            <LockKey size={13} weight="duotone" /> <span className="uppercase tracking-[0.12em]">encrypted_hand // 07d1</span>
           </div>
         </div>
 
@@ -157,7 +157,7 @@ function LiveTablePreview() {
                   card={card}
                   size="sm"
                   deal
-                  className={`landing-board-card-${index}`}
+                  className={`cyber-card-pop landing-board-card-${index}`}
                 />
               ))}
               <div
@@ -180,7 +180,7 @@ function LiveTablePreview() {
                     initial={reduceMotion ? false : { opacity: 0, y: 18, rotate: index ? 4 : -4 }}
                     animate={{ opacity: 1, y: 0, rotate: index ? 2 : -2 }}
                     transition={{ duration: 0.58, delay: 1.02 + index * 0.1, ease }}
-                    className="drop-shadow-[0_12px_20px_rgba(0,0,0,0.28)]"
+                    className="cyber-card-pop"
                   >
                     <PlayingCard card={card} size="sm" />
                   </motion.div>
@@ -224,7 +224,8 @@ function InviteVisual() {
       className="landing-visual landing-invite-visual"
       aria-label="Example private table invitation"
     >
-      <div className="relative z-10 w-full max-w-sm rounded-[1.4rem] bg-[#111722] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.28)] ring-1 ring-white/10">
+      <span className="cyber-comment" aria-hidden="true">// invite_node</span>
+      <div className="relative z-10 w-full max-w-sm rounded-md bg-slate-900 p-5 shadow-[0_24px_70px_rgba(0,0,0,0.28)] ring-1 ring-indigo-400/25">
         <div className="mb-6 flex items-center justify-between">
           <span className="text-xs text-slate-500">Friday game</span>
           <span className="flex items-center gap-1.5 text-[0.68rem] text-emerald-300">
@@ -235,12 +236,12 @@ function InviteVisual() {
           {players.map((player) => (
             <span
               key={player.name}
-              className={`landing-avatar h-10 w-10 ring-4 ring-[#111722] ${player.tone}`}
+              className={`landing-avatar h-10 w-10 ring-4 ring-slate-900 ${player.tone}`}
             >
               {player.initials}
             </span>
           ))}
-          <span className="landing-avatar h-10 w-10 bg-indigo-500 text-white ring-4 ring-[#111722]">
+          <span className="landing-avatar h-10 w-10 bg-indigo-500 text-indigo-950 ring-4 ring-slate-900">
             +2
           </span>
         </div>
@@ -260,6 +261,7 @@ function InviteVisual() {
 function ReplayVisual() {
   return (
     <div className="landing-visual landing-replay-visual" aria-label="Example hand replay timeline">
+      <span className="cyber-comment" aria-hidden="true">// hand_log</span>
       <div className="w-full max-w-md">
         <div className="mb-8 flex items-center justify-between">
           <span className="flex items-center gap-2 text-xs text-slate-400">
@@ -269,7 +271,7 @@ function ReplayVisual() {
         </div>
         <div className="relative mb-7 h-1 rounded-full bg-white/10">
           <div className="absolute inset-y-0 left-0 w-[58%] rounded-full bg-indigo-400" />
-          <span className="absolute left-[58%] top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_0_5px_rgba(129,140,248,0.18)]" />
+          <span className="absolute left-[58%] top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_0_5px_rgba(92,255,114,0.22)]" />
           {[18, 39, 78].map((position) => (
             <span
               key={position}
@@ -312,6 +314,7 @@ function LedgerVisual() {
       className="landing-visual landing-ledger-visual"
       aria-label="Example verified session report"
     >
+      <span className="cyber-comment" aria-hidden="true">// settle_proof</span>
       <div className="w-full max-w-md">
         <div className="mb-6 flex items-center justify-between">
           <div>
@@ -337,7 +340,7 @@ function LedgerVisual() {
             </div>
           ))}
         </div>
-        <div className="mt-7 flex items-center gap-2 border-t border-white/[0.07] pt-4 text-[0.66rem] text-slate-500">
+        <div className="mt-7 flex items-center gap-2 border-t border-indigo-400/15 pt-4 text-[0.66rem] text-slate-500">
           <Receipt size={14} /> every buy-in and pot is hash-chained
         </div>
       </div>
@@ -351,7 +354,7 @@ export function LandingPage() {
   const playLabel = token ? 'Open your lobby' : 'Start a table';
 
   return (
-    <div className="landing-root min-h-screen bg-[#070a10] text-slate-100">
+    <div className="landing-root cyber min-h-screen bg-slate-950 font-sans text-slate-100">
       <a href="#main-content" className="landing-skip-link">
         Skip to content
       </a>
@@ -398,8 +401,8 @@ export function LandingPage() {
               </span>
             </Reveal>
             <Reveal delay={0.06}>
-              <h1 className="mt-6 max-w-[11ch] font-display text-[clamp(3.6rem,8vw,7.2rem)] font-semibold leading-[0.9] tracking-[-0.07em] text-white text-balance">
-                Poker night without the house.
+              <h1 className="mt-6 max-w-[13ch] font-display text-[clamp(2.3rem,5.4vw,4.6rem)] font-medium leading-[1.08] tracking-[-0.015em] text-white text-balance">
+                Poker night <span className="cyber-chroma">without the house.</span>
               </h1>
             </Reveal>
             <Reveal delay={0.12}>
@@ -434,10 +437,10 @@ export function LandingPage() {
         </section>
 
         <section
-          className="border-y border-white/[0.07] bg-white/[0.018]"
+          className="border-y border-indigo-400/15 bg-indigo-400/[0.03]"
           aria-label="Product principles"
         >
-          <div className="mx-auto grid max-w-[82rem] divide-y divide-white/[0.07] px-4 sm:grid-cols-2 sm:divide-x sm:divide-y-0 sm:px-6 lg:grid-cols-4 lg:px-8">
+          <div className="mx-auto grid max-w-[82rem] divide-y divide-indigo-400/15 px-4 sm:grid-cols-2 sm:divide-x sm:divide-y-0 sm:px-6 lg:grid-cols-4 lg:px-8">
             <ProofItem
               icon={<UsersThree size={17} weight="duotone" />}
               title="Built for friends"
@@ -523,7 +526,7 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section id="trust" className="border-y border-white/[0.07] bg-[#0a0e16]">
+        <section id="trust" className="border-y border-indigo-400/15 bg-[#070f0a]">
           <div className="mx-auto grid max-w-[82rem] gap-16 px-4 py-28 sm:px-6 sm:py-36 lg:grid-cols-[0.85fr_1.15fr] lg:gap-24 lg:px-8">
             <Reveal>
               <span className="landing-kicker">Under the table</span>
@@ -573,18 +576,18 @@ export function LandingPage() {
         </section>
 
         <section className="mx-auto max-w-[82rem] px-4 py-28 sm:px-6 sm:py-40 lg:px-8">
-          <Reveal className="relative overflow-hidden rounded-[2rem] bg-indigo-500 px-6 py-16 text-center shadow-[0_32px_100px_rgba(79,70,229,0.2)] sm:px-12 sm:py-24">
+          <Reveal className="relative overflow-hidden rounded-md bg-indigo-500 px-6 py-16 text-center shadow-[0_32px_100px_rgba(92,255,114,0.12)] sm:px-12 sm:py-24">
             <div className="landing-cta-grid" aria-hidden="true" />
-            <p className="relative z-10 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-100/70">
+            <p className="relative z-10 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-950/70">
               Your table is ready
             </p>
-            <h2 className="relative z-10 mx-auto mt-5 max-w-[10ch] font-display text-4xl font-semibold leading-[0.95] tracking-[-0.055em] text-white sm:text-6xl">
+            <h2 className="relative z-10 mx-auto mt-5 max-w-[14ch] font-display text-3xl font-medium uppercase leading-[1.1] tracking-[-0.01em] text-white sm:text-5xl">
               Deal the first hand tonight.
             </h2>
             <div className="relative z-10 mt-9">
               <Link to={playHref} className="landing-final-cta group">
                 {playLabel}
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 transition-transform duration-500 group-hover:translate-x-1 group-hover:-translate-y-0.5">
+                <span className="flex h-9 w-9 items-center justify-center rounded-sm bg-indigo-400 text-indigo-950 transition-transform duration-500 group-hover:translate-x-1 group-hover:-translate-y-0.5">
                   <ArrowUpRight size={17} weight="bold" />
                 </span>
               </Link>
@@ -593,7 +596,7 @@ export function LandingPage() {
         </section>
       </main>
 
-      <footer className="border-t border-white/[0.07]">
+      <footer className="border-t border-indigo-400/15">
         <div className="mx-auto flex max-w-[82rem] flex-col gap-8 px-4 py-10 sm:px-6 md:flex-row md:items-end md:justify-between lg:px-8">
           <div>
             <Brand />

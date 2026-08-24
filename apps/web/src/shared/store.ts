@@ -23,7 +23,7 @@ export interface Prefs {
   avatarVersion: number;
   cardBack: 'indigo' | 'crimson' | 'emerald' | 'slate';
   fourColor: boolean;
-  theme: 'light' | 'dark';
+  theme: 'light' | 'dark' | 'cyber';
   quickPhrases: string[];
   /** Hide my winnings from other players (leaderboards, session report, crown). */
   privateMode: boolean;
@@ -38,7 +38,7 @@ export const defaultPrefs: Prefs = {
   avatarVersion: 0,
   cardBack: 'indigo',
   fourColor: false,
-  theme: 'light',
+  theme: 'cyber',
   quickPhrases: [],
   privateMode: false,
   autoJoinInvites: false,

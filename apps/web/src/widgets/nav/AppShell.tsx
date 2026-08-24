@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   SignOut,
   Sun,
+  TerminalWindow,
   X,
 } from '@phosphor-icons/react';
 import { api } from '../../shared/api.ts';
@@ -38,10 +39,19 @@ export function AppShell({ children }: { children: ReactNode }) {
   const nav = useNavigate();
   const reduce = useReducedMotion();
 
+  // cycle light -> dark -> cyber; the icon shows where the click takes you
+  const nextTheme = prefs.theme === 'light' ? 'dark' : prefs.theme === 'dark' ? 'cyber' : 'light';
+  const themeIcon =
+    nextTheme === 'dark' ? (
+      <Moon size={18} />
+    ) : nextTheme === 'cyber' ? (
+      <TerminalWindow size={18} />
+    ) : (
+      <Sun size={18} />
+    );
   const toggleTheme = () => {
-    const theme = prefs.theme === 'dark' ? 'light' : 'dark';
-    setPrefs({ theme });
-    void api.updateProfile({ theme }).catch(() => {});
+    setPrefs({ theme: nextTheme });
+    void api.updateProfile({ theme: nextTheme }).catch(() => {});
   };
 
   const doLogout = () => {
@@ -99,11 +109,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
           <button
             onClick={toggleTheme}
-            aria-label="Toggle dark mode"
-            title="Toggle dark mode"
+            aria-label={`Switch to ${nextTheme} theme`}
+            title={`Switch to ${nextTheme} theme`}
             className="ml-auto rounded-full p-2 text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800"
           >
-            {prefs.theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            {themeIcon}
           </button>
           <div className="relative hidden sm:block">
             <button
@@ -215,8 +225,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
               <div className="mt-auto space-y-0.5 border-t border-slate-100 pt-3 dark:border-slate-800">
                 <button className={drawerItemCls} onClick={toggleTheme}>
-                  {prefs.theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
-                  {prefs.theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                  {themeIcon}
+                  <span className="capitalize">{nextTheme} mode</span>
                 </button>
                 <button className={cn(drawerItemCls, 'text-rose-600 dark:text-rose-400')} onClick={doLogout}>
                   <SignOut size={19} /> Log out

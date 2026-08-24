@@ -13,10 +13,15 @@ import {
   YAxis,
 } from 'recharts';
 import { fmt } from '../../shared/lib/cn.ts';
+import { useStore } from '../../shared/store.ts';
 
 /** shadcn-style charts, themed with the app's own tokens. */
 
-const INDIGO = '#6366f1';
+// recharts wants literal colors, so the accent tracks the theme from the store
+function useAccent(): string {
+  const theme = useStore((s) => s.prefs.theme);
+  return theme === 'cyber' ? '#5cff72' : '#6366f1';
+}
 const GRID = 'rgba(148, 163, 184, 0.18)';
 const MUTED = 'rgba(148, 163, 184, 0.85)';
 
@@ -43,6 +48,7 @@ function ChartTooltip({
 
 /** Cumulative winnings over time: one indigo series, gradient fill, zero line. */
 export function NetAreaChart({ points }: { points: { ts: number; net: number }[] }) {
+  const INDIGO = useAccent();
   // short sessions read better as times, long histories as dates
   const spanMs = points.length > 1 ? points[points.length - 1]!.ts - points[0]!.ts : 0;
   const asTime = spanMs < 48 * 3600_000;
@@ -114,6 +120,7 @@ export interface StyleAxes {
 
 /** How they play, on five axes. Values are normalized to 0-100. */
 export function StyleRadar({ style }: { style: StyleAxes }) {
+  const INDIGO = useAccent();
   const data = [
     { axis: 'Loose', value: Math.min(100, style.vpipPct) },
     { axis: 'Aggressive', value: Math.min(100, Math.round(style.aggressionFactor * 33)) },

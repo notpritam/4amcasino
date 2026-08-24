@@ -194,19 +194,29 @@ export function ProfileEditor({ onSaved, wide = false }: { onSaved?: () => void;
         </span>
       </label>
 
-      <div className="flex items-center gap-6 text-sm">
-        <label className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
-          <input
-            type="checkbox"
-            checked={prefs.theme === 'dark'}
-            onChange={(e) => {
-              const theme = e.target.checked ? 'dark' : 'light';
-              setPrefs({ theme });
-              applyTheme(theme);
-            }}
-          />
-          Dark theme
-        </label>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
+        <div className="flex items-center gap-2" role="radiogroup" aria-label="Theme">
+          <span className="text-slate-500 dark:text-slate-400">Theme</span>
+          {(['light', 'dark', 'cyber'] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="radio"
+              aria-checked={prefs.theme === t}
+              onClick={() => {
+                setPrefs({ theme: t });
+                applyTheme(t);
+              }}
+              className={`rounded-full px-3 py-1 capitalize transition-colors ${
+                prefs.theme === t
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-slate-600 ring-1 ring-slate-300 hover:bg-slate-100 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-800'
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
         <label className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
           <input
             type="checkbox"

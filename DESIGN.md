@@ -17,3 +17,15 @@
 - **Copy rules:** no em dashes in UI copy, active voice, buttons say exactly what
   happens, errors say what to do next.
 - **Tools:** `npx impeccable detect apps/web/src` must stay clean.
+
+## Cypherpunk theme ('cyber')
+
+The default theme (Settings offers Light / Dark / Cyber). Terminal green on
+green-black, "encrypted by design": accent #5cff72 with ink #041007 on neon
+fills, surfaces #050a07 to #0a130e, danger is magenta #ff2e88, borders are
+rgb(92 255 114 / .2-.3). Display type Unbounded, body JetBrains Mono, corners
+squared (2-4px). Implemented as a `.cyber` scope in index.css that remaps the
+slate and indigo Tailwind variables, so components keep writing plain
+slate/indigo utilities - never hardcode the green in components. The table
+plays on a wireframe grid, not felt. Magenta appears only as flourish
+(// comments, card offset shadows, chroma text) - never for primary actions.
