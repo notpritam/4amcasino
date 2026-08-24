@@ -292,28 +292,40 @@ export function RoundTable({
                   +{fmt(p.pendingBuy)} soon
                 </div>
               )}
-              {(p.broke || p.sittingOut || !p.connected || p.allIn || p.lastAction) && (
+              {p.broke || !p.connected || p.sittingOut ? (
                 <div
                   className={cn(
                     'text-[0.6rem] font-semibold uppercase tracking-wide',
-                    p.broke || p.lastAction?.type === 'fold'
-                      ? 'text-rose-500'
-                      : !p.connected
-                        ? 'text-amber-500'
-                        : 'text-slate-400',
+                    p.broke ? 'text-rose-500' : !p.connected ? 'text-amber-500' : 'text-slate-400',
                   )}
                 >
-                  {p.broke
-                    ? 'out of chips'
-                    : !p.connected
-                      ? 'offline'
-                      : p.sittingOut
-                        ? 'sitting out'
-                        : p.lastAction
-                          ? actionLabel(p.lastAction)
-                          : 'all-in'}
+                  {p.broke ? 'out of chips' : !p.connected ? 'offline' : 'sitting out'}
                 </div>
-              )}
+              ) : p.lastAction || p.allIn ? (
+                (() => {
+                  const a = p.lastAction;
+                  const aggressive = a && (a.type === 'raise' || a.type === 'bet');
+                  const folded = a?.type === 'fold';
+                  return (
+                    <motion.div
+                      key={a ? `${a.type}-${a.amount ?? 0}` : 'all-in'}
+                      initial={reduce ? false : { scale: 1.45, y: -3 }}
+                      animate={{ scale: 1, y: 0 }}
+                      transition={{ type: 'spring', stiffness: 380, damping: 17 }}
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide',
+                        !a || aggressive
+                          ? 'bg-amber-400 text-amber-950 shadow-[0_0_14px_rgba(251,191,36,0.55)]'
+                          : folded
+                            ? 'bg-rose-500/15 text-rose-500'
+                            : 'bg-slate-200/80 text-slate-600 dark:bg-slate-700/80 dark:text-slate-200',
+                      )}
+                    >
+                      {a ? actionLabel(a) : 'all-in'}
+                    </motion.div>
+                  );
+                })()
+              ) : null}
             </div>
             {canKick && !isMe && (
               <button
