@@ -24,6 +24,7 @@ export interface RoomRow {
   visibility: string;
   spectate_token: string | null;
   allow_spectators: number;
+  auto_approve_buys: number;
   created_at: number;
 }
 
@@ -54,6 +55,7 @@ const createSchema = z.object({
   minSettleHands: minSettleSchema.optional(),
   meetLink: meetLinkSchema.optional(),
   visibility: z.enum(['private', 'public']).optional(),
+  autoApproveBuys: z.boolean().optional(),
 });
 
 function newJoinCode(): string {
@@ -122,6 +124,7 @@ function roomJson(db: DB, room: RoomRow) {
     meetLink: room.meet_link,
     visibility: room.visibility,
     allowSpectators: !!room.allow_spectators,
+    autoApproveBuys: !!room.auto_approve_buys,
     players: roomPlayers(db, room.id).map((p) => ({
       ...p,
       privateMode: undefined,
@@ -137,14 +140,14 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
   app.post('/api/rooms', authed, async (req, reply) => {
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
-    const { name, sb, bb, auditMode, actionSecs, minSettleHands, meetLink, visibility } = parsed.data;
+    const { name, sb, bb, auditMode, actionSecs, minSettleHands, meetLink, visibility, autoApproveBuys } = parsed.data;
     if (bb < sb) return reply.code(400).send({ error: 'big blind must be >= small blind' });
     const id = randomBytes(6).toString('hex');
     const joinCode = newJoinCode();
     db.prepare(
-      `INSERT INTO rooms (id, name, join_code, host_id, banker_id, sb, bb, audit_mode, action_secs, min_settle_hands, meet_link, visibility, spectate_token, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, name, joinCode, req.userId, req.userId, sb, bb, auditMode ?? 'private', actionSecs ?? null, minSettleHands ?? 0, meetLink || null, visibility ?? 'private', randomBytes(9).toString('hex'), Date.now());
+      `INSERT INTO rooms (id, name, join_code, host_id, banker_id, sb, bb, audit_mode, action_secs, min_settle_hands, meet_link, visibility, spectate_token, auto_approve_buys, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, name, joinCode, req.userId, req.userId, sb, bb, auditMode ?? 'private', actionSecs ?? null, minSettleHands ?? 0, meetLink || null, visibility ?? 'private', randomBytes(9).toString('hex'), autoApproveBuys ? 1 : 0, Date.now());
     db.prepare('INSERT INTO room_players (room_id, user_id) VALUES (?, ?)').run(id, req.userId);
     return roomJson(db, getRoom(db, id)!);
   });
@@ -205,12 +208,38 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
       .object({ amount: z.number().int().positive(), note: z.string().max(200).optional() })
       .safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
-    if (!getRoom(db, id)) return reply.code(404).send({ error: 'no such room' });
+    const room = getRoom(db, id);
+    if (!room) return reply.code(404).send({ error: 'no such room' });
     if (!isMember(db, id, req.userId)) return reply.code(403).send({ error: 'not a member' });
     const info = db
       .prepare('INSERT INTO buy_requests (room_id, user_id, amount, note, ts) VALUES (?, ?, ?, ?, ?)')
       .run(id, req.userId, parsed.data.amount, parsed.data.note ?? null, Date.now());
-    return { id: Number(info.lastInsertRowid), status: 'pending' };
+    const requestId = Number(info.lastInsertRowid);
+    if (room.auto_approve_buys) {
+      // the banker pre-approved buys for this room; settle it like a banker click,
+      // attributed to the standing banker so the ledger names who vouched
+      const buyerId = req.userId;
+      const apply = db.transaction(() => {
+        db.prepare("UPDATE buy_requests SET status = 'approved' WHERE id = ?").run(requestId);
+        appendLedger(db, {
+          roomId: id,
+          userId: buyerId,
+          delta: parsed.data.amount,
+          kind: 'purchase',
+          approvedBy: room.banker_id,
+          note: parsed.data.note ?? undefined,
+        });
+        db.prepare('UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?').run(
+          parsed.data.amount,
+          id,
+          buyerId,
+        );
+      });
+      apply();
+      roomEvents.emit('changed', id);
+      return { id: requestId, status: 'approved' };
+    }
+    return { id: requestId, status: 'pending' };
   });
 
   app.get('/api/rooms/:id/requests', authed, async (req, reply) => {
@@ -341,6 +370,7 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
         sevenDeuceBonus: z.number().int().min(0).max(100_000).optional(),
         meetLink: meetLinkSchema.optional(),
         visibility: z.enum(['private', 'public']).optional(),
+        autoApproveBuys: z.boolean().optional(),
       })
       .safeParse(req.body);
     if (!parsed.success)
@@ -359,6 +389,8 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
       db.prepare('UPDATE rooms SET meet_link = ? WHERE id = ?').run(parsed.data.meetLink || null, id);
     if (parsed.data.visibility !== undefined)
       db.prepare('UPDATE rooms SET visibility = ? WHERE id = ?').run(parsed.data.visibility, id);
+    if (parsed.data.autoApproveBuys !== undefined)
+      db.prepare('UPDATE rooms SET auto_approve_buys = ? WHERE id = ?').run(parsed.data.autoApproveBuys ? 1 : 0, id);
     roomEvents.emit('changed', id);
     return { ok: true };
   });

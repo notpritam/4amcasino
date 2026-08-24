@@ -112,6 +112,8 @@ export const api = {
     req(`/api/rooms/${roomId}/settings`, { minSettleHands }, 'PUT'),
   setSevenDeuceBonus: (roomId: string, sevenDeuceBonus: number) =>
     req(`/api/rooms/${roomId}/settings`, { sevenDeuceBonus }, 'PUT'),
+  setAutoApproveBuys: (roomId: string, autoApproveBuys: boolean) =>
+    req(`/api/rooms/${roomId}/settings`, { autoApproveBuys }, 'PUT'),
   roomSettings: (roomId: string, actionSecs: number) =>
     req(`/api/rooms/${roomId}/settings`, { actionSecs }, 'PUT'),
 };

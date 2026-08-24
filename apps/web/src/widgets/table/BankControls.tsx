@@ -206,12 +206,19 @@ export function BankControls({
 
       <Dialog open={buyOpen} onClose={() => setBuyOpen(false)} title="Buy points from the bank">
         {sent ? (
-          <p className="text-sm text-emerald-600">Request sent. The banker will review it.</p>
+          <p className="text-sm text-emerald-600">
+            {room?.room.autoApproveBuys
+              ? 'Approved. The points are already in your stack.'
+              : 'Request sent. The banker will review it.'}
+          </p>
         ) : (
           <form onSubmit={buy} className="space-y-3">
             <p className="text-sm text-slate-500">
               Points are play money. Every purchase is written to the room ledger so the group can
               settle up later.
+              {room?.room.autoApproveBuys
+                ? ' This table auto-approves buys, so they land instantly.'
+                : ''}
             </p>
             <label className="block text-sm">
               <span className="mb-1 block text-slate-500">Amount</span>
@@ -306,6 +313,25 @@ export function BankControls({
       </Dialog>
 
       <Dialog open={inboxOpen} onClose={() => setInboxOpen(false)} title="Pending purchases">
+        {isBanker && (
+          <label className="mb-4 flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={!!room?.room.autoApproveBuys}
+              onChange={(e) =>
+                void api
+                  .setAutoApproveBuys(roomId, e.target.checked)
+                  .catch((err) => pushError(err instanceof Error ? err.message : 'update failed'))
+              }
+              className="mt-0.5"
+            />
+            <span>
+              Auto-approve buys: credit every purchase request instantly, in your name, instead of
+              waiting for you to review it. Everything still lands on the ledger and stays
+              revertable.
+            </span>
+          </label>
+        )}
         {isBanker && (
           <div className="mb-4 grid gap-3 sm:grid-cols-2">
             <label className="block text-sm">

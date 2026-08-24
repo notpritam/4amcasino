@@ -224,6 +224,7 @@ export class GameRoom {
         actionSecs: room.action_secs,
         coBankerId: room.co_banker_id,
         minSettleHands: room.min_settle_hands,
+        autoApproveBuys: !!room.auto_approve_buys,
         sevenDeuceBonus: room.seven_deuce_bonus,
         voided: !!room.voided,
         meetLink: room.meet_link,

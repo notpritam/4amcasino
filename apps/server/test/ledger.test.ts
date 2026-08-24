@@ -452,4 +452,80 @@ describe('private mode', () => {
     expect(bankerView.hidden).toBe(false);
     expect(bankerView.bought).toBe(500);
   });
+
+  it('auto-approve setting settles buys instantly, attributed to the banker', async () => {
+    const host = await user('autohost');
+    const created = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/rooms',
+      headers: auth(host.token),
+      payload: { name: 'Fast Bank', sb: 10, bb: 20 },
+    });
+    const room = created.json();
+    const alice = await user('autoalice');
+    await ctx.app.inject({
+      method: 'POST',
+      url: '/api/rooms/join',
+      headers: auth(alice.token),
+      payload: { joinCode: room.joinCode },
+    });
+
+    // off by default: a buy stays pending
+    const pendingBuy = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/buy`,
+      headers: auth(alice.token),
+      payload: { amount: 500 },
+    });
+    expect(pendingBuy.json().status).toBe('pending');
+
+    // a non-banker cannot flip the switch
+    const denied = await ctx.app.inject({
+      method: 'PUT',
+      url: `/api/rooms/${room.id}/settings`,
+      headers: auth(alice.token),
+      payload: { autoApproveBuys: true },
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const enable = await ctx.app.inject({
+      method: 'PUT',
+      url: `/api/rooms/${room.id}/settings`,
+      headers: auth(host.token),
+      payload: { autoApproveBuys: true },
+    });
+    expect(enable.statusCode).toBe(200);
+
+    const instantBuy = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/buy`,
+      headers: auth(alice.token),
+      payload: { amount: 700, note: 'upi' },
+    });
+    expect(instantBuy.json().status).toBe('approved');
+
+    const view = await ctx.app.inject({
+      method: 'GET',
+      url: `/api/rooms/${room.id}`,
+      headers: auth(alice.token),
+    });
+    const me = view.json().players.find((p: { userId: number }) => p.userId === alice.userId);
+    expect(me.stack).toBe(700);
+    expect(view.json().autoApproveBuys).toBe(true);
+
+    const entry = ctx.db
+      .prepare("SELECT * FROM ledger WHERE room_id = ? AND kind = 'purchase' AND user_id = ?")
+      .get(room.id, alice.userId) as { delta: number; approved_by: number };
+    expect(entry.delta).toBe(700);
+    expect(entry.approved_by).toBe(host.userId);
+    expect(verifyLedger(ctx.db, room.id).ok).toBe(true);
+
+    // the earlier pending request is untouched and still reviewable
+    const inbox = await ctx.app.inject({
+      method: 'GET',
+      url: `/api/rooms/${room.id}/requests`,
+      headers: auth(host.token),
+    });
+    expect(inbox.json().requests).toHaveLength(1);
+  });
 });
