@@ -288,9 +288,10 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
 
   // ---------- peer-to-peer chips: send, lend, settle up between players ----------
 
-  // The banker can stand any player up from their seat - the cure for a
-  // disconnected player whose seat keeps stalling deals. Chips stay put on
-  // the ledger; the player stays a member and can sit again any time.
+  // The banker can stand any player up from their seat, any time - even
+  // mid-hand, where it means "auto-kicked from the next deal" while the
+  // current hand plays out on its own snapshot. Chips stay put on the
+  // ledger; the player stays a member and can sit again any time.
   // Requested by notpritam - see docs/FEATURES.md.
   app.post('/api/rooms/:id/stand-up', authed, async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -301,8 +302,8 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
     if (!canBank(room, req.userId)) return reply.code(403).send({ error: 'banker only' });
     if (!isMember(db, id, parsed.data.userId))
       return reply.code(400).send({ error: 'not a member of this table' });
-    if (activeHands.has(id))
-      return reply.code(400).send({ error: 'wait for the hand to end first' });
+    // works mid-hand too: the running hand keeps its own seat snapshot, so
+    // this simply guarantees the player is out of the NEXT deal
     db.prepare('UPDATE room_players SET seat = NULL WHERE room_id = ? AND user_id = ?').run(
       id,
       parsed.data.userId,

@@ -382,6 +382,22 @@ describe('full hand integration', () => {
     expect(sum.s).toBe(me.stack);
   });
 
+  it('a mid-hand kick unseats for the next deal without breaking the hand', async () => {
+    const { players, room, host } = await setupRoom(['kicka', 'kickb', 'kickc']);
+    host.send({ t: 'start_hand' });
+    // the hand is live (shuffling): the banker stands carol up anyway
+    const carol = players[2]!;
+    const res = await host.api(`/api/rooms/${room.id}/stand-up`, { userId: carol.userId });
+    expect(res.ok).toBe(true);
+    // the running hand keeps its snapshot and finishes normally with carol in it
+    await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null)));
+    expect(players[0]!.handAbort).toBeNull();
+    const state = await host.api(`/api/rooms/${room.id}`);
+    const carolRow = state.players.find((p: { username: string }) => p.username === 'kickc');
+    expect(carolRow.seat).toBeNull();
+    expect(state.players.reduce((t: number, p: { stack: number }) => t + p.stack, 0)).toBe(3000);
+  });
+
   it('fold-out ends the hand without any reveal', async () => {
     const { players, host } = await setupRoom(['host', 'bob'], ['fold-first', 'fold-first']);
     // heads-up: button/SB acts first and folds; BB wins blinds without showdown
