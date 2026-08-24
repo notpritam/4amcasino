@@ -1399,7 +1399,7 @@ export function TablePage() {
           <section
             aria-label="Poker board"
             className={cn(
-              'relative flex min-h-[clamp(38rem,78vh,62rem)] flex-col gap-3 overflow-hidden rounded-[2rem] bg-slate-200/50 px-2 pb-2 pt-4 ring-1 ring-slate-200 dark:bg-slate-900/60 dark:ring-slate-800 sm:px-4 lg:px-6',
+              'relative flex min-h-[clamp(32rem,64vh,54rem)] flex-col gap-3 overflow-hidden rounded-[2rem] bg-slate-200/50 px-2 pb-2 pt-4 ring-1 ring-slate-200 dark:bg-slate-900/60 dark:ring-slate-800 sm:px-4 lg:px-6',
               notInHand && 'opacity-60 saturate-50',
             )}
           >
@@ -1480,10 +1480,10 @@ export function TablePage() {
               <div className="text-center">
                 <p className="text-sm text-slate-500">
                   {mySeat === null
-                    ? 'Pick a seat to join the next hand.'
+                    ? 'Pick a seat.'
                     : opponents.length === 0
-                      ? 'Invite at least one friend to deal.'
-                      : 'Everyone is seated. Deal when ready.'}
+                      ? 'Invite a friend to deal.'
+                      : 'Ready.'}
                 </p>
                 {mySeat !== null && isHost && opponents.length > 0 && (
                   <Button className="mt-5 h-11 rounded-xl px-5" onClick={startHand}>
@@ -1494,7 +1494,7 @@ export function TablePage() {
             )}
             {notInHand && (
               <p className="rounded-xl bg-white/90 px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm dark:bg-slate-800/90 dark:text-slate-300">
-                You will be dealt in at the next hand.
+                You're in the next hand.
               </p>
             )}
             {!handLive && opponents.length === 0 && !amSpectator && (
@@ -1512,13 +1512,11 @@ export function TablePage() {
               </>
             )}
             </RoundTable>
-
-            {/* your controls live on the table itself; your seat is a pod above */}
-            <div className="relative z-10 w-full space-y-2.5">
-              {amSpectator && spectatorPanel}
-              <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} hideIdleStart />
-            </div>
           </section>
+
+          {/* the control strip sits under the table so the oval keeps its space */}
+          {amSpectator && spectatorPanel}
+          <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} hideIdleStart />
 
           {peekPanel}
 

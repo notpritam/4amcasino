@@ -4,6 +4,7 @@ import { legalActions, type PlayerAction } from '@4am/shared';
 import { act, showMyCards, startHand } from '../../shared/gameClient.ts';
 import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
+import { Coins, HourglassMedium, Wallet } from '@phosphor-icons/react';
 import { Button } from '../../shared/ui/index.tsx';
 import { preActionOptions, togglePreAction } from '../../features/table/preActions.ts';
 
@@ -110,15 +111,12 @@ export function ActionBar({
       )}
     >
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-        <div className="min-w-24">
-          <div
-            className={cn(
-              'text-xs uppercase tracking-wide',
-              myTurn ? 'text-indigo-200' : 'text-slate-400',
-            )}
-          >
-            Your bet
-          </div>
+        <div className="min-w-16" title="Your bet this street">
+          <Coins
+            size={15}
+            className={myTurn ? 'text-indigo-200' : 'text-slate-400'}
+            aria-label="Your bet"
+          />
           <div className="font-display text-2xl font-bold">
             <NumberFlow value={me?.committed ?? 0} />
           </div>
@@ -206,26 +204,30 @@ export function ActionBar({
           <div className={cn('flex-1 text-sm', myTurn ? 'text-indigo-100' : 'text-slate-500')}>
             {handIdle
               ? balance === 0
-                ? 'You are out of chips. Use Buy points in the command bar to keep playing.'
+                ? 'Out of chips. Chips menu → Buy points.'
                 : hand.autoDealAt && hand.autoDealAt > Date.now()
-                  ? 'Next hand deals itself in a moment. Use the more menu if you need to sit out.'
+                  ? 'Auto-dealing…'
                   : isHost
-                    ? 'Deal when everyone is seated.'
-                    : 'Waiting for the host to deal.'
+                    ? 'Deal when ready.'
+                    : 'Host deals soon…'
               : disconnected.length > 0
-                ? `${disconnected.join(', ')} lost connection. Holding the hand about 40 seconds for them to rejoin…`
+                ? `Holding ~40s for ${disconnected.join(', ')}…`
                 : st
-                  ? `Waiting for ${
+                  ? `${
                       room?.players.find((p) => p.seat === st.toAct)?.displayName ??
-                      `seat ${st.toAct !== null ? st.toAct + 1 : '-'}`
+                      `Seat ${st.toAct !== null ? st.toAct + 1 : '-'}`
                     }…`
-                  : 'Shuffling: everyone is encrypting the deck…'}
+                  : 'Shuffling…'}
           </div>
         )}
 
         {canPreAct && (
           <div className="flex items-center gap-1.5">
-            <span className="text-xs uppercase tracking-wide text-slate-400">Ahead of turn</span>
+            <HourglassMedium
+              size={15}
+              className="text-slate-400"
+              aria-label="Ahead of turn"
+            />
             {preActionOptions(st!, mySeat!).map((pa) => (
               <button
                 key={pa.key}
@@ -270,15 +272,12 @@ export function ActionBar({
           </Button>
         )}
 
-        <div className="ml-auto text-right">
-          <div
-            className={cn(
-              'text-xs uppercase tracking-wide',
-              myTurn ? 'text-indigo-200' : 'text-slate-400',
-            )}
-          >
-            Your balance
-          </div>
+        <div className="ml-auto text-right" title={`Your balance. Bought ${fmt(bought)} total.`}>
+          <Wallet
+            size={15}
+            className={cn('ml-auto', myTurn ? 'text-indigo-200' : 'text-slate-400')}
+            aria-label="Your balance"
+          />
           <div
             className={cn(
               'font-display text-2xl font-bold',
@@ -288,22 +287,19 @@ export function ActionBar({
             <NumberFlow value={balance} />
           </div>
           {bought > 0 && (
-            <div className={cn('text-xs', myTurn ? 'text-indigo-200' : 'text-slate-400')}>
-              bought {fmt(bought)} ·{' '}
-              <span
-                className={cn(
-                  'font-display font-bold',
-                  net >= 0
-                    ? myTurn
-                      ? 'text-emerald-300'
-                      : 'text-emerald-600 dark:text-emerald-400'
-                    : myTurn
-                      ? 'text-rose-300'
-                      : 'text-rose-600 dark:text-rose-400',
-                )}
-              >
-                {net >= 0 ? `up ${fmt(net)}` : `down ${fmt(-net)}`}
-              </span>
+            <div
+              className={cn(
+                'font-display text-xs font-bold',
+                net >= 0
+                  ? myTurn
+                    ? 'text-emerald-300'
+                    : 'text-emerald-600 dark:text-emerald-400'
+                  : myTurn
+                    ? 'text-rose-300'
+                    : 'text-rose-600 dark:text-rose-400',
+              )}
+            >
+              {net >= 0 ? `+${fmt(net)}` : `−${fmt(-net)}`}
             </div>
           )}
         </div>

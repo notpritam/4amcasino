@@ -55,9 +55,7 @@ export function FloatingCards({ cards, onClose }: { cards: CardId[]; onClose: ()
       <div className="rounded-2xl bg-white/85 p-2.5 pt-6 shadow-xl ring-1 ring-slate-200/80 backdrop-blur dark:bg-slate-900/85 dark:ring-slate-700/70">
         {/* controls appear on hover so the cards stay clean */}
         <div className="absolute inset-x-0 top-0 flex items-center justify-between px-1.5 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <span className="pl-1 text-[0.6rem] font-semibold uppercase tracking-wide text-slate-400">
-            drag me
-          </span>
+          <span aria-hidden="true" />
           <div className="flex items-center gap-0.5">
             <button
               onClick={() => bumpScale(-0.15)}
