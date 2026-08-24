@@ -179,14 +179,25 @@ export function RoundTable({
               className={cn(
                 'flex w-32 flex-col items-center gap-1 rounded-2xl bg-white/90 p-2 text-center ring-1 ring-slate-200/80 transition-all dark:bg-slate-900/90 dark:ring-slate-700/70',
                 isMe && 'w-36 bg-white ring-indigo-300/70 shadow-md dark:bg-slate-900 dark:ring-indigo-500/40',
-                p.isToAct && 'ring-2 ring-indigo-500 shadow-lg',
-                p.isToAct && urgent && 'ring-rose-500 animate-urgent',
+                p.isToAct && 'turn-glow scale-[1.06] ring-2 ring-indigo-500',
+                p.isToAct && urgent && 'turn-glow-rose ring-rose-500',
                 p.isLeader && !p.isToAct && 'ring-2 ring-amber-400/70',
                 p.won && 'animate-winner',
                 (p.folded || !p.connected) && 'opacity-55',
                 p.sittingOut && 'opacity-60 saturate-50',
               )}
             >
+              {p.isToAct && (
+                <span
+                  className={cn(
+                    'absolute -top-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wide text-white shadow-md',
+                    urgent ? 'bg-rose-600' : 'bg-indigo-600',
+                  )}
+                >
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white motion-reduce:animate-none" />
+                  playing
+                </span>
+              )}
               {/* my hole cards ride above my pod; opponents show backs or reveals */}
               {p.inHand && (isMe ? myCards.length > 0 || !p.folded : !p.folded || p.revealed) && (
                 <div

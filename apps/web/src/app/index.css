@@ -873,3 +873,44 @@ html.cyber body::after,
 .cyber .card-back-crimson {
   --back-color: #c9166a;
 }
+
+/* who is playing: a breathing glow around the to-act seat pod */
+@keyframes turn-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-indigo-500) 90%, transparent),
+      0 0 10px 2px color-mix(in srgb, var(--color-indigo-500) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 3px var(--color-indigo-400),
+      0 0 26px 9px color-mix(in srgb, var(--color-indigo-400) 65%, transparent);
+  }
+}
+
+@keyframes turn-glow-rose {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-rose-500) 90%, transparent),
+      0 0 10px 2px color-mix(in srgb, var(--color-rose-500) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 3px var(--color-rose-400),
+      0 0 26px 9px color-mix(in srgb, var(--color-rose-400) 65%, transparent);
+  }
+}
+
+.turn-glow {
+  animation: turn-glow 1.5s ease-in-out infinite;
+}
+
+.turn-glow-rose {
+  animation: turn-glow-rose 0.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-glow,
+  .turn-glow-rose {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--color-indigo-500);
+  }
+}
