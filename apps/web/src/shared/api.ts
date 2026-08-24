@@ -91,6 +91,7 @@ export const api = {
   joinRequests: (roomId: string) => req(`/api/rooms/${roomId}/join-requests`),
   admit: (roomId: string, userId: number, accept: boolean) =>
     req(`/api/rooms/${roomId}/admit`, { userId, accept }),
+  standUp: (roomId: string, userId: number) => req(`/api/rooms/${roomId}/stand-up`, { userId }),
   transfer: (roomId: string, toUserId: number, amount: number, note?: string) =>
     req(`/api/rooms/${roomId}/transfer`, { toUserId, amount, ...(note ? { note } : {}) }),
   roomExtras: (roomId: string, extras: Record<string, unknown>) =>

@@ -285,4 +285,45 @@ describe('play style mining', () => {
     expect(styleB.winPct).toBe(0);
     expect(styleB.aggressionFactor).toBe(0);
   });
+
+  it('banker can stand a player up; non-bankers cannot', async () => {
+    const host = await user('kickhost');
+    const created = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/rooms',
+      headers: auth(host.token),
+      payload: { name: 'Kick Test', sb: 10, bb: 20 },
+    });
+    const room = created.json();
+    const mallory = await user('kickmallory');
+    await ctx.app.inject({
+      method: 'POST',
+      url: '/api/rooms/join',
+      headers: auth(mallory.token),
+      payload: { joinCode: room.joinCode },
+    });
+    ctx.db
+      .prepare('UPDATE room_players SET seat = 3 WHERE room_id = ? AND user_id = ?')
+      .run(room.id, mallory.userId);
+
+    const denied = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/stand-up`,
+      headers: auth(mallory.token),
+      payload: { userId: host.userId },
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const ok = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/stand-up`,
+      headers: auth(host.token),
+      payload: { userId: mallory.userId },
+    });
+    expect(ok.statusCode).toBe(200);
+    const row = ctx.db
+      .prepare('SELECT seat FROM room_players WHERE room_id = ? AND user_id = ?')
+      .get(room.id, mallory.userId) as { seat: number | null };
+    expect(row.seat).toBeNull();
+  });
 });

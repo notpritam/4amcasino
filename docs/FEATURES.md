@@ -8,4 +8,7 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | --- | --- |
 | Per-hand personal results: your net for every hand, where you folded, showdown outcome, paid-to-fold total | **siwans** |
 | Live ahead-of-turn actions: options track the table, Call arms at a price and disarms if raised | **notpritam** |
+| Round table: seats positioned live around an isometric oval, your seat pinned at the bottom | **notpritam** |
+| Banker sees every seat and can stand a player up (two-tap kick) | **notpritam** |
+| Banker badge on seats, docked side chat, fullscreen toggle, controls merged onto the table | **notpritam** |
 | Everything before 2026-08-24 (mental poker core, ledger and banking, friends and spectating, cyberpunk theme, MCP seat, fairness tour, auto-approve buys, ...) | **notpritam** |

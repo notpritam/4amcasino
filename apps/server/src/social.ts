@@ -288,6 +288,29 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
 
   // ---------- peer-to-peer chips: send, lend, settle up between players ----------
 
+  // The banker can stand any player up from their seat - the cure for a
+  // disconnected player whose seat keeps stalling deals. Chips stay put on
+  // the ledger; the player stays a member and can sit again any time.
+  // Requested by notpritam - see docs/FEATURES.md.
+  app.post('/api/rooms/:id/stand-up', authed, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = z.object({ userId: z.number().int() }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+    const room = getRoom(db, id);
+    if (!room) return reply.code(404).send({ error: 'no such room' });
+    if (!canBank(room, req.userId)) return reply.code(403).send({ error: 'banker only' });
+    if (!isMember(db, id, parsed.data.userId))
+      return reply.code(400).send({ error: 'not a member of this table' });
+    if (activeHands.has(id))
+      return reply.code(400).send({ error: 'wait for the hand to end first' });
+    db.prepare('UPDATE room_players SET seat = NULL WHERE room_id = ? AND user_id = ?').run(
+      id,
+      parsed.data.userId,
+    );
+    roomEvents.emit('changed', id);
+    return { ok: true };
+  });
+
   app.post('/api/rooms/:id/transfer', authed, async (req, reply) => {
     const parsed = z
       .object({

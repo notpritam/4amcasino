@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
+  CornersIn,
+  CornersOut,
   CardsThree,
   ChatCircle,
   DotsThreeVertical,
@@ -44,6 +46,7 @@ import { PlayerRow, YouRow, type SeatView } from '../../widgets/table/players.ts
 import { ActionBar } from '../../widgets/table/ActionBar.tsx';
 import { ChatPanel } from '../../widgets/table/ChatPanel.tsx';
 import { MobileTable } from '../../widgets/table/MobileTable.tsx';
+import { RoundTable } from '../../widgets/table/RoundTable.tsx';
 import { BankControls } from '../../widgets/table/BankControls.tsx';
 import { BrokeBuyInDialog } from '../../features/bank/BrokeBuyInDialog.tsx';
 import { InviteFriendsDialogBody } from '../../features/friends/FriendsPanel.tsx';
@@ -136,7 +139,13 @@ export function TablePage() {
   const [brokeDismissed, setBrokeDismissed] = useState(false);
   const [joinSlow, setJoinSlow] = useState(false);
   const wsConnected = useStore((s) => s.wsConnected);
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const sync = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  }, []);
   const [chatSeenCount, setChatSeenCount] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const prefs = useStore((s) => s.prefs);
@@ -1307,13 +1316,24 @@ export function TablePage() {
               )}
             </DesktopIconButton>
             <DesktopIconButton
-              label={unreadChat > 0 ? `Open chat, ${unreadChat} unread messages` : 'Open chat'}
-              onClick={() => setChatOpen(true)}
+              label={unreadChat > 0 ? `Toggle chat, ${unreadChat} unread messages` : 'Toggle chat'}
+              onClick={() => setChatOpen((open) => !open)}
               active={chatOpen}
               badge={unreadChat}
               buttonRef={desktopChatTriggerRef}
             >
               <ChatCircle size={20} weight={chatOpen ? 'fill' : 'regular'} />
+            </DesktopIconButton>
+
+            <DesktopIconButton
+              label={isFullscreen ? 'Exit full screen' : 'Full screen'}
+              onClick={() => {
+                if (document.fullscreenElement) void document.exitFullscreen();
+                else void document.documentElement.requestFullscreen().catch(() => {});
+              }}
+              active={isFullscreen}
+            >
+              {isFullscreen ? <CornersIn size={19} /> : <CornersOut size={19} />}
             </DesktopIconButton>
 
             <div className="relative">
@@ -1366,31 +1386,12 @@ export function TablePage() {
           </div>
         </header>
 
-        <main className="flex flex-1 flex-col gap-4">
-          <section
-            aria-label="Players at the table"
-            className="mx-auto grid w-full max-w-5xl grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-3"
-          >
-            {opponents.length === 0 ? (
-              <button
-                type="button"
-                onClick={() => setInviteOpen(true)}
-                className="flex min-h-20 items-center justify-center gap-2 rounded-2xl bg-slate-100/70 px-4 text-sm text-slate-500 ring-1 ring-slate-200/70 hover:bg-slate-100 hover:text-slate-800 dark:bg-slate-900/60 dark:ring-slate-800 dark:hover:bg-slate-900 dark:hover:text-slate-200"
-              >
-                <UserPlus size={18} /> Invite friends with code{' '}
-                <span className="font-display font-semibold text-indigo-600 dark:text-indigo-300">
-                  {room.room.joinCode}
-                </span>
-              </button>
-            ) : (
-              opponents.map((player) => <PlayerRow key={player.seat} p={player} urgent={urgent} />)
-            )}
-          </section>
-
+        <div className="flex flex-1 items-start gap-4">
+        <main className="flex min-w-0 flex-1 flex-col gap-4">
           <section
             aria-label="Poker board"
             className={cn(
-              'relative flex min-h-[clamp(30rem,56vh,42rem)] flex-col items-center justify-center gap-8 overflow-hidden rounded-[2rem] bg-slate-200/50 px-6 py-10 ring-1 ring-slate-200 dark:bg-slate-900/60 dark:ring-slate-800 lg:px-10',
+              'relative flex min-h-[clamp(34rem,72vh,54rem)] flex-col gap-5 overflow-hidden rounded-[2rem] bg-slate-200/50 px-3 pb-3 pt-8 ring-1 ring-slate-200 dark:bg-slate-900/60 dark:ring-slate-800 sm:px-5 lg:px-8',
               notInHand && 'opacity-60 saturate-50',
             )}
           >
@@ -1403,9 +1404,38 @@ export function TablePage() {
                 {reaction.emoji}
               </span>
             ))}
+            <RoundTable
+              seats={seatViews}
+              mySeat={mySeat}
+              myUserId={auth.userId}
+              myCards={hand.myCards}
+              committedBySeat={Object.fromEntries(
+                (hand.betting?.seats ?? []).map((s) => [s.seat, s.committed]),
+              )}
+              urgent={urgent}
+              handLive={handLive}
+              canSit={mySeat === null && !amSpectator}
+              onSit={sit}
+              canKick={isBankerHere}
+              onKick={(userId) =>
+                void api
+                  .standUp(roomId!, userId)
+                  .catch((err) =>
+                    useStore
+                      .getState()
+                      .pushError(err instanceof Error ? err.message : 'could not stand them up'),
+                  )
+              }
+              bankerId={room.room.bankerId}
+              coBankerId={room.room.coBankerId}
+            >
             <div className="rounded-xl bg-indigo-600 px-5 py-2.5 font-display text-lg font-semibold text-white shadow-[0_12px_30px_rgba(79,70,229,0.22)]">
               POT <NumberFlow value={pot} />
             </div>
+            {showResult ? (
+              <div className="max-h-[44vh] w-full overflow-y-auto">{resultBanner}</div>
+            ) : (
+              <>
             <div className="flex items-center justify-center gap-2.5 lg:gap-3">
               {[0, 1, 2, 3, 4].map((index) =>
                 hand.board[index] !== undefined ? (
@@ -1445,62 +1475,57 @@ export function TablePage() {
                 You will be dealt in at the next hand.
               </p>
             )}
+            {!handLive && opponents.length === 0 && !amSpectator && (
+              <button
+                type="button"
+                onClick={() => setInviteOpen(true)}
+                className="flex items-center gap-2 rounded-full bg-white/80 px-4 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70 hover:text-slate-900 dark:bg-slate-900/80 dark:text-slate-300 dark:ring-slate-700/70 dark:hover:text-slate-100"
+              >
+                <UserPlus size={15} /> Invite friends · code{' '}
+                <span className="font-display text-indigo-600 dark:text-indigo-300">
+                  {room.room.joinCode}
+                </span>
+              </button>
+            )}
+              </>
+            )}
+            </RoundTable>
+
+            {/* your controls live on the table itself; your seat is a pod above */}
+            <div className="relative z-10 w-full space-y-2.5">
+              {amSpectator && spectatorPanel}
+              <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} hideIdleStart />
+            </div>
           </section>
 
-          {resultBanner}
           {peekPanel}
-
-          {me ? (
-            <YouRow p={me} cards={hand.myCards} urgent={urgent} />
-          ) : amSpectator ? (
-            spectatorPanel
-          ) : (
-            seatPicker
-          )}
-          <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} hideIdleStart />
         </main>
-      </div>
 
-      {chatOpen && (
-        <div className="fixed inset-0 z-40 hidden md:block">
-          <button
-            className="absolute inset-0 bg-slate-950/45"
-            aria-label="Close chat"
-            onClick={() => setChatOpen(false)}
-          />
-          <motion.aside
-            ref={desktopChatDrawerRef}
-            role="dialog"
-            aria-modal="true"
+        {/* chat rides beside the table as a real column, never an overlay */}
+        {chatOpen && (
+          <aside
             aria-label="Table chat"
-            initial={reduceMotion ? false : { x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute inset-y-0 right-0 flex w-[min(25rem,calc(100vw-2rem))] flex-col bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.22)] dark:bg-slate-950"
+            className="sticky top-4 hidden max-h-[calc(100dvh-2rem)] min-h-[30rem] w-80 shrink-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/70 md:flex dark:bg-slate-900 dark:ring-slate-700/70"
           >
-            <div className="flex h-16 items-center justify-between border-b border-slate-200 px-5 dark:border-slate-800">
-              <div>
-                <h2 className="font-display text-base font-semibold">Table chat</h2>
-                <p className="text-xs text-slate-500">Messages disappear when the room closes.</p>
-              </div>
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2.5 dark:border-slate-800">
+              <h2 className="font-display text-sm font-semibold">Table chat</h2>
               <button
-                ref={desktopChatCloseRef}
                 type="button"
                 onClick={() => setChatOpen(false)}
-                className={desktopIconClass}
                 aria-label="Close chat"
-                title="Close chat"
+                className="rounded-md p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
-                <X size={19} />
+                <X size={16} />
               </button>
             </div>
-            <div className="min-h-0 flex-1 p-3">
+            <div className="min-h-0 flex-1 p-2.5">
               <ChatPanel chrome={false} />
             </div>
-          </motion.aside>
+          </aside>
+        )}
         </div>
-      )}
+      </div>
+
 
       <BrokeBuyInDialog
         roomId={roomId!}
