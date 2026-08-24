@@ -12,6 +12,7 @@ import { bindGameClient } from '../../shared/gameClient.ts';
 import { wsClient } from '../../shared/ws.ts';
 import { useStore } from '../../shared/store.ts';
 import { api } from '../../shared/api.ts';
+import { play } from '../../shared/sounds.ts';
 import { cn } from '../../shared/lib/cn.ts';
 import { ActionBar } from '../../widgets/table/ActionBar.tsx';
 
@@ -19,11 +20,15 @@ import { ActionBar } from '../../widgets/table/ActionBar.tsx';
 
 export interface Avatar3D {
   c: string; // body color hex
+  t: string; // trim/glow color hex
   head: 'round' | 'cube' | 'cone';
   hat: 'none' | 'cap' | 'halo' | 'crown';
+  /** the bust-out blast you leave the table with */
+  fx: 'boom' | 'rocket' | 'sparks';
 }
 
-const DEFAULT_AVATAR: Avatar3D = { c: '#a78bfa', head: 'round', hat: 'none' };
+const DEFAULT_AVATAR: Avatar3D = { c: '#a78bfa', t: '#e879f9', head: 'round', hat: 'none', fx: 'boom' };
+const FX: Avatar3D['fx'][] = ['boom', 'rocket', 'sparks'];
 const BODY_COLORS = ['#a78bfa', '#e879f9', '#60a5fa', '#34d399', '#fbbf24', '#fb7185', '#f8fafc', '#64748b'];
 const HEADS: Avatar3D['head'][] = ['round', 'cube', 'cone'];
 const HATS: Avatar3D['hat'][] = ['none', 'cap', 'halo', 'crown'];
@@ -31,10 +36,14 @@ const HATS: Avatar3D['hat'][] = ['none', 'cap', 'halo', 'crown'];
 function parseAvatar(raw: string | null | undefined): Avatar3D {
   try {
     const v = JSON.parse(raw ?? '') as Partial<Avatar3D>;
+    const hex = (x: unknown, fb: string) =>
+      typeof x === 'string' && /^#[0-9a-fA-F]{6}$/.test(x) ? x : fb;
     return {
-      c: typeof v.c === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.c) ? v.c : DEFAULT_AVATAR.c,
+      c: hex(v.c, DEFAULT_AVATAR.c),
+      t: hex(v.t, DEFAULT_AVATAR.t),
       head: HEADS.includes(v.head as Avatar3D['head']) ? (v.head as Avatar3D['head']) : 'round',
       hat: HATS.includes(v.hat as Avatar3D['hat']) ? (v.hat as Avatar3D['hat']) : 'none',
+      fx: FX.includes(v.fx as Avatar3D['fx']) ? (v.fx as Avatar3D['fx']) : 'boom',
     };
   } catch {
     return DEFAULT_AVATAR;
@@ -54,8 +63,8 @@ function buildCharacter(cfg: Avatar3D, dimmed: boolean): THREE.Group {
   });
   const trim = new THREE.MeshStandardMaterial({
     color: 0x1a0b2e,
-    emissive: new THREE.Color(cfg.c),
-    emissiveIntensity: dimmed ? 0.15 : 0.7,
+    emissive: new THREE.Color(cfg.t),
+    emissiveIntensity: dimmed ? 0.15 : 0.9,
     roughness: 0.4,
   });
 
@@ -221,6 +230,54 @@ function buildChips(amount: number, bb: number): THREE.Group {
   return g;
 }
 
+/** A turntable preview of the draft character, so you see every change live. */
+function CharacterPreview({ cfg }: { cfg: Avatar3D }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const mount = ref.current;
+    if (!mount) return;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1d1033);
+    const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 20);
+    camera.position.set(0, 1.35, 3.1);
+    camera.lookAt(0, 0.85, 0);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(224, 190);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    mount.appendChild(renderer.domElement);
+    scene.add(new THREE.AmbientLight(0x9d8bd8, 0.7));
+    const key = new THREE.PointLight(0xffffff, 14, 20);
+    key.position.set(2, 3, 3);
+    scene.add(key);
+    const disc = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.75, 0.85, 0.1, 32),
+      new THREE.MeshStandardMaterial({ color: 0x2c1650, emissive: 0x7c3aed, emissiveIntensity: 0.4 }),
+    );
+    scene.add(disc);
+    const char = buildCharacter(cfg, false);
+    scene.add(char);
+    let raf = 0;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      char.rotation.y += 0.02;
+      renderer.render(scene, camera);
+    };
+    loop();
+    return () => {
+      cancelAnimationFrame(raf);
+      scene.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        if (m.material) (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose());
+      });
+      renderer.dispose();
+      mount.removeChild(renderer.domElement);
+    };
+  }, [cfg]);
+  return <div ref={ref} className="overflow-hidden rounded-xl" />;
+}
+
 /* ── the page ───────────────────────────────────────────────────────────── */
 
 export function Table3DPage() {
@@ -264,7 +321,7 @@ export function Table3DPage() {
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x150b26);
-    scene.fog = new THREE.Fog(0x150b26, 14, 30);
+    scene.fog = new THREE.Fog(0x150b26, 16, 44);
 
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 60);
     camera.position.set(0, 5.2, 8.6);
@@ -333,25 +390,191 @@ export function Table3DPage() {
     blue.position.set(8, 4, 6);
     scene.add(blue);
 
-    const grid = new THREE.GridHelper(60, 60, 0x7c3aed, 0x2c1650);
-    (grid.material as THREE.Material).transparent = true;
-    (grid.material as THREE.Material).opacity = 0.35;
-    grid.position.y = -0.01;
-    scene.add(grid);
 
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * Math.PI * 2;
-      const pillar = new THREE.Mesh(
-        new THREE.BoxGeometry(0.24, 5 + (i % 3) * 2, 0.24),
+    /* ── the casino room ── */
+    const R = 19; // room radius
+
+    // patterned carpet
+    const carpetCanvas = document.createElement('canvas');
+    carpetCanvas.width = 256;
+    carpetCanvas.height = 256;
+    const cc = carpetCanvas.getContext('2d')!;
+    cc.fillStyle = '#1c1132';
+    cc.fillRect(0, 0, 256, 256);
+    cc.strokeStyle = 'rgba(167,139,250,0.16)';
+    cc.lineWidth = 3;
+    for (let i = -4; i < 8; i++) {
+      cc.beginPath();
+      cc.moveTo(i * 64, 0);
+      cc.lineTo(i * 64 + 256, 256);
+      cc.stroke();
+      cc.beginPath();
+      cc.moveTo(i * 64 + 256, 0);
+      cc.lineTo(i * 64, 256);
+      cc.stroke();
+    }
+    cc.fillStyle = 'rgba(232,121,249,0.14)';
+    for (let ix = 0; ix < 4; ix++)
+      for (let iy = 0; iy < 4; iy++) cc.beginPath(), cc.arc(ix * 64 + 32, iy * 64 + 32, 5, 0, 7), cc.fill();
+    const carpetTex = new THREE.CanvasTexture(carpetCanvas);
+    carpetTex.colorSpace = THREE.SRGBColorSpace;
+    carpetTex.wrapS = carpetTex.wrapT = THREE.RepeatWrapping;
+    carpetTex.repeat.set(12, 12);
+    const carpet = new THREE.Mesh(
+      new THREE.CircleGeometry(R, 48),
+      new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 0.95 }),
+    );
+    carpet.rotation.x = -Math.PI / 2;
+    carpet.position.y = 0.002;
+    carpet.receiveShadow = true;
+    scene.add(carpet);
+
+    // enclosing wall with neon trim bands
+    const wall = new THREE.Mesh(
+      new THREE.CylinderGeometry(R, R, 9, 32, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0x160c28, roughness: 0.9, side: THREE.BackSide }),
+    );
+    wall.position.y = 4.5;
+    scene.add(wall);
+    for (const [y, col] of [
+      [0.5, 0xa78bfa],
+      [7.6, 0xe879f9],
+    ] as const) {
+      const band = new THREE.Mesh(
+        new THREE.TorusGeometry(R - 0.05, 0.06, 8, 64),
+        new THREE.MeshStandardMaterial({ color: 0x1a0b2e, emissive: col, emissiveIntensity: 1.6 }),
+      );
+      band.rotation.x = Math.PI / 2;
+      band.position.y = y;
+      scene.add(band);
+    }
+    // ceiling + chandelier over the table
+    const ceiling = new THREE.Mesh(
+      new THREE.CircleGeometry(R, 32),
+      new THREE.MeshStandardMaterial({ color: 0x120a20, roughness: 1 }),
+    );
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.y = 9;
+    scene.add(ceiling);
+    for (let i = 0; i < 3; i++) {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(1.1 + i * 0.7, 0.045, 8, 48),
         new THREE.MeshStandardMaterial({
           color: 0x1a0b2e,
-          emissive: i % 2 ? 0xa78bfa : 0xe879f9,
-          emissiveIntensity: 0.9,
+          emissive: i % 2 ? 0xe879f9 : 0xa78bfa,
+          emissiveIntensity: 1.8,
         }),
       );
-      pillar.position.set(Math.cos(a) * 16, 2.5, Math.sin(a) * 16);
-      scene.add(pillar);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 6.6 - i * 0.25;
+      scene.add(ring);
     }
+
+    // glowing suit signs at the compass points
+    const suitSign = (glyph: string, color: string, angle: number) => {
+      const sc = document.createElement('canvas');
+      sc.width = 128;
+      sc.height = 128;
+      const sx = sc.getContext('2d')!;
+      sx.shadowColor = color;
+      sx.shadowBlur = 26;
+      sx.fillStyle = color;
+      sx.font = '96px system-ui';
+      sx.textAlign = 'center';
+      sx.fillText(glyph, 64, 100);
+      const tex = new THREE.CanvasTexture(sc);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+      sp.scale.set(2.6, 2.6, 1);
+      sp.position.set(Math.cos(angle) * (R - 1), 5.4, Math.sin(angle) * (R - 1));
+      scene.add(sp);
+    };
+    suitSign('♠', '#a78bfa', Math.PI / 4);
+    suitSign('♥', '#e879f9', (Math.PI * 3) / 4);
+    suitSign('♦', '#f0abfc', (Math.PI * 5) / 4);
+    suitSign('♣', '#c4b5fd', (Math.PI * 7) / 4);
+
+    // the house sign
+    const signCanvas = document.createElement('canvas');
+    signCanvas.width = 1024;
+    signCanvas.height = 192;
+    const sg = signCanvas.getContext('2d')!;
+    sg.shadowColor = '#e879f9';
+    sg.shadowBlur = 34;
+    sg.fillStyle = '#f5d0fe';
+    sg.font = '700 120px system-ui';
+    sg.textAlign = 'center';
+    sg.fillText('4AM CASINO', 512, 132);
+    const signTex = new THREE.CanvasTexture(signCanvas);
+    signTex.colorSpace = THREE.SRGBColorSpace;
+    const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: signTex, transparent: true }));
+    sign.scale.set(9, 1.7, 1);
+    sign.position.set(0, 6.4, -(R - 1.2));
+    scene.add(sign);
+
+    // a row of slot machines along the back wall
+    for (let i = 0; i < 5; i++) {
+      const a = Math.PI * (0.32 + i * 0.09);
+      const slot = new THREE.Group();
+      const bodyBox = new THREE.Mesh(
+        new THREE.BoxGeometry(1.1, 2.1, 0.8),
+        new THREE.MeshStandardMaterial({ color: 0x241245, roughness: 0.5, metalness: 0.3 }),
+      );
+      bodyBox.position.y = 1.05;
+      slot.add(bodyBox);
+      const screen = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.8, 0.6),
+        new THREE.MeshStandardMaterial({
+          color: 0x0b0518,
+          emissive: i % 2 ? 0xe879f9 : 0x8b5cf6,
+          emissiveIntensity: 1.3,
+        }),
+      );
+      screen.position.set(0, 1.45, 0.41);
+      slot.add(screen);
+      const lever = new THREE.Mesh(
+        new THREE.SphereGeometry(0.08, 10, 10),
+        new THREE.MeshStandardMaterial({ color: 0xe879f9, emissive: 0xe879f9, emissiveIntensity: 0.8 }),
+      );
+      lever.position.set(0.62, 1.8, 0);
+      slot.add(lever);
+      slot.position.set(Math.cos(a) * (R - 2.2), 0, -Math.abs(Math.sin(a)) * (R - 2.2));
+      slot.lookAt(0, 0, 0);
+      slot.traverse((o) => {
+        if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = true;
+      });
+      scene.add(slot);
+    }
+
+    // a bar on the opposite side, stools included
+    const bar = new THREE.Group();
+    const counter = new THREE.Mesh(
+      new THREE.BoxGeometry(7, 1.15, 1.1),
+      new THREE.MeshStandardMaterial({ color: 0x2b1650, roughness: 0.35, metalness: 0.4 }),
+    );
+    counter.position.y = 0.58;
+    bar.add(counter);
+    const counterGlow = new THREE.Mesh(
+      new THREE.BoxGeometry(7.05, 0.06, 1.15),
+      new THREE.MeshStandardMaterial({ color: 0x1a0b2e, emissive: 0xa78bfa, emissiveIntensity: 1.5 }),
+    );
+    counterGlow.position.y = 1.18;
+    bar.add(counterGlow);
+    for (let i = 0; i < 4; i++) {
+      const stool = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.32, 0.28, 0.85, 14),
+        new THREE.MeshStandardMaterial({ color: 0x3b2168, roughness: 0.6 }),
+      );
+      stool.position.set(-2.6 + i * 1.7, 0.42, 1.35);
+      stool.castShadow = true;
+      bar.add(stool);
+    }
+    bar.position.set(0, 0, R - 3.4);
+    bar.rotation.y = Math.PI;
+    bar.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = true;
+    });
+    scene.add(bar);
 
     /* the table: oval felt with a neon rim */
     const felt = new THREE.Mesh(
@@ -390,6 +613,100 @@ export function Table3DPage() {
     turnRing.rotation.x = Math.PI / 2;
     turnRing.visible = false;
     scene.add(turnRing);
+    // a bobbing arrow over the head of whoever is up
+    const turnArrow = new THREE.Mesh(
+      new THREE.ConeGeometry(0.22, 0.42, 4),
+      new THREE.MeshStandardMaterial({ color: 0xe879f9, emissive: 0xe879f9, emissiveIntensity: 1.8 }),
+    );
+    turnArrow.rotation.x = Math.PI;
+    turnArrow.visible = false;
+    scene.add(turnArrow);
+
+    /* fun: pokes, fold slumps, bust-out blasts */
+    interface Anim {
+      kind: 'poke' | 'fold' | 'boom' | 'rocket' | 'sparks';
+      seat: number;
+      t0: number;
+    }
+    const anims: Anim[] = [];
+    const charBySeat = new Map<number, THREE.Group>();
+    const homeBySeat = new Map<number, THREE.Vector3>();
+    const seen = new Set<string>();
+    const particles: { pts: THREE.Points; vel: Float32Array; t0: number; dur: number }[] = [];
+
+    const burst = (at: THREE.Vector3, color: number, count: number, spread: number, up: number) => {
+      const pos = new Float32Array(count * 3);
+      const vel = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        pos.set([at.x, at.y, at.z], i * 3);
+        vel.set(
+          [(Math.random() - 0.5) * spread, Math.random() * up + 0.5, (Math.random() - 0.5) * spread],
+          i * 3,
+        );
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const pts = new THREE.Points(
+        geo,
+        new THREE.PointsMaterial({ color, size: 0.12, transparent: true, opacity: 1 }),
+      );
+      scene.add(pts);
+      particles.push({ pts, vel, t0: performance.now(), dur: 1500 });
+    };
+
+    const powSprite = (at: THREE.Vector3) => {
+      const sp = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: labelTexture('POW!', '', '#fbbf24'), transparent: true }),
+      );
+      sp.scale.set(1.3, 0.5, 1);
+      sp.position.copy(at).add(new THREE.Vector3(0, 1.9, 0));
+      scene.add(sp);
+      setTimeout(() => {
+        scene.remove(sp);
+        sp.material.map?.dispose();
+        sp.material.dispose();
+      }, 900);
+    };
+
+    const onPoke = (e: Event) => {
+      const detail = (e as CustomEvent<{ targetSeat: number }>).detail;
+      anims.push({ kind: 'poke', seat: detail.targetSeat, t0: performance.now() });
+      const home = homeBySeat.get(detail.targetSeat);
+      if (home) powSprite(home);
+    };
+    window.addEventListener('4am-poke', onPoke);
+
+    /* tap a player to shove them (a click, not an orbit-drag) */
+    const ray = new THREE.Raycaster();
+    let downAt: [number, number] | null = null;
+    const onDown = (e: PointerEvent) => {
+      downAt = [e.clientX, e.clientY];
+    };
+    const onUp = (e: PointerEvent) => {
+      if (!downAt) return;
+      const moved = Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]);
+      downAt = null;
+      if (moved > 6) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      ray.setFromCamera(ndc, camera);
+      const hits = ray.intersectObjects(dynamic.children, true);
+      for (const hit of hits) {
+        let o: THREE.Object3D | null = hit.object;
+        while (o) {
+          if (o.userData.pokeSeat !== undefined) {
+            wsClient.send({ t: 'poke', targetSeat: o.userData.pokeSeat as number });
+            return;
+          }
+          o = o.parent;
+        }
+      }
+    };
+    renderer.domElement.addEventListener('pointerdown', onDown);
+    renderer.domElement.addEventListener('pointerup', onUp);
 
     const disposeDeep = (obj: THREE.Object3D) => {
       obj.traverse((o) => {
@@ -409,6 +726,8 @@ export function Table3DPage() {
       dirty = false;
       disposeDeep(dynamic);
       dynamic.clear();
+      charBySeat.clear();
+      homeBySeat.clear();
       const st = useStore.getState();
       const r = st.room;
       if (!r) return;
@@ -431,16 +750,44 @@ export function Table3DPage() {
         const inHand = h.handId !== null && !h.abort && h.seats.some((s) => s.seat === p.seat);
         const folded = !!engine?.folded;
 
-        const char = buildCharacter(parseAvatar(p.avatar3d), folded || !!p.sittingOut);
+        const cfg = parseAvatar(p.avatar3d);
+        const char = buildCharacter(cfg, folded || !!p.sittingOut);
         char.position.set(px, 0, pz);
         char.lookAt(0, 0.6, 0);
+        if (p.userId !== myId) char.userData.pokeSeat = p.seat;
+        charBySeat.set(p.seat!, char);
+        homeBySeat.set(p.seat!, new THREE.Vector3(px, 0, pz));
         dynamic.add(char);
+
+        // a fresh fold gets its little slump (timeout folds included)
+        const foldKey = `${h.handId}:fold:${p.seat}`;
+        if (folded && h.handId && !seen.has(foldKey)) {
+          seen.add(foldKey);
+          anims.push({ kind: 'fold', seat: p.seat!, t0: performance.now() });
+        }
+        // busting out fires the player's chosen blast
+        if (h.result && h.handId) {
+          const endStack = h.result.stacks.find((x) => x.seat === p.seat)?.stack;
+          const blastKey = `${h.handId}:blast:${p.seat}`;
+          if (endStack === 0 && !seen.has(blastKey)) {
+            seen.add(blastKey);
+            anims.push({ kind: cfg.fx, seat: p.seat!, t0: performance.now() });
+            play('boom');
+            const at = new THREE.Vector3(px, 1, pz);
+            if (cfg.fx === 'boom') burst(at, 0xfb923c, 90, 5, 3);
+            else if (cfg.fx === 'sparks') burst(at, 0xe879f9, 120, 2.4, 5);
+            else burst(at, 0xa78bfa, 60, 1.6, 6);
+          }
+        }
 
         const isToAct = betting?.toAct === p.seat && h.handId !== null && !h.result && !h.abort;
         if (isToAct) {
           turnRing.visible = true;
           turnRing.position.set(px, 0.06, pz);
+          turnArrow.visible = true;
+          turnArrow.position.set(px, 2.55, pz);
         }
+        if (!betting || betting.toAct === null || h.result || h.abort) turnArrow.visible = false;
 
         const stackShown = engine && !h.result ? engine.stack : p.stack;
         if (p.userId !== myId) {
@@ -541,6 +888,66 @@ export function Table3DPage() {
         const pulse = 1 + Math.sin(t * 5) * 0.12;
         turnRing.scale.set(pulse, pulse, 1);
         (turnRing.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.2 + Math.sin(t * 5) * 0.7;
+        turnArrow.position.y = 2.55 + Math.sin(t * 4) * 0.14;
+        turnArrow.rotation.y = t * 2;
+      }
+
+      const nowMs = performance.now();
+      for (let i = anims.length - 1; i >= 0; i--) {
+        const anim = anims[i]!;
+        const char = charBySeat.get(anim.seat);
+        const home = homeBySeat.get(anim.seat);
+        const dur = anim.kind === 'poke' ? 1100 : anim.kind === 'fold' ? 900 : 1700;
+        const prog = (nowMs - anim.t0) / dur;
+        if (!char || !home || prog >= 1) {
+          if (char && home) {
+            char.position.copy(home);
+            char.rotation.set(0, char.rotation.y, 0);
+            char.lookAt(0, 0.6, 0);
+          }
+          anims.splice(i, 1);
+          continue;
+        }
+        const wave = Math.sin(Math.PI * prog);
+        const away = home.clone().normalize();
+        if (anim.kind === 'poke') {
+          char.position.copy(home).addScaledVector(away, wave * 2.1);
+          char.position.y = wave * 1.4;
+          char.rotation.y += 0.35; // tumble
+          char.rotation.z = wave * 0.9;
+        } else if (anim.kind === 'fold') {
+          char.rotation.x = wave * 0.65; // slump forward over the mucked hand
+          char.position.y = -wave * 0.18;
+        } else if (anim.kind === 'rocket') {
+          char.position.y = prog * 9;
+          char.rotation.y += 0.5;
+          if (Math.random() < 0.5) burst(char.position.clone(), 0xa78bfa, 3, 0.4, -1);
+        } else {
+          char.scale.setScalar(Math.max(0.05, 1 - prog * 1.1));
+          char.rotation.y += anim.kind === 'sparks' ? 0.2 : 0.45;
+        }
+      }
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const pt = particles[i]!;
+        const life = (nowMs - pt.t0) / pt.dur;
+        if (life >= 1) {
+          scene.remove(pt.pts);
+          pt.pts.geometry.dispose();
+          (pt.pts.material as THREE.Material).dispose();
+          particles.splice(i, 1);
+          continue;
+        }
+        const positions = pt.pts.geometry.getAttribute('position') as THREE.BufferAttribute;
+        for (let j = 0; j < positions.count; j++) {
+          positions.setXYZ(
+            j,
+            positions.getX(j) + pt.vel[j * 3]! * 0.016,
+            positions.getY(j) + (pt.vel[j * 3 + 1]! - life * 2.2) * 0.016,
+            positions.getZ(j) + pt.vel[j * 3 + 2]! * 0.016,
+          );
+        }
+        positions.needsUpdate = true;
+        (pt.pts.material as THREE.PointsMaterial).opacity = 1 - life;
       }
       rim.material.emissiveIntensity = 1.0 + Math.sin(t * 1.4) * 0.25;
       if (flyPos && flyLook) {
@@ -558,6 +965,9 @@ export function Table3DPage() {
 
     return () => {
       cancelAnimationFrame(raf);
+      window.removeEventListener('4am-poke', onPoke);
+      renderer.domElement.removeEventListener('pointerdown', onDown);
+      renderer.domElement.removeEventListener('pointerup', onUp);
       unsub();
       ro.disconnect();
       controls.dispose();
@@ -608,7 +1018,8 @@ export function Table3DPage() {
 
       {/* character customiser */}
       {customizeOpen && (
-        <div className="absolute right-3 top-16 z-10 w-64 space-y-4 rounded-2xl bg-[#1d1033]/90 p-4 ring-1 ring-violet-400/30 backdrop-blur">
+        <div className="absolute right-3 top-16 z-10 max-h-[calc(100dvh-9rem)] w-64 space-y-4 overflow-y-auto rounded-2xl bg-[#1d1033]/90 p-4 ring-1 ring-violet-400/30 backdrop-blur">
+          <CharacterPreview cfg={draft} />
           <div>
             <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-violet-300">Color</div>
             <div className="flex flex-wrap gap-1.5">
@@ -618,6 +1029,20 @@ export function Table3DPage() {
                   onClick={() => setDraft((d) => ({ ...d, c }))}
                   aria-label={`Body color ${c}`}
                   className={cn('h-7 w-7 rounded-full ring-2', swatch === c ? 'ring-white' : 'ring-transparent')}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-violet-300">Glow trim</div>
+            <div className="flex flex-wrap gap-1.5">
+              {BODY_COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setDraft((d) => ({ ...d, t: c }))}
+                  aria-label={`Trim color ${c}`}
+                  className={cn('h-7 w-7 rounded-full ring-2', draft.t === c ? 'ring-white' : 'ring-transparent')}
                   style={{ backgroundColor: c }}
                 />
               ))}
@@ -656,6 +1081,28 @@ export function Table3DPage() {
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-violet-300">
+              Bust-out blast
+            </div>
+            <div className="flex gap-1.5">
+              {FX.map((fxKind) => (
+                <button
+                  key={fxKind}
+                  onClick={() => setDraft((d) => ({ ...d, fx: fxKind }))}
+                  className={cn(
+                    'flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold capitalize',
+                    draft.fx === fxKind ? 'bg-violet-500 text-white' : 'bg-white/10 hover:bg-white/20',
+                  )}
+                >
+                  {fxKind}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[0.66rem] leading-snug text-violet-300/60">
+              Plays for the whole table when you run out of chips.
+            </p>
           </div>
           <button
             onClick={saveAvatar}

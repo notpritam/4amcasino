@@ -241,6 +241,8 @@ export class GameRoom {
     for (const [uid, ws] of this.sockets) ws.send(memberIds.has(uid) ? full : masked);
   }
 
+  private lastPoke = new Map<number, number>();
+
   handleMessage(userId: number, msg: ClientMsg): void {
     switch (msg.t) {
       case 'chat': {
@@ -255,6 +257,17 @@ export class GameRoom {
           kind: msg.kind ?? 'text',
           ts: Date.now(),
         });
+        return;
+      }
+      case 'poke': {
+        // a friendly shove in the 3D world; relayed, never gameplay-affecting
+        const nowTs = Date.now();
+        if (nowTs - (this.lastPoke.get(userId) ?? 0) < 900) return;
+        this.lastPoke.set(userId, nowTs);
+        const pokeUser = this.db
+          .prepare('SELECT COALESCE(display_name, username) as name FROM users WHERE id = ?')
+          .get(userId) as { name: string };
+        this.broadcast({ t: 'poke', fromUserId: userId, fromName: pokeUser.name, targetSeat: msg.targetSeat });
         return;
       }
       case 'rtc': {

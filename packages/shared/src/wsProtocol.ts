@@ -61,6 +61,10 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
     text: z.string().min(1).max(500),
     kind: z.enum(['text', 'sticker', 'phrase']).optional(),
   }),
+  z.object({
+    t: z.literal('poke'),
+    targetSeat: z.number().int().min(0).max(8),
+  }),
   z.object({ t: z.literal('rtc'), to: z.number().int(), data: z.unknown() }),
   z.object({ t: z.literal('voice_state'), muted: z.boolean() }),
 ]);
@@ -128,6 +132,7 @@ export type ServerMsg =
     }
   | { t: 'error'; message: string }
   | { t: 'chat'; from: string; userId: number; text: string; kind: 'text' | 'sticker' | 'phrase'; ts: number }
+  | { t: 'poke'; fromUserId: number; fromName: string; targetSeat: number }
   | { t: 'rtc'; from: number; data: unknown }
   | { t: 'voice_state'; userId: number; muted: boolean }
   | { t: 'auto_deal'; inMs: number }

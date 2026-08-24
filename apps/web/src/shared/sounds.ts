@@ -12,6 +12,8 @@ export type SoundName =
   | 'chip'
   | 'chips-slide'
   | 'pot-collect'
+  | 'thwack'
+  | 'boom'
   | 'knock'
   | 'muck'
   | 'turn'
@@ -158,6 +160,17 @@ const recipes: Record<SoundName, (c: AudioContext, t: number) => void> = {
       const at = t + 0.05 + i * (0.055 - i * 0.004);
       tone(c, at, 0.06, 1760 + i * 180 + Math.random() * 40, 0.09 - i * 0.008, 'triangle');
     }
+  },
+  // a cartoon shove landing
+  thwack: (c, t) => {
+    noiseBurst(c, t, 0.05, 700, 1.2, 0.28, 300);
+    tone(c, t + 0.02, 0.12, 180, 0.26, 'sine', 70);
+  },
+  // busting out with style
+  boom: (c, t) => {
+    noiseBurst(c, t, 0.5, 400, 0.5, 0.32, 60);
+    tone(c, t, 0.4, 90, 0.3, 'sine', 32);
+    for (let i = 0; i < 4; i++) tone(c, t + 0.1 + i * 0.07, 0.1, 900 + i * 350, 0.06, 'triangle');
   },
   // the classic double knuckle-tap for a check
   knock: (c, t) => {
