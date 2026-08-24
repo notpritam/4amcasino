@@ -241,16 +241,30 @@ function handle(msg: ServerMsg): void {
         actionSeq: msg.actionSeq,
         deadline: msg.deadline,
         board: msg.board,
-        ...(streetChanged ? { lastActions: {}, preAction: null } : {}),
+        ...(streetChanged ? { lastActions: {}, preAction: null, preActionCallAt: null } : {}),
       });
+      let pre = streetChanged ? null : prev.preAction;
+      // the table moved: disarm any selection the new price invalidates, so a
+      // raise can never turn 'Check' or a price-armed 'Call' into a surprise
+      if (pre && mySeat !== undefined) {
+        const meNow = msg.state.seats.find((s) => s.seat === mySeat);
+        const toCall = meNow ? Math.max(0, msg.state.currentBet - meNow.committed) : 0;
+        const invalid =
+          (pre === 'check' && toCall > 0) ||
+          (pre === 'call' && toCall > (prev.preActionCallAt ?? 0));
+        if (invalid) {
+          pre = null;
+          useStore.getState().patchHand({ preAction: null, preActionCallAt: null });
+        }
+      }
       // fire a pre-selected action the moment the turn arrives
-      const pre = streetChanged ? null : prev.preAction;
       if (pre && mySeat !== undefined && msg.state.toAct === mySeat) {
         const la = legalActions(msg.state);
         if (la && la.seat === mySeat) {
-          useStore.getState().patchHand({ preAction: null });
+          useStore.getState().patchHand({ preAction: null, preActionCallAt: null });
           if (pre === 'check-fold') act(la.canCheck ? { type: 'check' } : { type: 'fold' });
-          else if (pre === 'call-any') act(la.canCheck ? { type: 'check' } : { type: 'call' });
+          else if (pre === 'call-any' || pre === 'call')
+            act(la.canCheck ? { type: 'check' } : { type: 'call' });
           else if (pre === 'check' && la.canCheck) act({ type: 'check' });
         }
       }

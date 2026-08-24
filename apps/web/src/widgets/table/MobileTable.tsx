@@ -13,6 +13,7 @@ import { Crown } from '@phosphor-icons/react';
 import { act, showMyCards, startHand } from '../../shared/gameClient.ts';
 import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
+import { preActionOptions, togglePreAction } from '../../features/table/preActions.ts';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
 import { Avatar } from '../../entities/user/Avatar.tsx';
 import type { SeatView } from './players.tsx';
@@ -195,23 +196,16 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
   }
 
   if (!myTurn || !la || !st) {
-    const canPreAct = !iFolded && dealtIn && !!st;
-    const preActions = [
-      { key: 'check-fold', label: 'Check / Fold' },
-      { key: 'check', label: 'Check' },
-      { key: 'call-any', label: 'Call any' },
-    ] as const;
+    const canPreAct = !iFolded && dealtIn && !!st && mySeat !== null;
     return (
       <div className="space-y-2">
         {showBtn}
         {canPreAct && (
           <div className="flex gap-1.5">
-            {preActions.map((pa) => (
+            {preActionOptions(st!, mySeat!).map((pa) => (
               <button
                 key={pa.key}
-                onClick={() =>
-                  useStore.getState().patchHand({ preAction: hand.preAction === pa.key ? null : pa.key })
-                }
+                onClick={() => togglePreAction(pa.key, st!, mySeat!)}
                 className={cn(
                   'flex-1 rounded-full border px-2 py-2 text-xs font-semibold',
                   hand.preAction === pa.key

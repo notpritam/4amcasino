@@ -5,12 +5,7 @@ import { act, showMyCards, startHand } from '../../shared/gameClient.ts';
 import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
 import { Button } from '../../shared/ui/index.tsx';
-
-const PRE_ACTIONS = [
-  { key: 'check-fold', label: 'Check / Fold' },
-  { key: 'check', label: 'Check' },
-  { key: 'call-any', label: 'Call any' },
-] as const;
+import { preActionOptions, togglePreAction } from '../../features/table/preActions.ts';
 
 export function ActionBar({
   mySeat,
@@ -25,7 +20,6 @@ export function ActionBar({
 }) {
   const hand = useStore((s) => s.hand);
   const room = useStore((s) => s.room);
-  const patchHand = useStore((s) => s.patchHand);
   const [raiseTo, setRaiseTo] = useState(0);
 
   const st = hand.betting;
@@ -232,10 +226,10 @@ export function ActionBar({
         {canPreAct && (
           <div className="flex items-center gap-1.5">
             <span className="text-xs uppercase tracking-wide text-slate-400">Ahead of turn</span>
-            {PRE_ACTIONS.map((pa) => (
+            {preActionOptions(st!, mySeat!).map((pa) => (
               <button
                 key={pa.key}
-                onClick={() => patchHand({ preAction: hand.preAction === pa.key ? null : pa.key })}
+                onClick={() => togglePreAction(pa.key, st!, mySeat!)}
                 className={cn(
                   'rounded-full px-3 py-1 text-xs font-semibold transition-colors',
                   hand.preAction === pa.key
