@@ -48,6 +48,7 @@ import { ChatPanel } from '../../widgets/table/ChatPanel.tsx';
 import { MobileTable } from '../../widgets/table/MobileTable.tsx';
 import { RoundTable } from '../../widgets/table/RoundTable.tsx';
 import { FloatingCards } from '../../widgets/table/FloatingCards.tsx';
+import { ChipStack } from '../../widgets/table/ChipStack.tsx';
 import { BankControls } from '../../widgets/table/BankControls.tsx';
 import { BrokeBuyInDialog } from '../../features/bank/BrokeBuyInDialog.tsx';
 import { InviteFriendsDialogBody } from '../../features/friends/FriendsPanel.tsx';
@@ -1436,6 +1437,7 @@ export function TablePage() {
               }
               bankerId={room.room.bankerId}
               coBankerId={room.room.coBankerId}
+              bb={room.room.bb}
               onMyCardsClick={() => {
                 localStorage.setItem('4am-big-cards', 'on');
                 setBigCards(true);
@@ -1454,6 +1456,9 @@ export function TablePage() {
                 POT <NumberFlow value={pot} />
               </div>
             </div>
+            {pot > 0 && (
+              <ChipStack amount={pot} bb={room.room.bb} size="lg" className="justify-center" />
+            )}
             {showResult ? (
               <div className="max-h-[44vh] w-full overflow-y-auto">{resultBanner}</div>
             ) : (

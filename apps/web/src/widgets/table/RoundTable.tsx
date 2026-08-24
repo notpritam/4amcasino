@@ -8,6 +8,7 @@ import { cn, fmt } from '../../shared/lib/cn.ts';
 import { Avatar } from '../../entities/user/Avatar.tsx';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
 import type { SeatView } from './players.tsx';
+import { ChipStack } from './ChipStack.tsx';
 
 /** A real round table: nine seat pods around an oval, your seat pinned at the
  *  bottom, everyone repositioning live as they sit, act, and fold. The banker
@@ -49,6 +50,7 @@ export function RoundTable({
   onKick,
   bankerId,
   coBankerId,
+  bb,
   onMyCardsClick,
   children,
 }: {
@@ -65,6 +67,7 @@ export function RoundTable({
   onKick: (userId: number) => void;
   bankerId: number;
   coBankerId: number | null;
+  bb: number;
   onMyCardsClick?: () => void;
   children: React.ReactNode;
 }) {
@@ -160,10 +163,7 @@ export function RoundTable({
                     transition={{ type: 'spring', stiffness: 300, damping: 26 }}
                     className="flex items-center gap-1"
                   >
-                    <span className="relative h-4 w-5" aria-hidden="true">
-                      <span className="absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 border-dashed border-white/60 bg-indigo-500 shadow-sm" />
-                      <span className="absolute left-1.5 top-0 h-3.5 w-3.5 rounded-full border-2 border-dashed border-white/60 bg-indigo-600 shadow-sm" />
-                    </span>
+                    <ChipStack amount={committed} bb={bb} />
                     <span className="rounded-full bg-indigo-600/90 px-1.5 py-0.5 font-display text-[0.68rem] font-bold text-white shadow-sm">
                       {fmt(committed)}
                     </span>

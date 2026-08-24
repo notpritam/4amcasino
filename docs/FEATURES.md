@@ -16,4 +16,5 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | Big draggable hole cards (move anywhere, resize, remembered), giant winner reveal, larger table oval | **notpritam** |
 | Text diet: icon labels, terse status lines; control strip moved below the table | **notpritam** |
 | Blinking turn highlight: breathing glow, PLAYING pill, scale-up on the to-act seat | **notpritam** |
+| Real chip stacks: denominations colored by tier off the big blind, isometric piles that grow with bets and the pot | **notpritam** |
 | Everything before 2026-08-24 (mental poker core, ledger and banking, friends and spectating, cyberpunk theme, MCP seat, fairness tour, auto-approve buys, ...) | **notpritam** |
