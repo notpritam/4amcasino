@@ -73,12 +73,14 @@ export function RoundTable({
   }
   const n = Math.max(order.length, 1);
   const angleOf = (idx: number) => (Math.PI / 180) * (90 + (idx / n) * 360);
+  const RX = 45;
+  const RY = 34;
   // an unseated member sees where they can join: one + per cyclic gap that
   // still has a free seat number in it, placed between the neighbors
   const sitSpots: { seat: number; x: number; y: number }[] = [];
   if (canSit && !handLive) {
     if (order.length === 0) {
-      sitSpots.push({ seat: 0, x: 50, y: 92 });
+      sitSpots.push({ seat: 0, x: 50, y: 88 });
     } else {
       for (let i = 0; i < order.length; i++) {
         const from = order[i]!.seat;
@@ -92,7 +94,7 @@ export function RoundTable({
         }
         if (free !== null) {
           const a = (Math.PI / 180) * (90 + ((i + 0.5) / n) * 360);
-          sitSpots.push({ seat: free, x: 50 + 44 * Math.cos(a), y: 50 + 42 * Math.sin(a) });
+          sitSpots.push({ seat: free, x: 50 + RX * Math.cos(a), y: 50 + RY * Math.sin(a) });
         }
       }
     }
@@ -100,14 +102,27 @@ export function RoundTable({
 
   return (
     <div className="relative min-h-[30rem] w-full flex-1">
-      {/* faux-isometric table: a darker rim sits a step below the felt surface */}
+      {/* isometric table, bottom-up: ground shadow, the table's dark side,
+          a bright rim band, the felt inset on top, and a racetrack line */}
       <div
         aria-hidden="true"
-        className="absolute left-1/2 top-[calc(50%+14px)] h-[76%] w-[86%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] bg-slate-400/40 dark:bg-black/60"
+        className="absolute left-1/2 top-[calc(50%+36px)] h-[60%] w-[88%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] bg-slate-600/30 blur-xl dark:bg-black/70"
       />
       <div
         aria-hidden="true"
-        className="absolute left-1/2 top-1/2 h-[76%] w-[86%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-slate-300/60 bg-gradient-to-b from-slate-100/60 to-slate-200/40 shadow-[inset_0_2px_0_rgba(255,255,255,0.08)] dark:border-slate-700/60 dark:from-slate-900/50 dark:to-slate-950/40"
+        className="absolute left-1/2 top-[calc(50%+26px)] h-[60%] w-[87%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] bg-slate-500/60 dark:bg-slate-700/80"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute left-1/2 top-1/2 h-[60%] w-[87%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] bg-slate-300/90 dark:bg-slate-400/50"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute left-1/2 top-[calc(50%+1px)] h-[56%] w-[83%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] bg-gradient-to-b from-slate-200/95 to-slate-300/90 shadow-[inset_0_4px_14px_rgba(15,23,42,0.18)] dark:from-slate-900 dark:to-slate-950 dark:shadow-[inset_0_4px_18px_rgba(0,0,0,0.55)]"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute left-1/2 top-1/2 h-[45%] w-[68%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-slate-400/50 dark:border-slate-500/40"
       />
 
       {/* pot, board, and status live at the center */}
@@ -133,10 +148,10 @@ export function RoundTable({
       {order.map((p, i) => {
         const seat = p.seat;
         const a = angleOf(i);
-        const x = 50 + 44 * Math.cos(a);
-        const y = 50 + 42 * Math.sin(a);
+        const x = 50 + RX * Math.cos(a);
+        const y = 50 + RY * Math.sin(a);
         const committed = committedBySeat[seat] ?? 0;
-        const bet = { x: 50 + 26 * Math.cos(a), y: 50 + 25 * Math.sin(a) };
+        const bet = { x: 50 + 27 * Math.cos(a), y: 50 + 19 * Math.sin(a) };
         const isMe = p.userId === myUserId;
 
         const isBanker = p.userId === bankerId;
