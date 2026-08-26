@@ -9,6 +9,7 @@ import {
   mulPoint,
   pointFromHex,
   pointHex,
+  proveUnmask,
   recoverCard,
   signContent,
   verifyContent,
@@ -168,7 +169,13 @@ export class GameRoom {
     if (this.sockets.get(userId) === ws) {
       this.sockets.delete(userId);
       this.broadcastRoomState();
+      // a folded player walking away must never strand the hand
+      this.hand?.onPlayerGone(userId);
     }
+  }
+
+  isConnected(userId: number): boolean {
+    return this.sockets.has(userId);
   }
 
   shutdown(): void {
@@ -409,7 +416,8 @@ export class GameRoom {
       case 'unmask_share':
       case 'action':
       case 'reveal_key':
-      case 'rit_vote': {
+      case 'rit_vote':
+      case 'fold_key': {
         if (!this.hand || this.hand.id !== msg.handId)
           return this.send(userId, { t: 'error', message: 'no such hand' });
         this.hand.onMessage(userId, msg);
@@ -702,6 +710,13 @@ class Hand {
   private lastDeadline: number | null = null;
   private retriesLeft: number;
   private revealedKeys = new Map<number, string>();
+  // fold-key escrow: a folding client hands its per-hand key to the SERVER
+  // (never the transcript), so if the folder leaves, the server can compute
+  // their unmask shares itself - with DLEQ proofs everyone can verify against
+  // the folder's public commitment. Hands stop dying because a folder left.
+  // Tradeoff, stated plainly: after your fold the server can decrypt YOUR two
+  // cards (nobody else's). Requested by notpritam, docs/FEATURES.md.
+  private foldedKeys = new Map<number, bigint>();
   private runout = false;
   // run it twice: when everyone is all-in before the river, the players still
   // in the hand vote; a unanimous yes deals the remaining streets twice and
@@ -797,6 +812,11 @@ class Hand {
       }
       case 'deal':
       case 'reveal': {
+        // last stop before aborting: step over folded players via escrowed keys
+        if (this.recoverStalledChains(true)) {
+          this.armTimer(this.opts.cryptoTimeoutMs);
+          return;
+        }
         const waiting = [...this.chains.values()].find((c) => c.remaining.length > 0);
         this.abort('unmask timeout', waiting?.remaining[0] ?? null);
         return;
@@ -809,6 +829,20 @@ class Hand {
         return;
       }
       case 'audit': {
+        // an absent folder's escrowed key still fills in their TV-replay cards
+        for (const [seat, k] of this.foldedKeys) {
+          if (this.revealedKeys.has(seat) || this.reveals.has(seat)) continue;
+          const orderIdx = this.seats.findIndex((x) => x.seat === seat);
+          const cards: CardId[] = [];
+          const inv = invScalar(k);
+          for (const idx of this.holeIndexes(orderIdx)) {
+            const pt = this.holeFinal.get(idx);
+            if (!pt) continue;
+            const card = recoverCard(mulPoint(pt, inv), this.lookup);
+            if (card !== null) cards.push(card);
+          }
+          if (cards.length === 2) this.appendServer('hole_cards', { seat, cards });
+        }
         this.finalizeSettlement();
         return;
       }
@@ -926,7 +960,7 @@ class Hand {
     if (this.phase === 'done') return;
     const info = this.seatOf(userId);
     if (!info) return this.err(userId, 'not in this hand');
-    if (msg.t === 'key_commit' || msg.t === 'shuffle_deck' || msg.t === 'unmask_share' || msg.t === 'action' || msg.t === 'reveal_key' || msg.t === 'show_cards' || msg.t === 'rit_vote') {
+    if (msg.t === 'key_commit' || msg.t === 'shuffle_deck' || msg.t === 'unmask_share' || msg.t === 'action' || msg.t === 'reveal_key' || msg.t === 'show_cards' || msg.t === 'rit_vote' || msg.t === 'fold_key') {
       if (!verifyContent(info.pubkey, this.id, msg.t, signedBody(msg), msg.sig)) {
         return this.err(userId, 'bad signature');
       }
@@ -946,6 +980,8 @@ class Hand {
         return this.onShowCards(info, msg.shares, msg.sig);
       case 'rit_vote':
         return this.onRitVote(info, msg.yes, msg.sig);
+      case 'fold_key':
+        return this.onFoldKey(info, msg.key);
       default:
         return;
     }
@@ -1104,6 +1140,12 @@ class Hand {
     const seat = chain.remaining[0];
     if (seat === undefined) return;
     const info = this.seats.find((s) => s.seat === seat)!;
+    // don't even ask a folded player who already left: recover on the spot
+    const escrowed = this.foldedKeys.get(seat);
+    if (escrowed && !this.room.isConnected(info.userId)) {
+      this.applyRecoveredShare(chain, seat, escrowed);
+      return;
+    }
     this.room.send(info.userId, {
       t: 'need_share',
       handId: this.id,
@@ -1356,6 +1398,84 @@ class Hand {
     this.chains.set(next, chain);
     this.kickChain(chain);
     this.armTimer(this.opts.cryptoTimeoutMs);
+  }
+
+  // ---------- fold-key escrow and share recovery ----------
+
+  private onFoldKey(info: HandSeatInfo, keyHex: string): void {
+    if (this.phase === 'done' || this.foldedKeys.has(info.seat)) return;
+    const folded = this.betting?.seats.find((s) => s.seat === info.seat)?.folded;
+    if (!folded) return; // only a folded player may escrow
+    try {
+      const k = BigInt('0x' + keyHex);
+      const commit = this.commits.get(info.seat);
+      if (!commit || pointHex(handKeyCommit(k)) !== pointHex(commit)) return;
+      this.foldedKeys.set(info.seat, k);
+    } catch {
+      /* malformed key: ignore */
+    }
+    // if their chains were already stalled (fold raced a disconnect), move now
+    this.recoverStalledChains(false);
+  }
+
+  /** A player's socket dropped: any chain stalled on them, where they folded
+   *  and escrowed their key, advances without them. */
+  onPlayerGone(userId: number): void {
+    if (this.phase !== 'deal' && this.phase !== 'reveal') return;
+    this.recoverStalledChains(false);
+  }
+
+  /** Compute the absent folder's share ourselves. The DLEQ proof published in
+   *  the transcript verifies against their key commitment, so the recovery is
+   *  as auditable as a share they sent themselves. */
+  private applyRecoveredShare(chain: Chain, seat: number, k: bigint): void {
+    const { out, proof } = proveUnmask(k, chain.current);
+    this.appendServer('recovered_share', {
+      seat,
+      deckIndex: chain.deckIndex,
+      out: pointHex(out),
+      proof,
+    });
+    this.room.broadcast({
+      t: 'share_applied',
+      handId: this.id,
+      deckIndex: chain.deckIndex,
+      seat,
+      out: pointHex(out),
+      forSeat: chain.forSeat,
+    });
+    chain.current = out;
+    chain.remaining.shift();
+    if (chain.remaining.length === 0) {
+      this.chains.delete(chain.deckIndex);
+      this.chainDone(chain);
+    } else {
+      this.kickChain(chain);
+    }
+  }
+
+  /** Advance every chain whose head seat folded and escrowed a key. With
+   *  `force` (timeout, retries spent) connectivity is ignored; otherwise only
+   *  disconnected seats are stepped over. Returns true if anything moved. */
+  private recoverStalledChains(force: boolean): boolean {
+    let recoveredAny = false;
+    let progress = true;
+    while (progress && this.phase !== 'done') {
+      progress = false;
+      for (const chain of [...this.chains.values()]) {
+        if (this.chains.get(chain.deckIndex) !== chain) continue; // completed meanwhile
+        const seat = chain.remaining[0];
+        if (seat === undefined) continue;
+        const k = this.foldedKeys.get(seat);
+        if (!k) continue;
+        const info = this.seats.find((s) => s.seat === seat)!;
+        if (!force && this.room.isConnected(info.userId)) continue;
+        this.applyRecoveredShare(chain, seat, k);
+        recoveredAny = true;
+        progress = true;
+      }
+    }
+    return recoveredAny;
   }
 
   // ---------- run it twice ----------

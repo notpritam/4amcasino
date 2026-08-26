@@ -87,7 +87,10 @@ The live app walks through this with animations at
   shuffle can be re-verified (at the cost of folded cards becoming public afterwards).
 - **Honest about limits**: a malicious *shuffle* is detected and attributed (at open time or on
   key reveal), not cryptographically prevented — that trade keeps the protocol simple enough
-  for a friends game. Out-of-band collusion (screen sharing) is out of scope, as it is for
+  for a friends game. And when you fold, your client escrows your per-hand key with the server
+  so the hand survives you closing the tab (the server can then compute your unmask shares,
+  with proofs everyone can verify) — meaning the server *can* see a folder's own two cards
+  after the fold, and nobody else's. Out-of-band collusion (screen sharing) is out of scope, as it is for
   every protocol. See [`docs/superpowers/specs/`](docs/superpowers/specs/) for the full design
   and threat model.
 

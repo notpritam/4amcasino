@@ -37,4 +37,5 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | Thunder reveal: lightning flash + thunder crack on every showdown, in 2D and the 3D world | **notpritam** |
 | The table cards in the result banner, next to the winning five | **notpritam** |
 | Position badges: bold D / SB / BB discs on the seat avatars | **notpritam** |
+| Fold-key escrow: a folding client hands its per-hand key to the server (only the server, never the transcript), so a folder who leaves can never strand the hand - the server computes their unmask shares with publicly verifiable DLEQ proofs (`recovered_share`). Tradeoff: after your fold the server can decrypt your two cards, nobody else's | **notpritam** |
 | Everything before 2026-08-24 (mental poker core, ledger and banking, friends and spectating, cyberpunk theme, MCP seat, fairness tour, auto-approve buys, ...) | **notpritam** |

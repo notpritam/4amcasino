@@ -263,9 +263,15 @@ export class HeadlessClient {
         this.board = msg.board;
         this.deadline = msg.deadline;
         break;
-      case 'action_applied':
+      case 'action_applied': {
         this.log(`${this.nameOf(msg.seat)} ${msg.action.type}${msg.action.amount ? ` ${msg.action.amount}` : ''}${msg.auto ? ' (timed out)' : ''}`);
+        // escrow my key on fold so my exit never strands the hand
+        if (msg.action.type === 'fold' && this.handId === msg.handId && msg.seat === this.mySeat()) {
+          const key = this.keyFor(msg.handId).toString(16);
+          this.send({ t: 'fold_key', handId: msg.handId, key, sig: this.signed(msg.handId, 'fold_key', { key }) });
+        }
         break;
+      }
       case 'showdown':
         this.showdown = msg;
         for (const r of msg.reveals) {

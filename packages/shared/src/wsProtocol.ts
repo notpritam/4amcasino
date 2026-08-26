@@ -41,6 +41,7 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('sit_out'), sittingOut: z.boolean() }),
   z.object({ t: z.literal('im_ready') }),
   z.object({ t: z.literal('rit_vote'), handId: z.string(), yes: z.boolean(), sig: hex(128) }),
+  z.object({ t: z.literal('fold_key'), handId: z.string(), key: z.string().regex(/^[0-9a-f]+$/), sig: hex(128) }),
   z.object({
     t: z.literal('peek_offer'),
     handId: z.string(),
@@ -92,6 +93,8 @@ export function signedBody(msg: ClientMsg): unknown {
       return { key: msg.key };
     case 'rit_vote':
       return { yes: msg.yes };
+    case 'fold_key':
+      return { key: msg.key };
     case 'show_cards':
       return { shares: msg.shares };
     case 'peek_accept':

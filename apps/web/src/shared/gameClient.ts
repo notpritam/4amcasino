@@ -296,6 +296,12 @@ function handle(msg: ServerMsg): void {
       const { hand } = useStore.getState();
       const soundFor = { fold: 'muck', check: 'knock', call: 'chip', bet: 'chips-slide', raise: 'chips-slide' } as const;
       play(soundFor[msg.action.type]);
+      // my fold escrows my hand key with the server, so the hand can carry on
+      // without me if I disappear (requested by notpritam, docs/FEATURES.md)
+      if (msg.action.type === 'fold' && hand.handId === msg.handId && msg.seat === mySeatIn(hand.seats)) {
+        const key = handKeyFor(msg.handId).toString(16);
+        wsClient.send({ t: 'fold_key', handId: msg.handId, key, sig: signed(msg.handId, 'fold_key', { key }) });
+      }
       store.patchHand({
         lastActions: { ...hand.lastActions, [msg.seat]: { ...msg.action, auto: msg.auto } },
       });
