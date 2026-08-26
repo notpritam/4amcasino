@@ -30,30 +30,48 @@ export function LeaderboardTable({ rows, minHands = 0 }: { rows: LeaderboardRow[
         <Link
           key={r.userId}
           to={`/players/${r.userId}`}
-          className="flex items-center gap-4 rounded-xl bg-white p-3 ring-1 ring-slate-200/70 transition-shadow hover:shadow-md dark:bg-slate-900 dark:ring-slate-700/70"
+          className="flex items-center gap-4 rounded-2xl bg-white p-4 ring-1 ring-slate-200/70 transition-shadow hover:shadow-md dark:bg-slate-900 dark:ring-slate-700/70"
         >
-          <span
-            className={cn(
-              'w-8 text-center font-display text-lg font-bold',
-              i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-amber-700' : 'text-slate-300',
-            )}
-          >
-            {i + 1}
-          </span>
-          <Avatar userId={r.userId} name={r.displayName ?? r.username} version={r.avatarVersion} size="sm" />
-          <span className="min-w-0 flex-1 truncate font-medium">{r.displayName ?? r.username}</span>
-          <span className="hidden text-xs text-slate-400 sm:block">{r.handsPlayed} hand{r.handsPlayed === 1 ? '' : 's'}</span>
-          {minHands > 0 && r.handsPlayed < minHands && (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[0.65rem] font-semibold text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-              {minHands - r.handsPlayed} more to qualify
+          {/* the standing lives ON the avatar, so the name gets the room */}
+          <span className="relative shrink-0">
+            <Avatar
+              userId={r.userId}
+              name={r.displayName ?? r.username}
+              version={r.avatarVersion}
+              size="md"
+            />
+            <span
+              className={cn(
+                'absolute -bottom-1 -right-1.5 flex min-w-6 items-center justify-center rounded-full px-1 py-0.5 font-display text-[0.68rem] font-bold ring-2 ring-white dark:ring-slate-900',
+                i === 0
+                  ? 'bg-amber-400 text-amber-950'
+                  : i === 1
+                    ? 'bg-slate-300 text-slate-800'
+                    : i === 2
+                      ? 'bg-amber-700 text-amber-50'
+                      : 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300',
+              )}
+            >
+              #{i + 1}
             </span>
-          )}
-          {r.biggestWin > 0 && (
-            <span className="hidden text-xs text-slate-400 sm:block">best +{fmt(r.biggestWin)}</span>
-          )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block break-words font-semibold leading-snug">
+              {r.displayName ?? r.username}
+            </span>
+            <span className="mt-0.5 block text-xs leading-relaxed text-slate-400">
+              {r.handsPlayed} hand{r.handsPlayed === 1 ? '' : 's'}
+              {r.biggestWin > 0 && <> · best +{fmt(r.biggestWin)}</>}
+            </span>
+            {minHands > 0 && r.handsPlayed < minHands && (
+              <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[0.65rem] font-semibold text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                {minHands - r.handsPlayed} more to qualify
+              </span>
+            )}
+          </span>
           <span
             className={cn(
-              'font-display text-lg font-bold',
+              'shrink-0 font-display text-xl font-bold tabular-nums',
               r.net > 0 ? 'text-emerald-600' : r.net < 0 ? 'text-rose-600' : 'text-slate-400',
             )}
           >
