@@ -40,6 +40,7 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
   }),
   z.object({ t: z.literal('sit_out'), sittingOut: z.boolean() }),
   z.object({ t: z.literal('im_ready') }),
+  z.object({ t: z.literal('rit_vote'), handId: z.string(), yes: z.boolean(), sig: hex(128) }),
   z.object({
     t: z.literal('peek_offer'),
     handId: z.string(),
@@ -89,6 +90,8 @@ export function signedBody(msg: ClientMsg): unknown {
       return { action: msg.action };
     case 'reveal_key':
       return { key: msg.key };
+    case 'rit_vote':
+      return { yes: msg.yes };
     case 'show_cards':
       return { shares: msg.shares };
     case 'peek_accept':
@@ -160,7 +163,9 @@ export type ServerMsg =
     }
   | { t: 'share_applied'; handId: string; deckIndex: number; seat: number; out: string; forSeat: number | null }
   | { t: 'your_card'; handId: string; deckIndex: number; point: string }
-  | { t: 'board_open'; handId: string; deckIndex: number; card: CardId }
+  | { t: 'board_open'; handId: string; deckIndex: number; card: CardId; run?: number }
+  | { t: 'rit_offer'; handId: string; deadlineTs: number; voters: number[] }
+  | { t: 'rit_result'; handId: string; runTwice: boolean; sharedBoard: CardId[] }
   | { t: 'betting_state'; handId: string; actionSeq: number; state: BettingState; board: CardId[]; deadline: number | null }
   | { t: 'action_applied'; handId: string; seat: number; action: PlayerAction; auto?: boolean }
   | {
@@ -168,6 +173,11 @@ export type ServerMsg =
       handId: string;
       reveals: { seat: number; cards: CardId[]; score: number }[];
       awards: { seat: number; amount: number }[];
+      /** Present when the table ran it twice: both boards + per-run awards. */
+      runTwice?: {
+        boards: [CardId[], CardId[]];
+        awards: [{ seat: number; amount: number }[], { seat: number; amount: number }[]];
+      };
     }
   | { t: 'hand_end'; handId: string; head: string; stacks: { seat: number; stack: number }[]; deltas: { seat: number; delta: number }[] }
   | { t: 'cards_shown'; handId: string; seat: number; cards: CardId[] }

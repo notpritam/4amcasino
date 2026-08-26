@@ -112,6 +112,14 @@ export function imReady(): void {
   wsClient.send({ t: 'im_ready' });
 }
 
+/** Vote on running the all-in board twice (requested by notpritam, docs/FEATURES.md). */
+export function ritVote(yes: boolean): void {
+  const h = useStore.getState().hand;
+  if (!h.handId || !h.ritOffer) return;
+  useStore.getState().patchHand({ ritOffer: { ...h.ritOffer, voted: true } });
+  wsClient.send({ t: 'rit_vote', handId: h.handId, yes, sig: signed(h.handId, 'rit_vote', { yes }) });
+}
+
 export function sendChat(text: string, kind: 'text' | 'sticker' | 'phrase' = 'text'): void {
   wsClient.send({ t: 'chat', text, kind });
 }
@@ -225,6 +233,13 @@ function handle(msg: ServerMsg): void {
 
     case 'board_open': {
       const { hand } = useStore.getState();
+      if (msg.run === 2) {
+        if (!hand.board2.includes(msg.card)) {
+          play('flip');
+          store.patchHand({ board2: [...hand.board2, msg.card] });
+        }
+        return;
+      }
       if (!hand.board.includes(msg.card)) {
         play('flip');
         store.patchHand({ board: [...hand.board, msg.card] });
@@ -333,6 +348,22 @@ function handle(msg: ServerMsg): void {
 
     case 'ready_end': {
       store.patchHand({ readyCheck: null });
+      return;
+    }
+
+    case 'rit_offer': {
+      play('turn');
+      store.patchHand({
+        ritOffer: { deadlineTs: msg.deadlineTs, voters: msg.voters, voted: false },
+      });
+      return;
+    }
+
+    case 'rit_result': {
+      if (msg.runTwice) play('chip');
+      // the second board starts as a copy of everything already open and
+      // grows as run-2 cards land
+      store.patchHand({ ritOffer: null, board2: msg.runTwice ? [...msg.sharedBoard] : [] });
       return;
     }
 

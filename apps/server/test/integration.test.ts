@@ -20,13 +20,17 @@ import {
 } from '@4am/mental-poker';
 import type { CardId, PlayerAction, ServerMsg } from '@4am/shared';
 
-type Strategy = 'passive' | 'fold-first';
+type Strategy = 'passive' | 'fold-first' | 'allin-first';
 
 class TestClient {
   username: string;
   token = '';
   userId = 0;
   autoReady = true;
+  /** Answer to a run-it-twice offer; null = never answer (timeout counts as no). */
+  ritAnswer: boolean | null = true;
+  sawRitOffer = false;
+  board2: CardId[] = [];
   identity = genIdentity();
   ws!: WebSocket;
   baseUrl: string;
@@ -142,6 +146,7 @@ class TestClient {
           this.myCards = [];
           this.myCardPoints = [];
           this.board = [];
+          this.board2 = [];
           this.cardsShown = [];
           this.sawShowdown = false;
           this.handEnd = null;
@@ -192,7 +197,24 @@ class TestClient {
         break;
       }
       case 'board_open': {
-        if (!this.board.includes(msg.card)) this.board.push(msg.card);
+        if (msg.run === 2) {
+          if (!this.board2.includes(msg.card)) this.board2.push(msg.card);
+        } else if (!this.board.includes(msg.card)) {
+          this.board.push(msg.card);
+        }
+        break;
+      }
+      case 'rit_offer': {
+        this.sawRitOffer = true;
+        if (this.ritAnswer !== null && this.seat !== null && msg.voters.includes(this.seat)) {
+          const yes = this.ritAnswer;
+          this.send({
+            t: 'rit_vote',
+            handId: this.handId,
+            yes,
+            sig: this.signed('rit_vote', { yes }),
+          });
+        }
         break;
       }
       case 'cards_shown': {
@@ -222,6 +244,8 @@ class TestClient {
         this.lastRespondedActionSeq = msg.actionSeq;
         const me = st.seats.find((s) => s.seat === this.seat)!;
         if (this.strategy === 'fold-first') this.act({ type: 'fold' });
+        else if (this.strategy === 'allin-first' && me.stack + me.committed > st.currentBet)
+          this.act({ type: st.currentBet === 0 ? 'bet' : 'raise', amount: me.stack + me.committed });
         else if (st.currentBet === me.committed) this.act({ type: 'check' });
         else this.act({ type: 'call' });
         break;
@@ -276,7 +300,7 @@ let clients: TestClient[] = [];
 
 beforeEach(async () => {
   ctx = createApp(':memory:');
-  attachHub(ctx.app, ctx.db, { cryptoTimeoutMs: 1500, actionTimeoutMs: 1500, autoDealMs: 800, readyCheckMs: 1500 });
+  attachHub(ctx.app, ctx.db, { cryptoTimeoutMs: 1500, actionTimeoutMs: 1500, autoDealMs: 800, readyCheckMs: 1500, ritVoteMs: 1500 });
   await ctx.app.listen({ port: 0 });
   const addr = ctx.app.server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${addr.port}`;
@@ -547,6 +571,42 @@ describe('full hand integration', () => {
       .get(players[0]!.handEnd!.handId) as { head: string };
     expect(row.head).toBe(hand.head);
   });
+
+  it('run it twice: a unanimous vote deals two boards and splits the pot', async () => {
+    const { players, room, host } = await setupRoom(['rita', 'ritb'], ['allin-first', 'passive']);
+    host.send({ t: 'start_hand' });
+    await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null, 15000)));
+    expect(players[0]!.handAbort).toBeNull();
+    expect(players.every((p) => p.sawRitOffer)).toBe(true);
+    // preflop all-in: run 1 gets its five cards, run 2 five fresh ones
+    expect(players[0]!.board).toHaveLength(5);
+    expect(players[0]!.board2).toHaveLength(5);
+    const all = [
+      ...players[0]!.board,
+      ...players[0]!.board2,
+      ...players.flatMap((p) => p.myCards),
+    ];
+    expect(new Set(all).size).toBe(all.length);
+    // both halves settle: chips conserved, transcript records the second board
+    const deltas = players[0]!.handEnd!.deltas;
+    expect(deltas.reduce((s, x) => s + x.delta, 0)).toBe(0);
+    const hand = await host.api(`/api/rooms/${room.id}/hands/${players[0]!.handEnd!.handId}`);
+    expect(hand.entries.find((e: { type: string }) => e.type === 'rit_result').payload.runTwice).toBe(true);
+    expect(hand.entries.find((e: { type: string }) => e.type === 'settlement').payload.board2).toHaveLength(5);
+    const ledger = await host.api(`/api/rooms/${room.id}/ledger`);
+    expect(ledger.verified.ok).toBe(true);
+  }, 20000);
+
+  it('one no vote runs the all-in board once', async () => {
+    const { players, host } = await setupRoom(['ritc', 'ritd'], ['allin-first', 'passive']);
+    players[1]!.ritAnswer = false;
+    host.send({ t: 'start_hand' });
+    await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null, 15000)));
+    expect(players[0]!.handAbort).toBeNull();
+    expect(players.every((p) => p.sawRitOffer)).toBe(true);
+    expect(players[0]!.board).toHaveLength(5);
+    expect(players[0]!.board2).toHaveLength(0);
+  }, 20000);
 
   it('a sitting-out player is skipped when the next hand is dealt', async () => {
     const { players, host } = await setupRoom(['host', 'bob', 'carol']);

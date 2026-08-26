@@ -77,6 +77,10 @@ interface HandView {
   autoDealAt: number | null;
   /** Pre-deal ready check: nobody is dealt in without clicking I'm ready. */
   readyCheck: { deadlineTs: number; eligible: number[]; ready: number[] } | null;
+  /** Run-it-twice vote in progress (everyone all-in before the river). */
+  ritOffer: { deadlineTs: number; voters: number[]; voted: boolean } | null;
+  /** The second runout's board, filled progressively after a unanimous yes. */
+  board2: CardId[];
 }
 
 export const emptyHand: HandView = {
@@ -100,6 +104,8 @@ export const emptyHand: HandView = {
   peekResults: {},
   autoDealAt: null,
   readyCheck: null,
+  ritOffer: null,
+  board2: [],
 };
 
 interface Store {

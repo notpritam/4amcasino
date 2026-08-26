@@ -44,6 +44,8 @@ export interface GameOpts {
   autoDealMs?: number;
   /** How long the pre-deal ready check waits before dealing without stragglers (default 20s). */
   readyCheckMs?: number;
+  /** How long the run-it-twice vote stays open when everyone is all-in (default 15s). */
+  ritVoteMs?: number;
   /** TV replays: save every player's hand key post-hand so replays show all cards. */
   tvReplays?: boolean;
 }
@@ -406,7 +408,8 @@ export class GameRoom {
       case 'shuffle_deck':
       case 'unmask_share':
       case 'action':
-      case 'reveal_key': {
+      case 'reveal_key':
+      case 'rit_vote': {
         if (!this.hand || this.hand.id !== msg.handId)
           return this.send(userId, { t: 'error', message: 'no such hand' });
         this.hand.onMessage(userId, msg);
@@ -681,7 +684,7 @@ export class GameRoom {
 
 class Hand {
   readonly id = randomBytes(8).toString('hex');
-  private phase: 'commit' | 'shuffle' | 'deal' | 'betting' | 'reveal' | 'audit' | 'done' = 'commit';
+  private phase: 'commit' | 'shuffle' | 'deal' | 'betting' | 'rit' | 'reveal' | 'audit' | 'done' = 'commit';
   private readonly n: number;
   private commits = new Map<number, Point>();
   private transcript = new Transcript();
@@ -700,6 +703,14 @@ class Hand {
   private retriesLeft: number;
   private revealedKeys = new Map<number, string>();
   private runout = false;
+  // run it twice: when everyone is all-in before the river, the players still
+  // in the hand vote; a unanimous yes deals the remaining streets twice and
+  // splits every pot between the two boards (requested by notpritam,
+  // docs/FEATURES.md). ritMap sends each not-yet-open board position to the
+  // deck index that replaces it on the second runout.
+  private ritVoters: number[] = [];
+  private ritVotes = new Map<number, boolean>();
+  private ritMap = new Map<number, number>();
   private timer: NodeJS.Timeout | null = null;
   private lookup = cardLookup();
   private settlement: {
@@ -768,7 +779,7 @@ class Hand {
   private onTimeout(): void {
     // give a stalled (often just disconnected) player a fixed grace window:
     // re-send whatever we are waiting on a few times before giving up
-    if (this.phase !== 'betting' && this.phase !== 'audit' && this.phase !== 'done' && this.retriesLeft > 0) {
+    if (this.phase !== 'betting' && this.phase !== 'audit' && this.phase !== 'rit' && this.phase !== 'done' && this.retriesLeft > 0) {
       this.retriesLeft--;
       this.renudge();
       this.armTimer(this.opts.cryptoTimeoutMs);
@@ -799,6 +810,11 @@ class Hand {
       }
       case 'audit': {
         this.finalizeSettlement();
+        return;
+      }
+      case 'rit': {
+        // deadline: whoever has not voted counts as a no
+        this.resolveRitVote();
         return;
       }
       default:
@@ -910,7 +926,7 @@ class Hand {
     if (this.phase === 'done') return;
     const info = this.seatOf(userId);
     if (!info) return this.err(userId, 'not in this hand');
-    if (msg.t === 'key_commit' || msg.t === 'shuffle_deck' || msg.t === 'unmask_share' || msg.t === 'action' || msg.t === 'reveal_key' || msg.t === 'show_cards') {
+    if (msg.t === 'key_commit' || msg.t === 'shuffle_deck' || msg.t === 'unmask_share' || msg.t === 'action' || msg.t === 'reveal_key' || msg.t === 'show_cards' || msg.t === 'rit_vote') {
       if (!verifyContent(info.pubkey, this.id, msg.t, signedBody(msg), msg.sig)) {
         return this.err(userId, 'bad signature');
       }
@@ -928,6 +944,8 @@ class Hand {
         return this.onRevealKey(info, msg.key, msg.sig);
       case 'show_cards':
         return this.onShowCards(info, msg.shares, msg.sig);
+      case 'rit_vote':
+        return this.onRitVote(info, msg.yes, msg.sig);
       default:
         return;
     }
@@ -1156,8 +1174,15 @@ class Hand {
         const card = recoverCard(chain.current, this.lookup);
         if (card === null) return this.abort(`opened board point at index ${chain.deckIndex} is not a card (mis-shuffle)`, null);
         this.boardCards.set(chain.deckIndex, card);
-        this.appendServer('board_open', { deckIndex: chain.deckIndex, card });
-        this.room.broadcast({ t: 'board_open', handId: this.id, deckIndex: chain.deckIndex, card });
+        const run2 = chain.deckIndex > 2 * this.n + 4;
+        this.appendServer('board_open', { deckIndex: chain.deckIndex, card, ...(run2 ? { run: 2 } : {}) });
+        this.room.broadcast({
+          t: 'board_open',
+          handId: this.id,
+          deckIndex: chain.deckIndex,
+          card,
+          ...(run2 ? { run: 2 } : {}),
+        });
         this.pendingBoard.delete(chain.deckIndex);
         if (this.pendingBoard.size === 0) this.afterBoardOpened();
         else this.armTimer(this.opts.cryptoTimeoutMs);
@@ -1248,6 +1273,12 @@ class Hand {
     }
     if (activeNonAllIn(st) < 2) {
       this.runout = true;
+      const inHand = st.seats.filter((x) => !x.folded);
+      const boardIncomplete = this.boardIndexes().some((i) => !this.boardCards.has(i));
+      if (inHand.length >= 2 && boardIncomplete) {
+        this.beginRitVote(inHand.map((x) => x.seat));
+        return;
+      }
       this.requestReveals();
       return;
     }
@@ -1292,7 +1323,7 @@ class Hand {
 
   private afterBoardOpened(): void {
     if (this.runout) {
-      const remaining = this.boardIndexes().filter((i) => !this.boardCards.has(i));
+      const remaining = this.runoutIndexes().filter((i) => !this.boardCards.has(i));
       if (remaining.length === 0) {
         this.settle();
       } else {
@@ -1309,7 +1340,7 @@ class Hand {
 
   private openRemainingRunoutBoards(): void {
     this.phase = 'deal';
-    const next = this.boardIndexes().find((i) => !this.boardCards.has(i));
+    const next = this.runoutIndexes().find((i) => !this.boardCards.has(i));
     if (next === undefined) {
       this.settle();
       return;
@@ -1325,6 +1356,47 @@ class Hand {
     this.chains.set(next, chain);
     this.kickChain(chain);
     this.armTimer(this.opts.cryptoTimeoutMs);
+  }
+
+  // ---------- run it twice ----------
+
+  private beginRitVote(voters: number[]): void {
+    this.phase = 'rit';
+    this.ritVoters = voters;
+    const ms = this.opts.ritVoteMs ?? 15_000;
+    this.room.broadcast({ t: 'rit_offer', handId: this.id, deadlineTs: Date.now() + ms, voters });
+    this.armTimer(ms);
+  }
+
+  private onRitVote(info: HandSeatInfo, yes: boolean, sig: string): void {
+    if (this.phase !== 'rit') return;
+    if (!this.ritVoters.includes(info.seat) || this.ritVotes.has(info.seat)) return;
+    this.appendPlayer('rit_vote', info.pubkey, { yes, seat: info.seat }, sig);
+    this.ritVotes.set(info.seat, yes);
+    // one no sinks it immediately; a full house of yes runs it right away
+    if (!yes || this.ritVotes.size === this.ritVoters.length) this.resolveRitVote();
+  }
+
+  private resolveRitVote(): void {
+    if (this.phase !== 'rit') return;
+    this.clearTimer();
+    const runTwice = this.ritVoters.every((v) => this.ritVotes.get(v) === true);
+    if (runTwice) {
+      // each still-hidden board position gets a twin card from the untouched
+      // part of the deck (hole cards end at 2n-1, the board at 2n+4)
+      let extra = 2 * this.n + 5;
+      for (const pos of this.boardIndexes()) {
+        if (!this.boardCards.has(pos)) this.ritMap.set(pos, extra++);
+      }
+    }
+    this.appendServer('rit_result', { runTwice });
+    this.room.broadcast({ t: 'rit_result', handId: this.id, runTwice, sharedBoard: this.currentBoard() });
+    this.requestReveals();
+  }
+
+  /** Every deck index the runout still has to open: run 1 first, then run 2. */
+  private runoutIndexes(): number[] {
+    return [...this.boardIndexes(), ...this.ritMap.values()];
   }
 
   // ---------- showdown ----------
@@ -1351,7 +1423,7 @@ class Hand {
 
   private afterRevealsComplete(): void {
     if (this.runout) {
-      const remaining = this.boardIndexes().filter((i) => !this.boardCards.has(i));
+      const remaining = this.runoutIndexes().filter((i) => !this.boardCards.has(i));
       if (remaining.length > 0) {
         this.openRemainingRunoutBoards();
         return;
@@ -1371,8 +1443,52 @@ class Hand {
     let awards: Map<number, number>;
     let showdownMsg: ServerMsg | null = null;
 
+    // when the table ran it twice, board 1 is the normal five positions and
+    // board 2 swaps in the twin card for every position dealt after the vote
+    const ranTwice = this.ritMap.size > 0;
+    const board2 = ranTwice
+      ? this.boardIndexes().map((pos) => this.boardCards.get(this.ritMap.get(pos) ?? pos)!)
+      : null;
+
     if (st.winnerByFold !== null) {
       awards = new Map([[st.winnerByFold, pots.reduce((s, p) => s + p.amount, 0)]]);
+    } else if (ranTwice && board2) {
+      const scores1 = new Map<number, number>();
+      const scores2 = new Map<number, number>();
+      const revealList: { seat: number; cards: CardId[]; score: number }[] = [];
+      for (const [seat, cards] of this.reveals) {
+        scores1.set(seat, evaluate7([...cards, ...board]));
+        scores2.set(seat, evaluate7([...cards, ...board2]));
+        revealList.push({ seat, cards, score: scores1.get(seat)! });
+      }
+      // every pot splits between the runs; the odd chip rides on run 1
+      const half2 = (a: number) => Math.floor(a / 2);
+      const awards1 = awardPots(
+        pots.map((p) => ({ ...p, amount: p.amount - half2(p.amount) })),
+        scores1,
+        dealingOrder,
+      );
+      const awards2 = awardPots(
+        pots.map((p) => ({ ...p, amount: half2(p.amount) })),
+        scores2,
+        dealingOrder,
+      );
+      awards = new Map<number, number>();
+      for (const [seat, amount] of awards1) awards.set(seat, (awards.get(seat) ?? 0) + amount);
+      for (const [seat, amount] of awards2) awards.set(seat, (awards.get(seat) ?? 0) + amount);
+      showdownMsg = {
+        t: 'showdown',
+        handId: this.id,
+        reveals: revealList,
+        awards: [...awards.entries()].map(([seat, amount]) => ({ seat, amount })),
+        runTwice: {
+          boards: [board, board2],
+          awards: [
+            [...awards1.entries()].map(([seat, amount]) => ({ seat, amount })),
+            [...awards2.entries()].map(([seat, amount]) => ({ seat, amount })),
+          ],
+        },
+      };
     } else {
       const scores = new Map<number, number>();
       const revealList: { seat: number; cards: CardId[]; score: number }[] = [];
@@ -1395,6 +1511,7 @@ class Hand {
     this.settlement = { awards, deltas, stacks, showdown: showdownMsg };
     this.appendServer('settlement', {
       board,
+      ...(board2 ? { board2 } : {}),
       awards: [...awards.entries()].map(([seat, amount]) => ({ seat, amount })),
       deltas,
       reveals:

@@ -119,6 +119,16 @@ export function ReplayPage() {
             ),
           )}
         </div>
+        {step.board2.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-fuchsia-500/15 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-fuchsia-500">
+              Run 2
+            </span>
+            {step.board2.map((c) => (
+              <PlayingCard key={`r2-${c}`} card={c} size="sm" deal />
+            ))}
+          </div>
+        )}
         <div className="text-sm font-medium text-slate-600 dark:text-slate-300">{step.label}</div>
       </Panel>
 

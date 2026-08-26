@@ -17,6 +17,8 @@ export interface ReplaySeatInfo {
 export interface ReplayStep {
   label: string;
   board: CardId[];
+  /** The second runout's cards, when the table ran it twice. */
+  board2: CardId[];
   betting: BettingState | null;
   reveals: Record<number, CardId[]>;
   awards: { seat: number; amount: number }[] | null;
@@ -81,12 +83,14 @@ export function buildReplay(entries: TranscriptEntry[]): Replay | null {
   const steps: ReplayStep[] = [];
   let betting: BettingState | null = null;
   let board: CardId[] = [];
+  let board2: CardId[] = [];
   let reveals: Record<number, CardId[]> = {};
 
   const push = (label: string, actor: number | null = null, awards: ReplayStep['awards'] = null) =>
     steps.push({
       label,
       board: [...board],
+      board2: [...board2],
       betting: betting ? { ...betting, seats: betting.seats.map((s) => ({ ...s })), needToAct: [...betting.needToAct] } : null,
       reveals: { ...tvBySeat, ...reveals },
       awards,
@@ -126,8 +130,23 @@ export function buildReplay(entries: TranscriptEntry[]): Replay | null {
           break;
         }
         case 'board_open': {
-          board.push(p.card as CardId);
-          push('Board card revealed');
+          if (p.run === 2) {
+            board2.push(p.card as CardId);
+            push('Run 2 card revealed');
+          } else {
+            board.push(p.card as CardId);
+            push('Board card revealed');
+          }
+          break;
+        }
+        case 'rit_vote': {
+          push(`Seat ${(p.seat as number) + 1} votes to run it ${p.yes ? 'twice' : 'once'}`);
+          break;
+        }
+        case 'rit_result': {
+          // run 2 shares whatever was already open when the vote passed
+          if (p.runTwice) board2 = [...board];
+          push(p.runTwice ? 'Running it twice!' : 'Running it once');
           break;
         }
         case 'street': {
@@ -137,6 +156,7 @@ export function buildReplay(entries: TranscriptEntry[]): Replay | null {
         }
         case 'settlement': {
           board = (p.board as CardId[]) ?? board;
+          board2 = (p.board2 as CardId[]) ?? board2;
           const rl = (p.reveals as { seat: number; cards: CardId[] }[]) ?? [];
           reveals = Object.fromEntries(rl.map((r) => [r.seat, r.cards]));
           push('Result', null, (p.awards as { seat: number; amount: number }[]) ?? []);

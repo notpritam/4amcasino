@@ -10,7 +10,7 @@ import {
   type CardId,
 } from '@4am/shared';
 import { Crown } from '@phosphor-icons/react';
-import { act, imReady, showMyCards, startHand } from '../../shared/gameClient.ts';
+import { act, imReady, ritVote, showMyCards, startHand } from '../../shared/gameClient.ts';
 import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
 import { preActionOptions, togglePreAction } from '../../features/table/preActions.ts';
@@ -156,6 +156,7 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
 
   // pre-deal ready check
   const myUserId = useStore((s) => s.auth.userId);
+  const rit = !handIdle ? hand.ritOffer : null;
   const rc = handIdle ? hand.readyCheck : null;
   const amEligible = rc !== null && myUserId !== null && rc.eligible.includes(myUserId);
   const amReady = rc !== null && myUserId !== null && rc.ready.includes(myUserId);
@@ -184,6 +185,29 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
       Show cards
     </button>
   ) : null;
+
+  // everyone is all-in: vote on dealing the rest of the board twice
+  if (rit && mySeat !== null && rit.voters.includes(mySeat) && !rit.voted) {
+    return (
+      <div className="space-y-2">
+        <p className="text-center text-sm font-semibold text-fuchsia-300">🔁 Run it twice?</p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => ritVote(true)}
+            className="flex-1 rounded-full bg-fuchsia-500 py-3 text-sm font-bold text-white active:scale-[0.98]"
+          >
+            Twice 🔁
+          </button>
+          <button
+            onClick={() => ritVote(false)}
+            className="flex-1 rounded-full border border-white/25 py-3 text-sm font-semibold text-white active:scale-[0.98]"
+          >
+            Once
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (handIdle) {
     return (
@@ -353,6 +377,7 @@ export function MobileTable({
   const roomMe = useStore((s) => s.room?.players.find((p) => p.seat === mySeat));
   const bought = roomMe?.totalBought ?? 0;
   const net = (roomMe?.stack ?? 0) - bought;
+  const board2 = useStore((s) => s.hand.board2);
   const strength = me && me.inHand ? strengthLabel(myCards, board) : null;
 
   return (
@@ -377,6 +402,16 @@ export function MobileTable({
             ),
           )}
         </div>
+        {board2.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <span className="rounded-full bg-fuchsia-500/20 px-1.5 py-0.5 text-[0.6rem] font-bold uppercase text-fuchsia-300">
+              Run 2
+            </span>
+            {board2.map((c) => (
+              <PlayingCard key={`r2-${c}`} card={c} size="sm" deal />
+            ))}
+          </div>
+        )}
         <div className="flex w-full items-baseline justify-end gap-2 pr-2">
           <span className="text-xs uppercase tracking-wide text-white/40">pot</span>
           <span className="font-display text-3xl font-bold">

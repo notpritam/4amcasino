@@ -32,6 +32,7 @@ import {
   answerPeek,
   bindGameClient,
   offerPeek,
+  ritVote,
   setSitOut,
   sit,
   startHand,
@@ -63,6 +64,121 @@ import {
   type TableUtilityAction,
   type TableUtilityGroupId,
 } from './tableUi.ts';
+
+/** The hand's ending, per player: THEIR two cards, what they made, their net.
+ *  Everyone sees exactly what they won or lost to, not just the winning five
+ *  (requested by notpritam, docs/FEATURES.md). */
+function ShowdownCards({
+  reveals,
+  shown,
+  deltas,
+  nameOf,
+  light,
+}: {
+  reveals: { seat: number; cards: number[]; score: number }[];
+  shown: Record<number, number[]>;
+  deltas: { seat: number; delta: number }[];
+  nameOf: (seat: number) => string;
+  light: boolean;
+}) {
+  const rows: { seat: number; cards: number[]; score: number | null }[] = [
+    ...reveals.map((r) => ({ seat: r.seat, cards: r.cards, score: r.score as number | null })),
+    ...Object.entries(shown)
+      .filter(([seat]) => !reveals.some((r) => r.seat === +seat))
+      .map(([seat, cards]) => ({ seat: +seat, cards, score: null })),
+  ];
+  const deltaOf = (seat: number) => deltas.find((d) => d.seat === seat)?.delta ?? 0;
+  rows.sort((a, b) => deltaOf(b.seat) - deltaOf(a.seat));
+  if (rows.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2.5">
+      {rows.map((r) => {
+        const delta = deltaOf(r.seat);
+        return (
+          <div
+            key={r.seat}
+            className={cn(
+              'flex items-center gap-2.5 rounded-xl p-2 pr-3',
+              light
+                ? 'bg-white/10'
+                : 'bg-slate-100/80 ring-1 ring-slate-200/70 dark:bg-slate-800/60 dark:ring-slate-700/60',
+            )}
+          >
+            <div className="flex gap-1">
+              {r.cards.map((c) => (
+                <PlayingCard key={c} card={c} size="sm" deal />
+              ))}
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold leading-tight">{nameOf(r.seat)}</div>
+              <div className={cn('text-xs', light ? 'text-white/60' : 'text-slate-500')}>
+                {r.score !== null
+                  ? HAND_CATEGORY_NAMES[handCategory(r.score)]
+                  : 'showed after folding'}
+              </div>
+            </div>
+            <div
+              className={cn(
+                'font-display text-sm font-bold',
+                delta > 0
+                  ? light
+                    ? 'text-emerald-300'
+                    : 'text-emerald-600'
+                  : delta < 0
+                    ? light
+                      ? 'text-rose-300'
+                      : 'text-rose-600'
+                    : light
+                      ? 'text-white/50'
+                      : 'text-slate-400',
+              )}
+            >
+              {delta > 0 ? '+' : ''}
+              {fmt(delta)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Both runouts side by side with who took each half of the pot. */
+function RitBoards({
+  rt,
+  nameOf,
+  light,
+}: {
+  rt: { boards: [number[], number[]]; awards: [{ seat: number; amount: number }[], { seat: number; amount: number }[]] };
+  nameOf: (seat: number) => string;
+  light: boolean;
+}) {
+  return (
+    <div className="space-y-1.5">
+      {[0, 1].map((k) => (
+        <div key={k} className="flex flex-wrap items-center gap-1.5">
+          <span className="w-11 text-[0.65rem] font-bold uppercase tracking-wide text-fuchsia-500">
+            Run {k + 1}
+          </span>
+          {rt.boards[k]!.map((c) => (
+            <PlayingCard key={c} card={c} size="xs" deal />
+          ))}
+          <span
+            className={cn(
+              'ml-1 text-xs font-semibold',
+              light ? 'text-emerald-300' : 'text-emerald-600 dark:text-emerald-400',
+            )}
+          >
+            {rt.awards[k]!
+              .filter((a) => a.amount > 0)
+              .map((a) => `${nameOf(a.seat)} +${fmt(a.amount)}`)
+              .join(' & ')}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function useNow(tickMs = 500): number {
   const [now, setNow] = useState(Date.now());
@@ -624,6 +740,20 @@ export function TablePage() {
         winningFive: null,
       };
     }
+    const rt = hand.showdown.runTwice;
+    if (rt) {
+      const winnersOf = (aw: { seat: number; amount: number }[]) =>
+        aw.filter((a) => a.amount > 0).map((a) => nameOf(a.seat)).join(' & ');
+      const w1 = winnersOf(rt.awards[0]);
+      const w2 = winnersOf(rt.awards[1]);
+      return {
+        headline:
+          w1 === w2
+            ? `They ran it twice - ${w1} took both boards.`
+            : `They ran it twice. ${w1} takes run 1, ${w2} takes run 2.`,
+        winningFive: null,
+      };
+    }
     const ranked = [...hand.showdown.reveals].sort((a, b) => b.score - a.score);
     const top = ranked[0];
     if (!top) return null;
@@ -717,37 +847,43 @@ export function TablePage() {
                 </div>
               </motion.div>
             )}
+            {hand.showdown?.runTwice && (
+              <motion.div variants={revealItem}>
+                <RitBoards rt={hand.showdown.runTwice} nameOf={seatName} light={false} />
+              </motion.div>
+            )}
+            {hand.showdown && (
+              <motion.div variants={revealItem}>
+                <ShowdownCards
+                  reveals={hand.showdown.reveals}
+                  shown={hand.shown}
+                  deltas={hand.result?.deltas ?? []}
+                  nameOf={seatName}
+                  light={false}
+                />
+              </motion.div>
+            )}
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
               <motion.span variants={revealItem} className="font-display font-semibold">
                 {hand.showdown ? 'Showdown' : 'Everyone folded'}
               </motion.span>
-              {hand.showdown?.reveals.map((r) => (
-                <motion.span
-                  key={r.seat}
-                  variants={revealItem}
-                  className="flex items-center gap-1.5 text-sm"
-                >
-                  <span className="text-slate-500">
-                    {seatViews.find((s) => s.seat === r.seat)?.displayName}
-                  </span>
-                  <Badge tone="slate">{HAND_CATEGORY_NAMES[handCategory(r.score)]}</Badge>
-                </motion.span>
-              ))}
-              {hand.result?.deltas
-                .filter((d) => d.delta !== 0)
-                .map((d) => (
-                  <motion.span
-                    key={d.seat}
-                    variants={revealItem}
-                    className={cn(
-                      'font-display text-sm font-bold',
-                      d.delta > 0 ? 'text-emerald-600' : 'text-rose-600',
-                    )}
-                  >
-                    {seatViews.find((s) => s.seat === d.seat)?.displayName} {d.delta > 0 ? '+' : ''}
-                    {fmt(d.delta)}
-                  </motion.span>
-                ))}
+              {!hand.showdown &&
+                hand.result?.deltas
+                  .filter((d) => d.delta !== 0)
+                  .map((d) => (
+                    <motion.span
+                      key={d.seat}
+                      variants={revealItem}
+                      className={cn(
+                        'font-display text-sm font-bold',
+                        d.delta > 0 ? 'text-emerald-600' : 'text-rose-600',
+                      )}
+                    >
+                      {seatViews.find((s) => s.seat === d.seat)?.displayName}{' '}
+                      {d.delta > 0 ? '+' : ''}
+                      {fmt(d.delta)}
+                    </motion.span>
+                  ))}
               {shareData && (
                 <motion.span variants={revealItem}>
                   <Button variant="ghost" onClick={() => setShareOpen(true)}>
@@ -850,17 +986,27 @@ export function TablePage() {
               </div>
             </motion.div>
           )}
+          {hand.showdown?.runTwice && (
+            <motion.div variants={revealItem}>
+              <RitBoards rt={hand.showdown.runTwice} nameOf={seatName} light />
+            </motion.div>
+          )}
+          {hand.showdown && (
+            <motion.div variants={revealItem}>
+              <ShowdownCards
+                reveals={hand.showdown.reveals}
+                shown={hand.shown}
+                deltas={hand.result?.deltas ?? []}
+                nameOf={seatName}
+                light
+              />
+            </motion.div>
+          )}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <span className="font-display font-semibold">
               {hand.showdown ? 'Showdown' : 'Everyone folded'}
             </span>
-            {hand.showdown?.reveals.map((r) => (
-              <span key={r.seat} className="rounded-full bg-white/15 px-2 py-0.5 text-xs">
-                {seatViews.find((x) => x.seat === r.seat)?.displayName}:{' '}
-                {HAND_CATEGORY_NAMES[handCategory(r.score)]}
-              </span>
-            ))}
-            {hand.result?.deltas
+            {!hand.showdown && hand.result?.deltas
               .filter((d) => d.delta !== 0)
               .map((d) => (
                 <span
@@ -1479,25 +1625,86 @@ export function TablePage() {
               <div className="max-h-[44vh] w-full overflow-y-auto">{resultBanner}</div>
             ) : (
               <>
-            <div className="flex items-center justify-center gap-2.5 lg:gap-3">
-              {[0, 1, 2, 3, 4].map((index) =>
-                hand.board[index] !== undefined ? (
-                  <PlayingCard
-                    key={`${index}-${hand.board[index]}`}
-                    card={hand.board[index]}
-                    size="table"
-                    deal
-                    // the three flop cards land together, so cascade them; the
-                    // turn and river arrive alone and flip immediately
-                    dealDelay={hand.board.length === 3 ? index * 0.16 : 0}
-                  />
+            {hand.ritOffer && (
+              <div className="z-20 flex flex-col items-center gap-2 rounded-2xl bg-fuchsia-600/95 px-5 py-3 text-white shadow-[0_18px_50px_rgba(192,38,211,0.35)]">
+                <span className="font-display text-lg font-bold">
+                  🔁 Run it twice? ·{' '}
+                  {Math.max(0, Math.ceil((hand.ritOffer.deadlineTs - now) / 1000))}s
+                </span>
+                {mySeat !== null && hand.ritOffer.voters.includes(mySeat) && !hand.ritOffer.voted ? (
+                  <div className="flex gap-2">
+                    <Button
+                      variant="secondary"
+                      className="border-0 bg-white! text-fuchsia-700! hover:bg-fuchsia-50!"
+                      onClick={() => ritVote(true)}
+                    >
+                      Twice 🔁
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="border-0 bg-white/20! text-white! hover:bg-white/30!"
+                      onClick={() => ritVote(false)}
+                    >
+                      Once
+                    </Button>
+                  </div>
                 ) : (
-                  <div
-                    key={index}
-                    className="h-36 w-24 rounded-2xl border-2 border-dashed border-slate-300/80 dark:border-slate-700"
-                    aria-label={`Empty community card ${index + 1}`}
-                  />
-                ),
+                  <span className="text-xs text-fuchsia-100">
+                    Everyone is all-in - the rest of the board deals twice if all agree.
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex items-center justify-center gap-2.5 lg:gap-3">
+                {hand.board2.length > 0 && (
+                  <span className="rounded-full bg-fuchsia-500/15 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-fuchsia-500">
+                    Run 1
+                  </span>
+                )}
+                {[0, 1, 2, 3, 4].map((index) =>
+                  hand.board[index] !== undefined ? (
+                    <PlayingCard
+                      key={`${index}-${hand.board[index]}`}
+                      card={hand.board[index]}
+                      size="table"
+                      deal
+                      // the three flop cards land together, so cascade them; the
+                      // turn and river arrive alone and flip immediately
+                      dealDelay={hand.board.length === 3 ? index * 0.16 : 0}
+                    />
+                  ) : (
+                    <div
+                      key={index}
+                      className="h-36 w-24 rounded-2xl border-2 border-dashed border-slate-300/80 dark:border-slate-700"
+                      aria-label={`Empty community card ${index + 1}`}
+                    />
+                  ),
+                )}
+              </div>
+              {/* the second runout grows underneath as its twin cards land */}
+              {hand.board2.length > 0 && (
+                <div className="flex items-center justify-center gap-2">
+                  <span className="rounded-full bg-fuchsia-500/15 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-fuchsia-500">
+                    Run 2
+                  </span>
+                  {[0, 1, 2, 3, 4].map((index) =>
+                    hand.board2[index] !== undefined ? (
+                      <PlayingCard
+                        key={`r2-${index}-${hand.board2[index]}`}
+                        card={hand.board2[index]}
+                        size="lg"
+                        deal
+                      />
+                    ) : (
+                      <div
+                        key={`r2-${index}`}
+                        className="h-20 w-14 rounded-lg border-2 border-dashed border-fuchsia-400/30 md:h-32 md:w-[5.6rem] md:rounded-2xl"
+                        aria-label={`Empty run 2 card ${index + 1}`}
+                      />
+                    ),
+                  )}
+                </div>
               )}
             </div>
             {!handLive && !showResult && (

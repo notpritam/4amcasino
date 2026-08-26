@@ -254,7 +254,8 @@ export class HeadlessClient {
         break;
       }
       case 'board_open':
-        if (!this.board.includes(msg.card)) this.board.push(msg.card);
+        // run-2 cards belong to the second runout, never to the main board
+        if (msg.run !== 2 && !this.board.includes(msg.card)) this.board.push(msg.card);
         break;
       case 'betting_state':
         this.betting = msg.state;
@@ -316,6 +317,19 @@ export class HeadlessClient {
         // a robot is always ready for the next hand
         this.send({ t: 'im_ready' });
         break;
+      case 'rit_offer': {
+        // robots always run it twice - more cards, more fun
+        const seat = this.mySeat();
+        if (seat !== null && msg.voters.includes(seat)) {
+          this.send({
+            t: 'rit_vote',
+            handId: msg.handId,
+            yes: true,
+            sig: this.signed(msg.handId, 'rit_vote', { yes: true }),
+          });
+        }
+        break;
+      }
       default:
         break;
     }

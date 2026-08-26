@@ -32,4 +32,6 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | Save hand: download the full signed hand record (transcript + players) as JSON from the replay page | **notpritam** |
 | Ready check: auto-deal never starts betting until everyone clicks "I'm ready"; 20 seconds, then it deals without the stragglers | **notpritam** |
 | Misclick guard: Fold / Check-Call / Raise hold fixed positions in every state and go dead for a beat whenever the options change | **notpritam** |
+| Run it twice: when everyone is all-in before the river the players vote (15s, unanimous); the remaining streets deal twice from the untouched deck and every pot splits between the boards | **notpritam** |
+| Showdown shows every player's cards: the result banner lists each player with THEIR two cards, the hand they made, and their net - not just the winning five | **notpritam** |
 | Everything before 2026-08-24 (mental poker core, ledger and banking, friends and spectating, cyberpunk theme, MCP seat, fairness tour, auto-approve buys, ...) | **notpritam** |

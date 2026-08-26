@@ -1151,6 +1151,14 @@ export function Table3DPage() {
         // the flop cascades left to right; turn and river flip on arrival
         spawnCard(cardMesh, h.handId ? `${h.handId}:b:${i}` : '', h.board.length === 3 ? i * 150 : 0);
       });
+      // run it twice: the second board sits one row behind the first
+      h.board2.forEach((cardId, i) => {
+        const cardMesh = makeCard(cardId, 0.5, 0.14);
+        cardMesh.position.x = (i - 2) * 0.6;
+        cardMesh.position.z = -0.62;
+        dynamic.add(cardMesh);
+        spawnCard(cardMesh, h.handId ? `${h.handId}:b2:${i}` : '', 0);
+      });
       const mySeatNow = r.players.find((p) => p.userId === myId)?.seat ?? null;
       if (mySeatNow !== null && h.myCards.length > 0 && h.handId) {
         h.myCards.forEach((cardId, i) => {

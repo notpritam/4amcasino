@@ -12,6 +12,8 @@ export function signedBodyOf(type: string, payload: unknown): unknown {
       return { action: p.action };
     case 'reveal_key':
       return { key: p.key };
+    case 'rit_vote':
+      return { yes: p.yes };
     default:
       return payload;
   }
