@@ -312,6 +312,10 @@ export class HeadlessClient {
       case 'auto_deal':
         this.log(`next hand deals itself in ${Math.round(msg.inMs / 1000)}s`);
         break;
+      case 'ready_check':
+        // a robot is always ready for the next hand
+        this.send({ t: 'im_ready' });
+        break;
       default:
         break;
     }

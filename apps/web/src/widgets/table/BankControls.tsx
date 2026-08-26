@@ -333,6 +333,25 @@ export function BankControls({
           </label>
         )}
         {isBanker && (
+          <label className="mb-4 flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={!!room?.room.tvReplays}
+              onChange={(e) =>
+                void api
+                  .setTvReplays(roomId, e.target.checked)
+                  .catch((err) => pushError(err instanceof Error ? err.message : 'update failed'))
+              }
+              className="mt-0.5"
+            />
+            <span>
+              TV replays: after every hand each player&apos;s hand key is saved, so replays show
+              ALL hole cards - broadcast style, ready to cut a video from. Folded cards stop being
+              secret from this table&apos;s replays.
+            </span>
+          </label>
+        )}
+        {isBanker && (
           <div className="mb-4 grid gap-3 sm:grid-cols-2">
             <label className="block text-sm">
               <span className="mb-1 block text-slate-500">

@@ -5,6 +5,8 @@ import {
   cardLookup,
   handKeyCommit,
   initialDeck,
+  invScalar,
+  mulPoint,
   pointFromHex,
   pointHex,
   recoverCard,
@@ -40,6 +42,10 @@ export interface GameOpts {
   cryptoRetries?: number;
   /** Delay before the next hand deals itself while the host is online (default 15s). */
   autoDealMs?: number;
+  /** How long the pre-deal ready check waits before dealing without stragglers (default 20s). */
+  readyCheckMs?: number;
+  /** TV replays: save every player's hand key post-hand so replays show all cards. */
+  tvReplays?: boolean;
 }
 
 interface Identity {
@@ -129,6 +135,10 @@ export class GameRoom {
   private peekOffers = new Map<string, { handId: string; fromUserId: number; targetSeat: number; amount: number }>();
   private sevenDeucePaid = new Set<string>();
   private autoDeal: NodeJS.Timeout | null = null;
+  // no hand auto-starts until everyone is ready: a 20s ready check runs
+  // before each auto-deal, and whoever has not clicked by the deadline is
+  // left out of that hand (requested by notpritam, docs/FEATURES.md)
+  private readyCheck: { deadline: number; timer: NodeJS.Timeout; eligible: Set<number>; ready: Set<number> } | null = null;
   private lookup = cardLookup();
 
   constructor(
@@ -165,6 +175,7 @@ export class GameRoom {
     activeHands.delete(this.roomId);
     if (this.autoDeal) clearTimeout(this.autoDeal);
     this.autoDeal = null;
+    this.cancelReadyCheck(false);
   }
 
   /** While the host is online the next hand deals itself after a short break. */
@@ -178,9 +189,63 @@ export class GameRoom {
       if (this.hand || !this.db.open) return;
       const current = getRoom(this.db, this.roomId);
       if (!current || !this.sockets.has(current.host_id)) return;
-      this.startHand(true);
+      this.beginReadyCheck();
     }, delay);
     this.broadcast({ t: 'auto_deal', inMs: delay });
+  }
+
+  private eligiblePlayers() {
+    return roomPlayers(this.db, this.roomId)
+      .filter((p) => p.seat !== null && !p.sittingOut && p.stack > 0 && this.sockets.has(p.userId))
+      .sort((a, b) => a.seat! - b.seat!);
+  }
+
+  /** Auto-deal never starts betting on its own: everyone gets 20 seconds to
+   *  click "I'm ready"; whoever misses the deadline sits this one out. */
+  private beginReadyCheck(): void {
+    if (this.hand || this.readyCheck) return;
+    const eligible = this.eligiblePlayers();
+    if (eligible.length < 2) return;
+    const ms = this.opts.readyCheckMs ?? 20_000;
+    const deadline = Date.now() + ms;
+    this.readyCheck = {
+      deadline,
+      timer: setTimeout(() => this.resolveReadyCheck(), ms),
+      eligible: new Set(eligible.map((p) => p.userId)),
+      ready: new Set(),
+    };
+    this.broadcastReadyCheck();
+  }
+
+  private broadcastReadyCheck(): void {
+    const rc = this.readyCheck;
+    if (!rc) return;
+    this.broadcast({ t: 'ready_check', deadlineTs: rc.deadline, eligible: [...rc.eligible], ready: [...rc.ready] });
+  }
+
+  private onReady(userId: number): void {
+    const rc = this.readyCheck;
+    if (!rc || !rc.eligible.has(userId) || rc.ready.has(userId)) return;
+    rc.ready.add(userId);
+    this.broadcastReadyCheck();
+    if (rc.ready.size === rc.eligible.size) this.resolveReadyCheck();
+  }
+
+  private resolveReadyCheck(): void {
+    const rc = this.readyCheck;
+    if (!rc) return;
+    clearTimeout(rc.timer);
+    this.readyCheck = null;
+    this.broadcast({ t: 'ready_end' });
+    // deal with whoever answered the call; the rest are out of this one
+    if (rc.ready.size >= 2) this.startHand(true, rc.ready);
+  }
+
+  private cancelReadyCheck(announce = true): void {
+    if (!this.readyCheck) return;
+    clearTimeout(this.readyCheck.timer);
+    this.readyCheck = null;
+    if (announce) this.broadcast({ t: 'ready_end' });
   }
 
   send(userId: number, msg: ServerMsg): void {
@@ -227,6 +292,7 @@ export class GameRoom {
         coBankerId: room.co_banker_id,
         minSettleHands: room.min_settle_hands,
         autoApproveBuys: !!room.auto_approve_buys,
+        tvReplays: !!room.tv_replays,
         sevenDeuceBonus: room.seven_deuce_bonus,
         voided: !!room.voided,
         meetLink: room.meet_link,
@@ -328,7 +394,12 @@ export class GameRoom {
           clearTimeout(this.autoDeal);
           this.autoDeal = null;
         }
+        this.cancelReadyCheck();
         this.startHand();
+        return;
+      }
+      case 'im_ready': {
+        this.onReady(userId);
         return;
       }
       case 'key_commit':
@@ -362,11 +433,9 @@ export class GameRoom {
     }
   }
 
-  private startHand(auto = false): void {
+  private startHand(auto = false, onlyIds?: Set<number>): void {
     const room = getRoom(this.db, this.roomId)!;
-    const eligible = roomPlayers(this.db, this.roomId)
-      .filter((p) => p.seat !== null && !p.sittingOut && p.stack > 0 && this.sockets.has(p.userId))
-      .sort((a, b) => a.seat! - b.seat!);
+    const eligible = this.eligiblePlayers().filter((p) => !onlyIds || onlyIds.has(p.userId));
     if (eligible.length < 2) {
       if (!auto) this.broadcast({ t: 'error', message: 'need at least 2 seated, funded, connected players' });
       return;
@@ -391,6 +460,7 @@ export class GameRoom {
     const handOpts: GameOpts = {
       ...this.opts,
       actionTimeoutMs: room.action_secs !== null ? room.action_secs * 1000 : this.opts.actionTimeoutMs,
+      tvReplays: !!room.tv_replays,
     };
     this.shown.clear();
     this.shownHandId = null;
@@ -1334,7 +1404,11 @@ class Hand {
     });
     if (showdownMsg) this.room.broadcast(showdownMsg);
 
-    if (this.auditMode === 'strict-audit') {
+    if (this.auditMode === 'strict-audit' || this.opts.tvReplays) {
+      // TV replays: collect everyone's per-hand key so the stored transcript
+      // can show ALL hole cards, WSOP broadcast style. Settlement still
+      // happens on timeout if someone vanishes - keys are best-effort.
+      // (requested by notpritam, docs/FEATURES.md)
       this.phase = 'audit';
       this.room.broadcast({ t: 'need_keys', handId: this.id });
       this.armTimer(this.opts.cryptoTimeoutMs);
@@ -1354,6 +1428,20 @@ class Hand {
     }
     this.appendPlayer('reveal_key', info.pubkey, { key: keyHex, valid }, sig);
     this.revealedKeys.set(info.seat, keyHex);
+    // with the player's own key in hand, their hole cards decrypt directly:
+    // holeFinal already holds each card after every OTHER player unmasked it
+    if (valid && !this.reveals.has(info.seat)) {
+      const orderIdx = this.seats.findIndex((x) => x.seat === info.seat);
+      const cards: CardId[] = [];
+      const inv = invScalar(BigInt('0x' + keyHex));
+      for (const idx of this.holeIndexes(orderIdx)) {
+        const pt = this.holeFinal.get(idx);
+        if (!pt) continue;
+        const card = recoverCard(mulPoint(pt, inv), this.lookup);
+        if (card !== null) cards.push(card);
+      }
+      if (cards.length === 2) this.appendServer('hole_cards', { seat: info.seat, cards });
+    }
     if (this.revealedKeys.size === this.n) this.finalizeSettlement();
   }
 

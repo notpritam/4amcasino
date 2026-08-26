@@ -39,6 +39,7 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
     sig: hex(128),
   }),
   z.object({ t: z.literal('sit_out'), sittingOut: z.boolean() }),
+  z.object({ t: z.literal('im_ready') }),
   z.object({
     t: z.literal('peek_offer'),
     handId: z.string(),
@@ -131,7 +132,7 @@ export type ServerMsg =
   | { t: 'hello'; serverPublicKey: string }
   | {
       t: 'room_state';
-      room: { id: string; name: string; joinCode: string; hostId: number; bankerId: number; sb: number; bb: number; auditMode: string; actionTimeoutMs: number; actionSecs: number | null; coBankerId: number | null; minSettleHands: number; sevenDeuceBonus: number; voided: boolean; meetLink: string | null; autoApproveBuys: boolean };
+      room: { id: string; name: string; joinCode: string; hostId: number; bankerId: number; sb: number; bb: number; auditMode: string; actionTimeoutMs: number; actionSecs: number | null; coBankerId: number | null; minSettleHands: number; sevenDeuceBonus: number; voided: boolean; meetLink: string | null; autoApproveBuys: boolean; tvReplays: boolean };
       players: RoomStatePlayer[];
       handActive: boolean;
     }
@@ -142,6 +143,8 @@ export type ServerMsg =
   | { t: 'rtc'; from: number; data: unknown }
   | { t: 'voice_state'; userId: number; muted: boolean }
   | { t: 'auto_deal'; inMs: number }
+  | { t: 'ready_check'; deadlineTs: number; eligible: number[]; ready: number[] }
+  | { t: 'ready_end' }
   | { t: 'seven_deuce'; handId: string; seat: number; amount: number }
   | { t: 'hand_start'; handId: string; seats: HandSeat[]; buttonSeat: number; sb: number; bb: number; auditMode: string }
   | { t: 'key_commit_applied'; handId: string; seat: number; commit: string }

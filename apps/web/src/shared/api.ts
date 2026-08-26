@@ -115,6 +115,8 @@ export const api = {
     req(`/api/rooms/${roomId}/settings`, { sevenDeuceBonus }, 'PUT'),
   setAutoApproveBuys: (roomId: string, autoApproveBuys: boolean) =>
     req(`/api/rooms/${roomId}/settings`, { autoApproveBuys }, 'PUT'),
+  setTvReplays: (roomId: string, tvReplays: boolean) =>
+    req(`/api/rooms/${roomId}/settings`, { tvReplays }, 'PUT'),
   roomSettings: (roomId: string, actionSecs: number) =>
     req(`/api/rooms/${roomId}/settings`, { actionSecs }, 'PUT'),
 };

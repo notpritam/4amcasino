@@ -116,6 +116,7 @@ function migrate(db: DB): void {
   ensureColumn(db, 'rooms', 'visibility', "TEXT NOT NULL DEFAULT 'private'");
   ensureColumn(db, 'rooms', 'spectate_token', 'TEXT');
   ensureColumn(db, 'rooms', 'allow_spectators', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'rooms', 'tv_replays', 'INTEGER NOT NULL DEFAULT 0');
   db.exec(`
     CREATE TABLE IF NOT EXISTS friends (
       requester_id INTEGER NOT NULL,

@@ -26,6 +26,7 @@ class TestClient {
   username: string;
   token = '';
   userId = 0;
+  autoReady = true;
   identity = genIdentity();
   ws!: WebSocket;
   baseUrl: string;
@@ -68,9 +69,9 @@ class TestClient {
     this.userId = json.userId;
   }
 
-  async api(path: string, body?: unknown): Promise<any> {
+  async api(path: string, body?: unknown, method?: string): Promise<any> {
     const res = await fetch(`${this.baseUrl}${path}`, {
-      method: body === undefined ? 'GET' : 'POST',
+      method: method ?? (body === undefined ? 'GET' : 'POST'),
       headers: { 'content-type': 'application/json', authorization: `Bearer ${this.token}` },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -247,6 +248,10 @@ class TestClient {
         });
         break;
       }
+      case 'ready_check': {
+        if (this.autoReady) this.send({ t: 'im_ready' });
+        break;
+      }
       default:
         break;
     }
@@ -271,7 +276,7 @@ let clients: TestClient[] = [];
 
 beforeEach(async () => {
   ctx = createApp(':memory:');
-  attachHub(ctx.app, ctx.db, { cryptoTimeoutMs: 1500, actionTimeoutMs: 1500, autoDealMs: 800 });
+  attachHub(ctx.app, ctx.db, { cryptoTimeoutMs: 1500, actionTimeoutMs: 1500, autoDealMs: 800, readyCheckMs: 1500 });
   await ctx.app.listen({ port: 0 });
   const addr = ctx.app.server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${addr.port}`;
@@ -491,7 +496,7 @@ describe('full hand integration', () => {
     host.send({ t: 'start_hand' });
     await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null)));
     const firstHandId = players[0]!.handEnd!.handId;
-    // nobody clicks anything: the server deals again on its own
+    // the clients answer the ready check, so the server deals again on its own
     await Promise.all(
       players.map((p) =>
         p.waitFor(() => p.handEnd !== null && p.handEnd.handId !== firstHandId, 15000),
@@ -499,6 +504,49 @@ describe('full hand integration', () => {
     );
     expect(players[0]!.handEnd!.handId).not.toBe(firstHandId);
   }, 20000);
+
+  it('a player who ignores the ready check is left out of the auto-dealt hand', async () => {
+    const { players, host } = await setupRoom(['reada', 'readb', 'readc']);
+    host.send({ t: 'start_hand' });
+    await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null)));
+    const firstHandId = players[0]!.handEnd!.handId;
+    // carol never clicks I'm ready: the deadline passes and the other two play
+    players[2]!.autoReady = false;
+    await Promise.all(
+      players
+        .slice(0, 2)
+        .map((p) => p.waitFor(() => p.handEnd !== null && p.handEnd.handId !== firstHandId, 15000)),
+    );
+    const seats = players[0]!.handEnd!.stacks.map((x) => x.seat).sort();
+    expect(seats).toEqual([0, 1]);
+  }, 20000);
+
+  it('TV replays save every key and decrypt folded hole cards into the transcript', async () => {
+    const { players, room, host } = await setupRoom(
+      ['tva', 'tvb', 'tvc'],
+      ['passive', 'fold-first', 'passive'],
+    );
+    await host.api(`/api/rooms/${room.id}/settings`, { tvReplays: true }, 'PUT');
+    host.send({ t: 'start_hand' });
+    await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null)));
+    expect(players[0]!.handAbort).toBeNull();
+
+    const hand = await host.api(`/api/rooms/${room.id}/hands/${players[0]!.handEnd!.handId}`);
+    const keys = hand.entries.filter((e: { type: string }) => e.type === 'reveal_key');
+    expect(keys).toHaveLength(3);
+    // bob folded, so he never revealed at showdown - the key reveal decrypts him
+    const holes = hand.entries.filter((e: { type: string }) => e.type === 'hole_cards');
+    const bobSeatHole = holes.find(
+      (e: { payload: { seat: number } }) => e.payload.seat === 1,
+    );
+    expect(bobSeatHole).toBeDefined();
+    expect(new Set(bobSeatHole.payload.cards)).toEqual(new Set(players[1]!.myCards));
+    // and the stored transcript still verifies end to end
+    const row = ctx.db
+      .prepare('SELECT head FROM transcripts WHERE hand_id = ?')
+      .get(players[0]!.handEnd!.handId) as { head: string };
+    expect(row.head).toBe(hand.head);
+  });
 
   it('a sitting-out player is skipped when the next hand is dealt', async () => {
     const { players, host } = await setupRoom(['host', 'bob', 'carol']);

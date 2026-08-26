@@ -75,6 +75,8 @@ interface HandView {
   peekResults: Record<number, CardId[]>;
   /** When the server will deal the next hand by itself (host online). */
   autoDealAt: number | null;
+  /** Pre-deal ready check: nobody is dealt in without clicking I'm ready. */
+  readyCheck: { deadlineTs: number; eligible: number[]; ready: number[] } | null;
 }
 
 export const emptyHand: HandView = {
@@ -97,6 +99,7 @@ export const emptyHand: HandView = {
   peekOffers: [],
   peekResults: {},
   autoDealAt: null,
+  readyCheck: null,
 };
 
 interface Store {

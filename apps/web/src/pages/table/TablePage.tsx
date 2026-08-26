@@ -1457,6 +1457,7 @@ export function TablePage() {
                 localStorage.setItem('4am-big-cards', 'on');
                 setBigCards(true);
               }}
+              readyCheck={!handLive ? hand.readyCheck : null}
             >
             <div className="relative">
               <motion.div

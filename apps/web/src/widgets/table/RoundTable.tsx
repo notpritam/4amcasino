@@ -41,6 +41,7 @@ export function RoundTable({
   coBankerId,
   bb,
   onMyCardsClick,
+  readyCheck = null,
   children,
 }: {
   seats: SeatView[];
@@ -58,6 +59,8 @@ export function RoundTable({
   coBankerId: number | null;
   bb: number;
   onMyCardsClick?: () => void;
+  /** Pre-deal ready check: green tick on the seats that clicked I'm ready. */
+  readyCheck?: { eligible: number[]; ready: number[] } | null;
   children: React.ReactNode;
 }) {
   // two-tap kick: first tap arms, second confirms, so a stray click never stands anyone up
@@ -222,6 +225,18 @@ export function RoundTable({
                 >
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white motion-reduce:animate-none" />
                   playing
+                </span>
+              )}
+              {readyCheck && readyCheck.eligible.includes(p.userId) && (
+                <span
+                  className={cn(
+                    'absolute -top-3 left-1/2 z-30 -translate-x-1/2 rounded-full px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wide text-white shadow-md',
+                    readyCheck.ready.includes(p.userId)
+                      ? 'bg-emerald-500'
+                      : 'animate-pulse bg-slate-500 motion-reduce:animate-none',
+                  )}
+                >
+                  {readyCheck.ready.includes(p.userId) ? '✓ ready' : 'ready?'}
                 </span>
               )}
               {/* my hole cards ride above my pod; opponents show backs or reveals */}

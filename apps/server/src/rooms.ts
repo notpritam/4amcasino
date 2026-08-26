@@ -25,6 +25,7 @@ export interface RoomRow {
   spectate_token: string | null;
   allow_spectators: number;
   auto_approve_buys: number;
+  tv_replays: number;
   created_at: number;
 }
 
@@ -133,6 +134,7 @@ function roomJson(db: DB, room: RoomRow) {
     visibility: room.visibility,
     allowSpectators: !!room.allow_spectators,
     autoApproveBuys: !!room.auto_approve_buys,
+    tvReplays: !!room.tv_replays,
     players: roomPlayers(db, room.id).map((p) => ({
       ...p,
       privateMode: undefined,
@@ -381,6 +383,7 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
         meetLink: meetLinkSchema.optional(),
         visibility: z.enum(['private', 'public']).optional(),
         autoApproveBuys: z.boolean().optional(),
+        tvReplays: z.boolean().optional(),
       })
       .safeParse(req.body);
     if (!parsed.success)
@@ -401,6 +404,11 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
       db.prepare('UPDATE rooms SET visibility = ? WHERE id = ?').run(parsed.data.visibility, id);
     if (parsed.data.autoApproveBuys !== undefined)
       db.prepare('UPDATE rooms SET auto_approve_buys = ? WHERE id = ?').run(parsed.data.autoApproveBuys ? 1 : 0, id);
+    // TV replays: after every hand each player's per-hand key is saved to the
+    // transcript so replays show ALL hole cards, WSOP broadcast style
+    // (requested by notpritam, docs/FEATURES.md)
+    if (parsed.data.tvReplays !== undefined)
+      db.prepare('UPDATE rooms SET tv_replays = ? WHERE id = ?').run(parsed.data.tvReplays ? 1 : 0, id);
     roomEvents.emit('changed', id);
     return { ok: true };
   });

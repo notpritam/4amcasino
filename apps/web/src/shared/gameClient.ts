@@ -108,6 +108,10 @@ export function startHand(): void {
   wsClient.send({ t: 'start_hand' });
 }
 
+export function imReady(): void {
+  wsClient.send({ t: 'im_ready' });
+}
+
 export function sendChat(text: string, kind: 'text' | 'sticker' | 'phrase' = 'text'): void {
   wsClient.send({ t: 'chat', text, kind });
 }
@@ -315,6 +319,20 @@ function handle(msg: ServerMsg): void {
 
     case 'auto_deal': {
       store.patchHand({ autoDealAt: Date.now() + msg.inMs });
+      return;
+    }
+
+    case 'ready_check': {
+      const prev = useStore.getState().hand.readyCheck;
+      if (!prev) play('turn'); // ping once when the check opens, not on every update
+      store.patchHand({
+        readyCheck: { deadlineTs: msg.deadlineTs, eligible: msg.eligible, ready: msg.ready },
+      });
+      return;
+    }
+
+    case 'ready_end': {
+      store.patchHand({ readyCheck: null });
       return;
     }
 

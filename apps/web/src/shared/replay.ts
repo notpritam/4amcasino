@@ -29,6 +29,9 @@ export interface Replay {
   sb: number;
   bb: number;
   steps: ReplayStep[];
+  /** True when post-hand key reveals put every player's hole cards in the
+   *  transcript (TV replays), so the whole hand plays back broadcast-style. */
+  tv: boolean;
 }
 
 const ACTION_WORDS: Record<PlayerAction['type'], string> = {
@@ -41,19 +44,40 @@ const ACTION_WORDS: Record<PlayerAction['type'], string> = {
 
 /**
  * Rebuild a hand's public timeline from its stored transcript.
- * Only ever uses public information: actions, opened board cards, and
- * showdown reveals recorded in the settlement. folded hole cards do not
- * exist anywhere in the transcript in readable form.
+ * Normally only public information exists: actions, opened board cards, and
+ * showdown reveals. In TV-replay rooms every player's hand key is saved after
+ * the hand, the server decrypts each seat's hole cards into `hole_cards`
+ * entries, and the replay shows all of them from the deal - WSOP broadcast
+ * style (requested by notpritam, docs/FEATURES.md).
  */
 export function buildReplay(entries: TranscriptEntry[]): Replay | null {
   const start = entries.find((e) => e.type === 'hand_start');
   if (!start) return null;
+  // broadcast test: key-reveal decryptions (folders) plus showdown reveals
+  // both live at the transcript's tail - when together they cover every dealt
+  // seat, this replay is a TV replay and every hole card shows from step 0
+  const tvBySeat: Record<number, CardId[]> = {};
+  for (const e of entries) {
+    if (e.type === 'hole_cards') {
+      const p = e.payload as { seat: number; cards: CardId[] };
+      tvBySeat[p.seat] = p.cards;
+    } else if (e.type === 'settlement') {
+      const rl = ((e.payload as Record<string, unknown>).reveals as
+        | { seat: number; cards: CardId[] }[]
+        | undefined) ?? [];
+      for (const r of rl) tvBySeat[r.seat] = r.cards;
+    }
+  }
+
   const sp = start.payload as {
     seats: { seat: number; userId: number; stack: number }[];
     buttonSeat: number;
     sb: number;
     bb: number;
   };
+  const startSeats = (start.payload as { seats: { seat: number }[] }).seats;
+  const tv = startSeats.length > 0 && startSeats.every((x) => tvBySeat[x.seat] !== undefined);
+  if (!tv) for (const k of Object.keys(tvBySeat)) delete tvBySeat[+k];
   const steps: ReplayStep[] = [];
   let betting: BettingState | null = null;
   let board: CardId[] = [];
@@ -64,7 +88,7 @@ export function buildReplay(entries: TranscriptEntry[]): Replay | null {
       label,
       board: [...board],
       betting: betting ? { ...betting, seats: betting.seats.map((s) => ({ ...s })), needToAct: [...betting.needToAct] } : null,
-      reveals: { ...reveals },
+      reveals: { ...tvBySeat, ...reveals },
       awards,
       actor,
     });
@@ -129,5 +153,5 @@ export function buildReplay(entries: TranscriptEntry[]): Replay | null {
       // an entry the engine rejects (e.g. an invalid action a client sent) is skipped
     }
   }
-  return { seats: sp.seats, buttonSeat: sp.buttonSeat, sb: sp.sb, bb: sp.bb, steps };
+  return { seats: sp.seats, buttonSeat: sp.buttonSeat, sb: sp.sb, bb: sp.bb, steps, tv };
 }

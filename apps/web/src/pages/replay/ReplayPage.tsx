@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { CaretLeft, CaretRight, SkipBack } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, DownloadSimple, SkipBack } from '@phosphor-icons/react';
 import { api } from '../../shared/api.ts';
 import { buildReplay, type Replay } from '../../shared/replay.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
@@ -19,15 +19,39 @@ export function ReplayPage() {
   const { id: roomId, handId } = useParams<{ id: string; handId: string }>();
   const [replay, setReplay] = useState<Replay | null>(null);
   const [players, setPlayers] = useState<Map<number, RoomPlayer>>(new Map());
+  const [record, setRecord] = useState<unknown>(null);
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
     void Promise.all([api.hand(roomId!, handId!), api.getRoom(roomId!)]).then(([hand, room]) => {
       setReplay(buildReplay(hand.entries));
-      setPlayers(new Map((room.players as RoomPlayer[]).map((p) => [p.userId, p])));
+      const ps = room.players as RoomPlayer[];
+      setPlayers(new Map(ps.map((p) => [p.userId, p])));
+      // the saved game: the full signed transcript plus who's who, enough to
+      // re-verify offline or cut a broadcast video from
+      // (requested by notpritam, docs/FEATURES.md)
+      setRecord({
+        game: '4AM Casino hand record',
+        roomId,
+        handId: hand.handId,
+        head: hand.head,
+        ts: hand.ts,
+        players: ps.map((p) => ({ userId: p.userId, username: p.username, displayName: p.displayName })),
+        entries: hand.entries,
+      });
     });
   }, [roomId, handId]);
+
+  const saveRecord = () => {
+    const blob = new Blob([JSON.stringify(record, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `4am-hand-${handId?.slice(0, 8)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const step = replay?.steps[idx] ?? null;
   const last = (replay?.steps.length ?? 1) - 1;
@@ -69,9 +93,16 @@ export function ReplayPage() {
         <Badge tone="slate">
           blinds {replay.sb}/{replay.bb}
         </Badge>
+        {replay.tv && <Badge tone="amber">TV replay</Badge>}
+        <Button variant="secondary" className="ml-auto" onClick={saveRecord} disabled={!record}>
+          <DownloadSimple size={15} weight="bold" className="mr-1 inline" />
+          Save hand
+        </Button>
       </header>
       <p className="text-sm text-slate-500">
-        Rebuilt from the signed transcript, showing only what was public. Folded cards stay secret forever.
+        {replay.tv
+          ? 'Everyone revealed their hand key after this hand, so every hole card is visible - broadcast style.'
+          : 'Rebuilt from the signed transcript, showing only what was public. Folded cards stay secret forever.'}
       </p>
 
       {/* board */}

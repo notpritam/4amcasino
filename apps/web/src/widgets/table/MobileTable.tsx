@@ -10,10 +10,11 @@ import {
   type CardId,
 } from '@4am/shared';
 import { Crown } from '@phosphor-icons/react';
-import { act, showMyCards, startHand } from '../../shared/gameClient.ts';
+import { act, imReady, showMyCards, startHand } from '../../shared/gameClient.ts';
 import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
 import { preActionOptions, togglePreAction } from '../../features/table/preActions.ts';
+import { useSettling } from '../../features/table/useSettling.ts';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
 import { Avatar } from '../../entities/user/Avatar.tsx';
 import type { SeatView } from './players.tsx';
@@ -147,6 +148,18 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
     act(a);
   };
 
+  // misclick guard: buttons go dead for a beat when the options change,
+  // so a tap aimed at the old state cannot fire the new button
+  const settling = useSettling(
+    `${myTurn}:${la?.canCheck ?? '-'}:${la?.callAmount ?? '-'}:${st?.currentBet ?? '-'}`,
+  );
+
+  // pre-deal ready check
+  const myUserId = useStore((s) => s.auth.userId);
+  const rc = handIdle ? hand.readyCheck : null;
+  const amEligible = rc !== null && myUserId !== null && rc.eligible.includes(myUserId);
+  const amReady = rc !== null && myUserId !== null && rc.ready.includes(myUserId);
+
   const ghost =
     'flex-1 rounded-full border border-white/25 px-4 py-3 text-center text-sm font-semibold text-white active:scale-[0.98]';
 
@@ -176,7 +189,21 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
     return (
       <div className="space-y-2">
         {showBtn}
-        {mySeat !== null && myStack === 0 ? (
+        {rc ? (
+          amEligible && !amReady ? (
+            <button
+              onClick={imReady}
+              className="w-full animate-pulse rounded-full bg-emerald-500 py-3 text-sm font-bold text-white active:scale-[0.98]"
+            >
+              ✋ I&apos;m ready · {rc.ready.length}/{rc.eligible.length}
+            </button>
+          ) : (
+            <p className="py-2 text-center text-sm text-emerald-300">
+              {amReady ? '✓ You are ready' : 'Ready check'} · {rc.ready.length}/
+              {rc.eligible.length} — dealing without the rest shortly
+            </p>
+          )
+        ) : mySeat !== null && myStack === 0 ? (
           <p className="py-2 text-center text-sm font-semibold text-rose-300">
             You are out of chips. Buy points from the bank (menu, top right).
           </p>
@@ -205,6 +232,7 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
             {preActionOptions(st!, mySeat!).map((pa) => (
               <button
                 key={pa.key}
+                disabled={settling}
                 onClick={() => togglePreAction(pa.key, st!, mySeat!)}
                 className={cn(
                   'flex-1 rounded-full border px-2 py-2 text-xs font-semibold',
@@ -276,7 +304,7 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
           Sending…
         </p>
       )}
-      <div className={cn('flex gap-2', pending && 'pointer-events-none opacity-50')}>
+      <div className={cn('flex gap-2', (pending || settling) && 'pointer-events-none opacity-50')}>
         <button onClick={() => send({ type: 'fold' })} className={cn(ghost, 'border-rose-500/40 text-rose-300')}>
           Fold
         </button>
