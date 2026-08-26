@@ -399,7 +399,13 @@ function handle(msg: ServerMsg): void {
     }
 
     case 'cards_shown': {
-      const h = useStore.getState().hand;
+      const state = useStore.getState();
+      // a voluntary show can land after the next deal: keep the recap fresh
+      const last = state.lastHand;
+      if (last && last.handId === msg.handId) {
+        state.setLastHand({ ...last, shown: { ...last.shown, [msg.seat]: msg.cards } });
+      }
+      const h = state.hand;
       if (h.handId !== msg.handId) return;
       play('flip');
       store.patchHand({ shown: { ...h.shown, [msg.seat]: msg.cards } });
@@ -416,9 +422,27 @@ function handle(msg: ServerMsg): void {
     }
 
     case 'hand_end': {
-      const mySeat = mySeatIn(useStore.getState().hand.seats);
+      const state = useStore.getState();
+      const mySeat = mySeatIn(state.hand.seats);
       const myDelta = msg.deltas.find((d) => d.seat === mySeat)?.delta ?? 0;
       play(myDelta > 0 ? 'win' : 'end');
+      // freeze the recap before the next deal wipes it: the "last hand" strip
+      // shows the winner and everyone's cards on demand
+      // (requested by notpritam, docs/FEATURES.md)
+      const h = state.hand;
+      const nameOf = (seat: number) =>
+        state.room?.players.find((p) => p.seat === seat)?.displayName ?? `Seat ${seat + 1}`;
+      store.setLastHand({
+        handId: msg.handId,
+        ts: Date.now(),
+        board: h.board,
+        board2: h.board2,
+        reveals: h.showdown?.reveals ?? [],
+        shown: h.shown,
+        deltas: msg.deltas,
+        runTwice: h.showdown?.runTwice ?? null,
+        names: Object.fromEntries(h.seats.map((s) => [s.seat, nameOf(s.seat)])),
+      });
       store.patchHand({ result: msg, deadline: null });
       // the hand key stays until the next deal so "Show cards" can still prove reveals
       return;

@@ -53,6 +53,8 @@ import { RoundTable } from '../../widgets/table/RoundTable.tsx';
 import { FloatingCards } from '../../widgets/table/FloatingCards.tsx';
 import { ChipStack } from '../../widgets/table/ChipStack.tsx';
 import { BankControls } from '../../widgets/table/BankControls.tsx';
+import { RitBoards, ShowdownCards } from '../../widgets/table/ShowdownCards.tsx';
+import { LastHandStrip } from '../../widgets/table/LastHandStrip.tsx';
 import { BrokeBuyInDialog } from '../../features/bank/BrokeBuyInDialog.tsx';
 import { InviteFriendsDialogBody } from '../../features/friends/FriendsPanel.tsx';
 import { LeaderboardTable, type LeaderboardRow } from '../leaderboard/LeaderboardPage.tsx';
@@ -64,121 +66,6 @@ import {
   type TableUtilityAction,
   type TableUtilityGroupId,
 } from './tableUi.ts';
-
-/** The hand's ending, per player: THEIR two cards, what they made, their net.
- *  Everyone sees exactly what they won or lost to, not just the winning five
- *  (requested by notpritam, docs/FEATURES.md). */
-function ShowdownCards({
-  reveals,
-  shown,
-  deltas,
-  nameOf,
-  light,
-}: {
-  reveals: { seat: number; cards: number[]; score: number }[];
-  shown: Record<number, number[]>;
-  deltas: { seat: number; delta: number }[];
-  nameOf: (seat: number) => string;
-  light: boolean;
-}) {
-  const rows: { seat: number; cards: number[]; score: number | null }[] = [
-    ...reveals.map((r) => ({ seat: r.seat, cards: r.cards, score: r.score as number | null })),
-    ...Object.entries(shown)
-      .filter(([seat]) => !reveals.some((r) => r.seat === +seat))
-      .map(([seat, cards]) => ({ seat: +seat, cards, score: null })),
-  ];
-  const deltaOf = (seat: number) => deltas.find((d) => d.seat === seat)?.delta ?? 0;
-  rows.sort((a, b) => deltaOf(b.seat) - deltaOf(a.seat));
-  if (rows.length === 0) return null;
-  return (
-    <div className="flex flex-wrap gap-2.5">
-      {rows.map((r) => {
-        const delta = deltaOf(r.seat);
-        return (
-          <div
-            key={r.seat}
-            className={cn(
-              'flex items-center gap-2.5 rounded-xl p-2 pr-3',
-              light
-                ? 'bg-white/10'
-                : 'bg-slate-100/80 ring-1 ring-slate-200/70 dark:bg-slate-800/60 dark:ring-slate-700/60',
-            )}
-          >
-            <div className="flex gap-1">
-              {r.cards.map((c) => (
-                <PlayingCard key={c} card={c} size="sm" deal />
-              ))}
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-semibold leading-tight">{nameOf(r.seat)}</div>
-              <div className={cn('text-xs', light ? 'text-white/60' : 'text-slate-500')}>
-                {r.score !== null
-                  ? HAND_CATEGORY_NAMES[handCategory(r.score)]
-                  : 'showed after folding'}
-              </div>
-            </div>
-            <div
-              className={cn(
-                'font-display text-sm font-bold',
-                delta > 0
-                  ? light
-                    ? 'text-emerald-300'
-                    : 'text-emerald-600'
-                  : delta < 0
-                    ? light
-                      ? 'text-rose-300'
-                      : 'text-rose-600'
-                    : light
-                      ? 'text-white/50'
-                      : 'text-slate-400',
-              )}
-            >
-              {delta > 0 ? '+' : ''}
-              {fmt(delta)}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Both runouts side by side with who took each half of the pot. */
-function RitBoards({
-  rt,
-  nameOf,
-  light,
-}: {
-  rt: { boards: [number[], number[]]; awards: [{ seat: number; amount: number }[], { seat: number; amount: number }[]] };
-  nameOf: (seat: number) => string;
-  light: boolean;
-}) {
-  return (
-    <div className="space-y-1.5">
-      {[0, 1].map((k) => (
-        <div key={k} className="flex flex-wrap items-center gap-1.5">
-          <span className="w-11 text-[0.65rem] font-bold uppercase tracking-wide text-fuchsia-500">
-            Run {k + 1}
-          </span>
-          {rt.boards[k]!.map((c) => (
-            <PlayingCard key={c} card={c} size="xs" deal />
-          ))}
-          <span
-            className={cn(
-              'ml-1 text-xs font-semibold',
-              light ? 'text-emerald-300' : 'text-emerald-600 dark:text-emerald-400',
-            )}
-          >
-            {rt.awards[k]!
-              .filter((a) => a.amount > 0)
-              .map((a) => `${nameOf(a.seat)} +${fmt(a.amount)}`)
-              .join(' & ')}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function useNow(tickMs = 500): number {
   const [now, setNow] = useState(Date.now());
@@ -1316,6 +1203,10 @@ export function TablePage() {
           dimBoard={notInHand}
         />
 
+        <div className="px-4 pb-2">
+          <LastHandStrip roomId={roomId!} light />
+        </div>
+
         {(showResult || !me || hasPeekContent) && (
           <div className="space-y-3 px-4 pb-6">
             {mobileResult}
@@ -1786,6 +1677,8 @@ export function TablePage() {
           {/* the control strip sits under the table so the oval keeps its space */}
           {amSpectator && spectatorPanel}
           <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} hideIdleStart />
+
+          <LastHandStrip roomId={roomId!} />
 
           {peekPanel}
 

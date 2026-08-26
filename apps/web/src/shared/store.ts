@@ -83,6 +83,22 @@ interface HandView {
   board2: CardId[];
 }
 
+/** Everything the last-hand recap needs, frozen at hand_end. */
+export interface LastHandSnap {
+  handId: string;
+  ts: number;
+  board: CardId[];
+  board2: CardId[];
+  reveals: { seat: number; cards: CardId[]; score: number }[];
+  shown: Record<number, CardId[]>;
+  deltas: { seat: number; delta: number }[];
+  runTwice: {
+    boards: [CardId[], CardId[]];
+    awards: [{ seat: number; amount: number }[], { seat: number; amount: number }[]];
+  } | null;
+  names: Record<number, string>;
+}
+
 export const emptyHand: HandView = {
   handId: null,
   seats: [],
@@ -123,6 +139,11 @@ interface Store {
   patchHand: (p: Partial<HandView>) => void;
   resetHand: (p?: Partial<HandView>) => void;
 
+  /** The previous completed hand, kept after the next deal wipes `hand` -
+   *  feeds the toggleable "last hand" recap strip. */
+  lastHand: LastHandSnap | null;
+  setLastHand: (h: LastHandSnap | null) => void;
+
   errors: string[];
   pushError: (e: string) => void;
   dismissError: () => void;
@@ -159,6 +180,8 @@ export const useStore = create<Store>()(
       hand: emptyHand,
       patchHand: (p) => set((s) => ({ hand: { ...s.hand, ...p } })),
       resetHand: (p = {}) => set({ hand: { ...emptyHand, ...p } }),
+      lastHand: null,
+      setLastHand: (lastHand) => set({ lastHand }),
 
       errors: [],
       pushError: (e) => set((s) => ({ errors: [...s.errors, e] })),
