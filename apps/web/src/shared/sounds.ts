@@ -22,7 +22,8 @@ export type SoundName =
   | 'turn'
   | 'urgent'
   | 'win'
-  | 'end';
+  | 'end'
+  | 'thunder';
 
 const VOLUME_KEY = '4am-sound-volume';
 const ENABLED_KEY = '4am-sounds';
@@ -186,6 +187,12 @@ const recipes: Record<SoundName, (c: AudioContext, t: number) => void> = {
     tone(c, t, 0.28, 620, 0.12, 'triangle', 170);
   },
   // a little victory fanfare
+  // the showdown reveal: a crack, then a long low rumble
+  thunder: (c, t) => {
+    noiseBurst(c, t, 0.1, 2400, 0.7, 0.5, 300);
+    noiseBurst(c, t + 0.05, 1.4, 140, 0.6, 0.55, 45);
+    tone(c, t + 0.05, 1.1, 55, 0.3, 'sine', 30);
+  },
   fanfare: (c, t) => {
     const notes = [523, 659, 784, 1047];
     notes.forEach((f, i) => tone(c, t + i * 0.09, i === 3 ? 0.4 : 0.12, f, 0.13, 'triangle'));

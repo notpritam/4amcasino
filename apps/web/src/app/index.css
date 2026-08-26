@@ -952,3 +952,25 @@ html.cyber body::after,
     box-shadow: 0 0 0 3px var(--color-indigo-500);
   }
 }
+
+/* the showdown lightning: two hard flashes, then a dying glow */
+@keyframes thunder-flash {
+  0% { opacity: 0; }
+  6% { opacity: 0.85; }
+  12% { opacity: 0.05; }
+  20% { opacity: 0.6; }
+  32% { opacity: 0.12; }
+  48% { opacity: 0.28; }
+  100% { opacity: 0; }
+}
+.thunder-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 30%, rgba(255, 255, 255, 0.95), rgba(167, 139, 250, 0.45) 55%, transparent 85%);
+  animation: thunder-flash 0.9s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .thunder-flash { animation-duration: 0.3s; }
+}

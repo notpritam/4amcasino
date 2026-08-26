@@ -16,6 +16,8 @@ export interface SeatView {
   avatarVersion: number;
   stack: number;
   isButton: boolean;
+  isSB: boolean;
+  isBB: boolean;
   isToAct: boolean;
   folded: boolean;
   allIn: boolean;

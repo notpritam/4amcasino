@@ -400,9 +400,14 @@ function handle(msg: ServerMsg): void {
       return;
     }
 
-    case 'showdown':
+    case 'showdown': {
+      // the big reveal: thunder + a lightning flash across the table
+      // (requested by notpritam, docs/FEATURES.md)
+      play('thunder');
+      window.dispatchEvent(new CustomEvent('4am-thunder'));
       store.patchHand({ showdown: msg });
       return;
+    }
 
     case 'hand_end': {
       const mySeat = mySeatIn(useStore.getState().hand.seats);

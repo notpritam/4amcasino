@@ -300,6 +300,13 @@ export function TablePage() {
   const desktopMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const now = useNow();
   const reduceMotion = useReducedMotion();
+  // lightning on every showdown reveal; keyed so back-to-back hands re-flash
+  const [thunderKey, setThunderKey] = useState(0);
+  useEffect(() => {
+    const boom = () => setThunderKey((k) => k + 1);
+    window.addEventListener('4am-thunder', boom);
+    return () => window.removeEventListener('4am-thunder', boom);
+  }, []);
   const unreadChat = unreadChatCount(chat.length, chatSeenCount, chatOpen);
 
   useEffect(() => {
@@ -524,6 +531,16 @@ export function TablePage() {
     }
   }, [urgent, hand.betting?.toAct, hand.deadline, hand.handId, mySeat]);
 
+  // small and big blind seats, derived like the engine does: heads-up the
+  // button IS the small blind, otherwise SB is next after the button
+  const blinds = useMemo(() => {
+    if (hand.buttonSeat === null || hand.seats.length < 2) return { sb: null, bb: null };
+    const order = [...hand.seats.map((x) => x.seat)].sort((a, b) => a - b);
+    const after = (seat: number) => order[(order.indexOf(seat) + 1) % order.length]!;
+    const sb = hand.seats.length === 2 ? hand.buttonSeat : after(hand.buttonSeat);
+    return { sb, bb: after(sb) };
+  }, [hand.buttonSeat, hand.seats]);
+
   const seatViews = useMemo((): SeatView[] => {
     if (!room) return [];
     // the chip leader: up the most against their buy-ins right now
@@ -553,6 +570,8 @@ export function TablePage() {
           pendingBuy: p.pendingBuy ?? 0,
           broke: stackShown === 0 && !(handLive && inHand),
           isButton: inHand && hand.buttonSeat === p.seat,
+          isSB: inHand && blinds.sb === p.seat,
+          isBB: inHand && blinds.bb === p.seat,
           isToAct: handLive && hand.betting?.toAct === p.seat,
           folded: !!engineSeat?.folded,
           allIn: !!engineSeat?.allIn,
@@ -567,7 +586,7 @@ export function TablePage() {
           lastAction: hand.lastActions[p.seat!],
         };
       });
-  }, [room, hand, handLive, voiceState]);
+  }, [room, hand, handLive, voiceState, blinds]);
 
   if (!room) {
     return (
@@ -852,6 +871,16 @@ export function TablePage() {
                 <RitBoards rt={hand.showdown.runTwice} nameOf={seatName} light={false} />
               </motion.div>
             )}
+            {!hand.showdown?.runTwice && hand.board.length > 0 && (
+              <motion.div variants={revealItem} className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  The table
+                </span>
+                {hand.board.map((c) => (
+                  <PlayingCard key={c} card={c} size="sm" deal />
+                ))}
+              </motion.div>
+            )}
             {hand.showdown && (
               <motion.div variants={revealItem}>
                 <ShowdownCards
@@ -989,6 +1018,14 @@ export function TablePage() {
           {hand.showdown?.runTwice && (
             <motion.div variants={revealItem}>
               <RitBoards rt={hand.showdown.runTwice} nameOf={seatName} light />
+            </motion.div>
+          )}
+          {!hand.showdown?.runTwice && hand.board.length > 0 && (
+            <motion.div variants={revealItem} className="flex items-center gap-1">
+              <span className="text-[0.6rem] uppercase tracking-wide text-white/40">Table</span>
+              {hand.board.map((c) => (
+                <PlayingCard key={c} card={c} size="xs" deal />
+              ))}
             </motion.div>
           )}
           {hand.showdown && (
@@ -1565,6 +1602,7 @@ export function TablePage() {
               notInHand && 'opacity-60 saturate-50',
             )}
           >
+            {thunderKey > 0 && <div key={thunderKey} className="thunder-flash" aria-hidden="true" />}
             {floats.map((reaction) => (
               <span
                 key={reaction.id}

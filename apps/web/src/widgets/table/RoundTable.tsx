@@ -287,12 +287,38 @@ export function RoundTable({
                     <Coins size={9} weight="fill" />
                   </span>
                 )}
+                {/* position, unmissable: D / SB / BB discs on the avatar
+                    (requested by notpritam, docs/FEATURES.md) */}
                 {p.isButton && (
                   <span
                     title="Dealer button"
-                    className="absolute -bottom-1 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-slate-800 text-[0.55rem] font-bold text-white dark:bg-slate-200 dark:text-slate-900"
+                    className="absolute -bottom-1.5 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[0.6rem] font-black text-slate-900 shadow-md ring-2 ring-slate-900/20 dark:ring-white/30"
                   >
                     D
+                  </span>
+                )}
+                {p.isSB && !p.isButton && (
+                  <span
+                    title="Small blind"
+                    className="absolute -bottom-1.5 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500 px-0.5 text-[0.55rem] font-black text-white shadow-md ring-2 ring-sky-300/40"
+                  >
+                    SB
+                  </span>
+                )}
+                {p.isBB && (
+                  <span
+                    title="Big blind"
+                    className="absolute -bottom-1.5 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[0.55rem] font-black text-white shadow-md ring-2 ring-amber-300/40"
+                  >
+                    BB
+                  </span>
+                )}
+                {p.isSB && p.isButton && (
+                  <span
+                    title="Small blind (button)"
+                    className="absolute -bottom-1.5 -left-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500 px-0.5 text-[0.55rem] font-black text-white shadow-md ring-2 ring-sky-300/40"
+                  >
+                    SB
                   </span>
                 )}
                 {p.voiceMuted && (

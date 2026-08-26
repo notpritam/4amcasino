@@ -299,6 +299,13 @@ function CharacterPreview({ cfg }: { cfg: Avatar3D }) {
 /* ── the page ───────────────────────────────────────────────────────────── */
 
 export function Table3DPage() {
+  // lightning flash on every showdown reveal (requested by notpritam)
+  const [thunderKey, setThunderKey] = useState(0);
+  useEffect(() => {
+    const boom = () => setThunderKey((k) => k + 1);
+    window.addEventListener('4am-thunder', boom);
+    return () => window.removeEventListener('4am-thunder', boom);
+  }, []);
   const { id: roomId } = useParams<{ id: string }>();
   const mountRef = useRef<HTMLDivElement>(null);
   const room = useStore((s) => s.room);
@@ -1396,6 +1403,7 @@ export function Table3DPage() {
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-[#150b26] text-white">
       <div ref={mountRef} className="absolute inset-0" />
+      {thunderKey > 0 && <div key={thunderKey} className="thunder-flash" aria-hidden="true" />}
 
       {/* HUD: top strip */}
       <div className="absolute inset-x-0 top-0 z-10 flex items-center gap-3 p-3">
