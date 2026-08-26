@@ -118,6 +118,20 @@ function migrate(db: DB): void {
   ensureColumn(db, 'rooms', 'allow_spectators', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'rooms', 'tv_replays', 'INTEGER NOT NULL DEFAULT 0');
   db.exec(`
+    CREATE TABLE IF NOT EXISTS settlements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      room_id TEXT NOT NULL,
+      low_user INTEGER NOT NULL,
+      high_user INTEGER NOT NULL,
+      amount INTEGER NOT NULL,
+      debtor INTEGER NOT NULL,
+      confirmed_low INTEGER NOT NULL DEFAULT 0,
+      confirmed_high INTEGER NOT NULL DEFAULT 0,
+      created_ts INTEGER NOT NULL,
+      settled_ts INTEGER
+    )
+  `);
+  db.exec(`
     CREATE TABLE IF NOT EXISTS friends (
       requester_id INTEGER NOT NULL,
       target_id INTEGER NOT NULL,

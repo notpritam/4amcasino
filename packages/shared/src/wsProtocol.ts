@@ -182,7 +182,7 @@ export type ServerMsg =
         awards: [{ seat: number; amount: number }[], { seat: number; amount: number }[]];
       };
     }
-  | { t: 'hand_end'; handId: string; head: string; stacks: { seat: number; stack: number }[]; deltas: { seat: number; delta: number }[] }
+  | { t: 'hand_end'; handId: string; head: string; stacks: { seat: number; stack: number }[]; deltas: { seat: number; delta: number }[]; commission?: number }
   | { t: 'cards_shown'; handId: string; seat: number; cards: CardId[] }
   | { t: 'peek_offer'; offerId: string; handId: string; fromUserId: number; fromName: string; targetSeat: number; amount: number }
   | {

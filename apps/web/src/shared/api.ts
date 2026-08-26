@@ -117,6 +117,10 @@ export const api = {
     req(`/api/rooms/${roomId}/settings`, { autoApproveBuys }, 'PUT'),
   setTvReplays: (roomId: string, tvReplays: boolean) =>
     req(`/api/rooms/${roomId}/settings`, { tvReplays }, 'PUT'),
+  myDebts: () => req('/api/me/debts'),
+  markSettled: (roomId: string, otherUserId: number) =>
+    req('/api/settlements', { roomId, otherUserId }),
+  sharedRooms: (userId: number) => req(`/api/users/${userId}/shared-rooms`),
   roomSettings: (roomId: string, actionSecs: number) =>
     req(`/api/rooms/${roomId}/settings`, { actionSecs }, 'PUT'),
 };

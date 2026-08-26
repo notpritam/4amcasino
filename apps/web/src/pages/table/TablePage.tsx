@@ -783,6 +783,11 @@ export function TablePage() {
               <motion.span variants={revealItem} className="font-display font-semibold">
                 {hand.showdown ? 'Showdown' : 'Everyone folded'}
               </motion.span>
+              {(hand.result?.commission ?? 0) > 0 && (
+                <motion.span variants={revealItem} className="text-xs text-slate-500">
+                  1% table commission · {fmt(hand.result!.commission!)} to the banker
+                </motion.span>
+              )}
               {!hand.showdown &&
                 hand.result?.deltas
                   .filter((d) => d.delta !== 0)
@@ -930,6 +935,11 @@ export function TablePage() {
             <span className="font-display font-semibold">
               {hand.showdown ? 'Showdown' : 'Everyone folded'}
             </span>
+            {(hand.result?.commission ?? 0) > 0 && (
+              <span className="text-[0.65rem] text-white/50">
+                1% commission · {fmt(hand.result!.commission!)} to the banker
+              </span>
+            )}
             {!hand.showdown && hand.result?.deltas
               .filter((d) => d.delta !== 0)
               .map((d) => (

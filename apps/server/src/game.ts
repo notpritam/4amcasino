@@ -171,6 +171,15 @@ export class GameRoom {
       this.broadcastRoomState();
       // a folded player walking away must never strand the hand
       this.hand?.onPlayerGone(userId);
+      // and the ready check must never wait on someone who already left
+      const rc = this.readyCheck;
+      if (rc && rc.eligible.has(userId)) {
+        rc.eligible.delete(userId);
+        rc.ready.delete(userId);
+        if (rc.eligible.size < 2) this.cancelReadyCheck();
+        else if (rc.ready.size === rc.eligible.size) this.resolveReadyCheck();
+        else this.broadcastReadyCheck();
+      }
     }
   }
 
@@ -726,6 +735,7 @@ class Hand {
   private ritVoters: number[] = [];
   private ritVotes = new Map<number, boolean>();
   private ritMap = new Map<number, number>();
+  private goneTimer: NodeJS.Timeout | null = null;
   private timer: NodeJS.Timeout | null = null;
   private lookup = cardLookup();
   private settlement: {
@@ -733,6 +743,7 @@ class Hand {
     deltas: { seat: number; delta: number }[];
     stacks: { seat: number; stack: number }[];
     showdown: ServerMsg | null;
+    rake: number;
   } | null = null;
 
   constructor(
@@ -1418,9 +1429,26 @@ class Hand {
     this.recoverStalledChains(false);
   }
 
-  /** A player's socket dropped: any chain stalled on them, where they folded
-   *  and escrowed their key, advances without them. */
+  /** A player's socket dropped. Before betting starts nothing is at stake, so
+   *  after a short reconnect grace the hand aborts and the auto-redeal simply
+   *  skips them - no more minutes-long waits on someone who closed the tab.
+   *  Later in the hand, chains stalled on a folded-and-escrowed seat advance
+   *  without them (requested by notpritam, docs/FEATURES.md). */
   onPlayerGone(userId: number): void {
+    const info = this.seatOf(userId);
+    if (!info) return;
+    const preBetting = () =>
+      this.phase === 'commit' || this.phase === 'shuffle' || (this.phase === 'deal' && !this.betting);
+    if (preBetting()) {
+      if (this.goneTimer) return;
+      this.goneTimer = setTimeout(() => {
+        this.goneTimer = null;
+        if (preBetting() && !this.room.isConnected(info.userId)) {
+          this.abort('player left during the deal', info.seat);
+        }
+      }, 4000);
+      return;
+    }
     if (this.phase !== 'deal' && this.phase !== 'reveal') return;
     this.recoverStalledChains(false);
   }
@@ -1559,6 +1587,16 @@ class Hand {
     const st = this.betting!;
     const board = this.currentBoard();
     const pots = computePots(st.seats);
+    // the house always gets its cut: a mandatory 1% commission comes off every
+    // pot before any award, floored per pot, and lands with the banker at
+    // finalize - the donation that keeps the table running
+    // (requested by notpritam, docs/FEATURES.md)
+    let rake = 0;
+    for (const p of pots) {
+      const cut = Math.floor(p.amount / 100);
+      p.amount -= cut;
+      rake += cut;
+    }
     const dealingOrder = this.seats.map((s) => s.seat);
     let awards: Map<number, number>;
     let showdownMsg: ServerMsg | null = null;
@@ -1628,10 +1666,11 @@ class Hand {
 
     const deltas = st.seats.map((s) => ({ seat: s.seat, delta: (awards.get(s.seat) ?? 0) - s.total }));
     const stacks = st.seats.map((s) => ({ seat: s.seat, stack: s.stack + (awards.get(s.seat) ?? 0) }));
-    this.settlement = { awards, deltas, stacks, showdown: showdownMsg };
+    this.settlement = { awards, deltas, stacks, showdown: showdownMsg, rake };
     this.appendServer('settlement', {
       board,
       ...(board2 ? { board2 } : {}),
+      ...(rake > 0 ? { commission: rake } : {}),
       awards: [...awards.entries()].map(([seat, amount]) => ({ seat, amount })),
       deltas,
       reveals:
@@ -1686,8 +1725,9 @@ class Hand {
     if (this.phase === 'done' || !this.settlement) return;
     this.clearTimer();
     this.phase = 'done';
-    const { deltas, stacks } = this.settlement;
+    const { deltas, stacks, rake } = this.settlement;
     const head = this.transcript.head;
+    const room = getRoom(this.db, this.roomId);
     const write = this.db.transaction(() => {
       // settle by DELTA, never by absolute stack: the hand's snapshot predates
       // anything credited while it ran (a mid-hand buy, a banker revert), and
@@ -1711,12 +1751,27 @@ class Hand {
           ref: head,
         });
       }
+      // the raked chips move to the banker on the same ledger, same hand ref,
+      // so every chip stays accounted for and settle-up still balances
+      if (rake > 0 && room) {
+        this.db
+          .prepare('UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?')
+          .run(rake, this.roomId, room.banker_id);
+        appendLedger(this.db, {
+          roomId: this.roomId,
+          userId: room.banker_id,
+          delta: rake,
+          kind: 'commission',
+          ref: head,
+          note: '1% table commission - keeps the lights on',
+        });
+      }
       this.db
         .prepare('INSERT INTO transcripts (hand_id, room_id, head, entries, ts) VALUES (?, ?, ?, ?, ?)')
         .run(this.id, this.roomId, head, JSON.stringify(this.transcript.entries), Date.now());
     });
     write();
-    this.room.broadcast({ t: 'hand_end', handId: this.id, head, stacks, deltas });
+    this.room.broadcast({ t: 'hand_end', handId: this.id, head, stacks, deltas, commission: rake });
     this.onDone();
   }
 }

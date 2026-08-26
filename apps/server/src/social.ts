@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from './db.js';
 import { ONLINE_WINDOW_MS, requireUser } from './auth.js';
-import { canBank, getRoom, isMember, isSpectator, roomEvents } from './rooms.js';
+import { canBank, getRoom, isMember, isSpectator, roomEvents, roomPlayers } from './rooms.js';
 import { appendLedger } from './ledger.js';
 import { activeHands } from './game.js';
 import { randomBytes } from 'node:crypto';
@@ -434,5 +434,173 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
     apply();
     roomEvents.emit('changed', id);
     return { ok: true, reversed: entries.length };
+  });
+
+  // ---- profile settle-up: cross-room debts + two-sided settlement marks ----
+  // On your own profile you see, per room and per friend, who owes whom what
+  // to conclude the game. Both sides mark "settled" and the debt resolves on
+  // the platform too. Requested by notpritam, docs/FEATURES.md.
+
+  /** The room's who-owes-whom pairing, greedy largest-first for determinism. */
+  const roomDebts = (roomId: string): { from: number; to: number; amount: number }[] => {
+    const nets = roomPlayers(db, roomId)
+      .map((p) => ({ userId: p.userId, net: p.stack - p.totalBought }))
+      .filter((n) => n.net !== 0);
+    const debtors = nets
+      .filter((n) => n.net < 0)
+      .map((n) => ({ userId: n.userId, amt: -n.net }))
+      .sort((a, b) => b.amt - a.amt || a.userId - b.userId);
+    const creditors = nets
+      .filter((n) => n.net > 0)
+      .map((n) => ({ userId: n.userId, amt: n.net }))
+      .sort((a, b) => b.amt - a.amt || a.userId - b.userId);
+    const out: { from: number; to: number; amount: number }[] = [];
+    let i = 0;
+    let j = 0;
+    while (i < debtors.length && j < creditors.length) {
+      const pay = Math.min(debtors[i]!.amt, creditors[j]!.amt);
+      if (pay > 0) out.push({ from: debtors[i]!.userId, to: creditors[j]!.userId, amount: pay });
+      debtors[i]!.amt -= pay;
+      creditors[j]!.amt -= pay;
+      if (debtors[i]!.amt === 0) i++;
+      if (creditors[j]!.amt === 0) j++;
+    }
+    return out;
+  };
+
+  const pairOf = (a: number, b: number) => (a < b ? [a, b] : [b, a]) as [number, number];
+
+  const settledSum = (roomId: string, a: number, b: number): number => {
+    const [low, high] = pairOf(a, b);
+    const row = db
+      .prepare(
+        'SELECT COALESCE(SUM(amount), 0) as total FROM settlements WHERE room_id = ? AND low_user = ? AND high_user = ? AND settled_ts IS NOT NULL',
+      )
+      .get(roomId, low, high) as { total: number };
+    return row.total;
+  };
+
+  app.get('/api/me/debts', authed, async (req) => {
+    const rooms = db
+      .prepare(
+        `SELECT r.id, r.name FROM rooms r JOIN room_players rp ON rp.room_id = r.id
+         WHERE rp.user_id = ? AND r.voided = 0 ORDER BY r.created_at DESC`,
+      )
+      .all(req.userId) as { id: string; name: string }[];
+    const nameOf = db.prepare(
+      'SELECT COALESCE(display_name, username) as name, avatar_version as avatarVersion FROM users WHERE id = ?',
+    );
+    const rows: unknown[] = [];
+    const settled: unknown[] = [];
+    for (const room of rooms) {
+      for (const d of roomDebts(room.id)) {
+        if (d.from !== req.userId && d.to !== req.userId) continue;
+        const other = d.from === req.userId ? d.to : d.from;
+        const outstanding = d.amount - settledSum(room.id, d.from, d.to);
+        const [low, high] = pairOf(d.from, d.to);
+        const open = db
+          .prepare(
+            'SELECT id, amount, confirmed_low, confirmed_high FROM settlements WHERE room_id = ? AND low_user = ? AND high_user = ? AND settled_ts IS NULL',
+          )
+          .get(room.id, low, high) as
+          | { id: number; amount: number; confirmed_low: number; confirmed_high: number }
+          | undefined;
+        if (outstanding <= 0 && !open) continue;
+        const info = nameOf.get(other) as { name: string; avatarVersion: number };
+        const myConfirmed = open ? (req.userId === low ? !!open.confirmed_low : !!open.confirmed_high) : false;
+        const otherConfirmed = open ? (other === low ? !!open.confirmed_low : !!open.confirmed_high) : false;
+        rows.push({
+          roomId: room.id,
+          roomName: room.name,
+          otherUserId: other,
+          otherName: info.name,
+          otherAvatarVersion: info.avatarVersion,
+          direction: d.from === req.userId ? 'owe' : 'owed',
+          amount: outstanding > 0 ? outstanding : (open?.amount ?? 0),
+          myConfirmed,
+          otherConfirmed,
+        });
+      }
+      const done = db
+        .prepare(
+          `SELECT room_id as roomId, low_user as low, high_user as high, amount, debtor, settled_ts as ts
+           FROM settlements WHERE room_id = ? AND settled_ts IS NOT NULL AND (low_user = ? OR high_user = ?)
+           ORDER BY settled_ts DESC LIMIT 5`,
+        )
+        .all(room.id, req.userId, req.userId) as {
+        roomId: string;
+        low: number;
+        high: number;
+        amount: number;
+        debtor: number;
+        ts: number;
+      }[];
+      for (const row of done) {
+        const other = row.low === req.userId ? row.high : row.low;
+        const info = nameOf.get(other) as { name: string; avatarVersion: number };
+        settled.push({
+          roomId: row.roomId,
+          roomName: room.name,
+          otherUserId: other,
+          otherName: info.name,
+          direction: row.debtor === req.userId ? 'owe' : 'owed',
+          amount: row.amount,
+          ts: row.ts,
+        });
+      }
+    }
+    return { debts: rows, settled };
+  });
+
+  app.post('/api/settlements', authed, async (req, reply) => {
+    const parsed = z.object({ roomId: z.string(), otherUserId: z.number().int() }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+    const { roomId, otherUserId } = parsed.data;
+    if (!getRoom(db, roomId)) return reply.code(404).send({ error: 'no such room' });
+    if (!isMember(db, roomId, req.userId) || !isMember(db, roomId, otherUserId))
+      return reply.code(403).send({ error: 'both players must be in this room' });
+    const [low, high] = pairOf(req.userId, otherUserId);
+    const mySide = req.userId === low ? 'confirmed_low' : 'confirmed_high';
+    const open = db
+      .prepare(
+        'SELECT id, confirmed_low, confirmed_high FROM settlements WHERE room_id = ? AND low_user = ? AND high_user = ? AND settled_ts IS NULL',
+      )
+      .get(roomId, low, high) as { id: number; confirmed_low: number; confirmed_high: number } | undefined;
+    if (open) {
+      db.prepare(`UPDATE settlements SET ${mySide} = 1 WHERE id = ?`).run(open.id);
+      const both =
+        (mySide === 'confirmed_low' ? 1 : open.confirmed_low) &&
+        (mySide === 'confirmed_high' ? 1 : open.confirmed_high);
+      if (both) db.prepare('UPDATE settlements SET settled_ts = ? WHERE id = ?').run(Date.now(), open.id);
+      return { ok: true, settled: !!both };
+    }
+    // first mark: pin the settlement to the CURRENT outstanding amount
+    const debt = roomDebts(roomId).find(
+      (d) =>
+        (d.from === req.userId && d.to === otherUserId) ||
+        (d.from === otherUserId && d.to === req.userId),
+    );
+    const outstanding = debt ? debt.amount - settledSum(roomId, debt.from, debt.to) : 0;
+    if (!debt || outstanding <= 0) return reply.code(400).send({ error: 'nothing to settle between you two here' });
+    db.prepare(
+      `INSERT INTO settlements (room_id, low_user, high_user, amount, debtor, ${mySide}, created_ts)
+       VALUES (?, ?, ?, ?, ?, 1, ?)`,
+    ).run(roomId, low, high, outstanding, debt.from, Date.now());
+    return { ok: true, settled: false };
+  });
+
+  /** Rooms two players share - the places one can send the other points. */
+  app.get('/api/users/:id/shared-rooms', authed, async (req, reply) => {
+    const otherId = Number((req.params as { id: string }).id);
+    if (!Number.isInteger(otherId)) return reply.code(400).send({ error: 'bad user id' });
+    const rooms = db
+      .prepare(
+        `SELECT r.id, r.name, me.stack as myStack FROM rooms r
+         JOIN room_players me ON me.room_id = r.id AND me.user_id = ?
+         JOIN room_players them ON them.room_id = r.id AND them.user_id = ?
+         WHERE r.voided = 0 ORDER BY r.created_at DESC`,
+      )
+      .all(req.userId, otherId) as { id: string; name: string; myStack: number }[];
+    return { rooms: rooms.map((r) => ({ ...r, handActive: activeHands.has(r.id) })) };
   });
 }
