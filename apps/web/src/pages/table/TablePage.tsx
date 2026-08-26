@@ -1486,6 +1486,9 @@ export function TablePage() {
                     card={hand.board[index]}
                     size="table"
                     deal
+                    // the three flop cards land together, so cascade them; the
+                    // turn and river arrive alone and flip immediately
+                    dealDelay={hand.board.length === 3 ? index * 0.16 : 0}
                   />
                 ) : (
                   <div

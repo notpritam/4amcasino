@@ -74,7 +74,8 @@ export function RoundTable({
   const n = Math.max(order.length, 1);
   const angleOf = (idx: number) => (Math.PI / 180) * (90 + (idx / n) * 360);
   const RX = 45;
-  const RY = 34;
+  // bottom seats sit a touch lower so your pod never crowds the board
+  const ry = (a: number) => (Math.sin(a) > 0 ? 38 : 33);
   // an unseated member sees where they can join: one + per cyclic gap that
   // still has a free seat number in it, placed between the neighbors
   const sitSpots: { seat: number; x: number; y: number }[] = [];
@@ -94,7 +95,7 @@ export function RoundTable({
         }
         if (free !== null) {
           const a = (Math.PI / 180) * (90 + ((i + 0.5) / n) * 360);
-          sitSpots.push({ seat: free, x: 50 + RX * Math.cos(a), y: 50 + RY * Math.sin(a) });
+          sitSpots.push({ seat: free, x: 50 + RX * Math.cos(a), y: 50 + ry(a) * Math.sin(a) });
         }
       }
     }
@@ -149,7 +150,7 @@ export function RoundTable({
         const seat = p.seat;
         const a = angleOf(i);
         const x = 50 + RX * Math.cos(a);
-        const y = 50 + RY * Math.sin(a);
+        const y = 50 + ry(a) * Math.sin(a);
         const committed = committedBySeat[seat] ?? 0;
         const bet = { x: 50 + 27 * Math.cos(a), y: 50 + 19 * Math.sin(a) };
         const isMe = p.userId === myUserId;

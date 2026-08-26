@@ -26,4 +26,6 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | 3D fun: live character preview, glow-trim + blast customisation, tap-to-shove pokes (POW), fold slumps, bust-out blasts, overhead turn arrow | **notpritam** |
 | 3D casino room: carpet, neon walls, suit signs, house sign, slot machines, bar, chandelier | **notpritam** |
 | Living casino ambience: spinning roulette, orbiting holo cards, blinking JACKPOT, sweeping spotlights, dust motes, wall art, bar cat | **notpritam** |
+| Card reveal choreography: board cards flip back-to-face with a cascading flop, in 2D and in the 3D world (drop + flip onto the felt) | **notpritam** |
+| New-design landing page (round isometric table preview, 3D world story) and README refresh with fresh screenshots | **notpritam** |
 | Everything before 2026-08-24 (mental poker core, ledger and banking, friends and spectating, cyberpunk theme, MCP seat, fairness tour, auto-approve buys, ...) | **notpritam** |

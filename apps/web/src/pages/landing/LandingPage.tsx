@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   SpeakerHigh,
   UsersThree,
+  Cube,
   Waveform,
 } from '@phosphor-icons/react';
 import { cardFromName } from '@4am/shared';
@@ -128,19 +129,28 @@ function LiveTablePreview() {
           </div>
         </div>
 
-        <div className="landing-table">
-          <div className="grid grid-cols-3 gap-2 sm:gap-3">
-            {players.map((player, index) => (
-              <Player
-                key={player.name}
-                player={player}
-                active={index === 1}
-                delay={0.48 + index * 0.09}
-              />
-            ))}
-          </div>
+        <div className="landing-table relative">
+          {/* the isometric round table, same as the real game */}
+          <div className="landing-oval-side" aria-hidden="true" />
+          <div className="landing-oval-rim" aria-hidden="true" />
+          <div className="landing-oval-felt" aria-hidden="true" />
+          {players.map((player, index) => (
+            <div
+              key={player.name}
+              className="landing-seat"
+              style={
+                [
+                  { left: '2%', top: '20%' },
+                  { left: '50%', top: '4%', transform: 'translateX(-50%)' },
+                  { right: '2%', top: '20%' },
+                ][index]
+              }
+            >
+              <Player player={player} active={index === 1} delay={0.48 + index * 0.09} />
+            </div>
+          ))}
 
-          <div className="flex flex-1 flex-col items-center justify-center py-7 sm:py-9">
+          <div className="relative z-[1] flex flex-1 flex-col items-center justify-center py-7 sm:py-9">
             <motion.div
               initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -348,6 +358,35 @@ function LedgerVisual() {
   );
 }
 
+function WorldVisual() {
+  return (
+    <div
+      className="landing-visual relative overflow-hidden bg-[radial-gradient(circle_at_50%_20%,#2b1650,#150b26_70%)]"
+      aria-label="The 3D casino world"
+    >
+      <span className="cyber-comment" aria-hidden="true">// world_3d</span>
+      <div className="absolute left-[12%] right-[12%] top-[38%] h-[34%] rounded-[50%] bg-violet-400/60 shadow-[0_14px_0_rgba(76,29,149,0.55)]" />
+      <div className="absolute left-[14.5%] right-[14.5%] top-[41%] h-[29%] rounded-[50%] bg-[#241245] shadow-[inset_0_4px_16px_rgba(0,0,0,0.6)]" />
+      {[
+        ['#a78bfa', '18%', '30%'],
+        ['#e879f9', '47%', '18%'],
+        ['#34d399', '74%', '30%'],
+      ].map(([color, left, top]) => (
+        <div key={color as string} className="absolute" style={{ left: left as string, top: top as string }}>
+          <div className="h-7 w-5 rounded-full" style={{ backgroundColor: color as string }} />
+          <div className="mx-auto -mt-8 h-4 w-4 rounded-full" style={{ backgroundColor: color as string }} />
+        </div>
+      ))}
+      <span className="absolute right-[10%] top-[12%] font-display text-sm font-bold tracking-[0.2em] text-amber-200/90 [text-shadow:0_0_14px_rgba(251,191,36,0.8)]">
+        JACKPOT
+      </span>
+      <span className="absolute bottom-[14%] left-1/2 -translate-x-1/2 rounded-full bg-fuchsia-500/90 px-3 py-1 text-[0.68rem] font-bold text-white">
+        🎭 26 emotes · slaps · chip throws
+      </span>
+    </div>
+  );
+}
+
 export function LandingPage() {
   const token = useStore((state) => state.auth.token);
   const playHref = token ? '/lobby' : '/login';
@@ -508,9 +547,25 @@ export function LandingPage() {
               </Reveal>
             </article>
 
-            <article className="landing-story-grid">
+            <article className="landing-story-grid landing-story-reverse">
+              <Reveal delay={0.08}>
+                <WorldVisual />
+              </Reveal>
               <Reveal className="landing-story-copy">
                 <span className="landing-story-number">03</span>
+                <Cube size={22} weight="duotone" className="mt-10 text-indigo-300" />
+                <h3 className="landing-story-title">Step into the casino.</h3>
+                <p className="landing-story-body">
+                  Every table has a 3D world: a neon casino room where your customised character
+                  sits, dances, flexes, and celebrates the pot. Shove a friend, throw a chip at
+                  them, go out with a blast. Same hand, same proofs, just louder.
+                </p>
+              </Reveal>
+            </article>
+
+            <article className="landing-story-grid">
+              <Reveal className="landing-story-copy">
+                <span className="landing-story-number">04</span>
                 <Receipt size={22} weight="duotone" className="mt-10 text-indigo-300" />
                 <h3 className="landing-story-title">Finish with one clean receipt.</h3>
                 <p className="landing-story-body">

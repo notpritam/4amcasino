@@ -1,4 +1,4 @@
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { RANKS, SUITS, rankOf, suitOf, type CardId } from '@4am/shared';
 import { cn } from '../../shared/lib/cn.ts';
 import { useStore } from '../../shared/store.ts';
@@ -34,15 +34,19 @@ export function PlayingCard({
   faceDown = false,
   size = 'md',
   deal = false,
+  dealDelay = 0,
   className,
 }: {
   card?: CardId;
   faceDown?: boolean;
   size?: keyof typeof sizes;
   deal?: boolean;
+  /** Seconds to hold before the flip — lets a flop cascade left to right. */
+  dealDelay?: number;
   className?: string;
 }) {
   const { cardBack, fourColor } = useStore((s) => s.prefs);
+  const reduce = useReducedMotion();
   if (faceDown || card === undefined) {
     return (
       <div
@@ -61,34 +65,60 @@ export function PlayingCard({
   const rank = RANKS[rankOf(card)]!;
   const suitIdx = suitOf(card);
   const glyph = SUIT_GLYPHS[suitIdx]!;
+  const flip = deal && !reduce;
+  // a dealt card lands back-first and flips over: the wrapper holds perspective,
+  // the inner turns 180° with both faces backface-hidden so you see back → face
+  // (real reveal animation requested by notpritam, docs/FEATURES.md)
   return (
     <motion.div
-      initial={deal ? { rotateY: 90, scale: 0.85, opacity: 0 } : false}
-      animate={{ rotateY: 0, scale: 1, opacity: 1 }}
-      transition={{ type: 'spring', stiffness: 360, damping: 26 }}
-      className={cn(
-        sizes[size],
-        'relative shrink-0 bg-white shadow-sm ring-1 ring-slate-200 select-none',
-        (fourColor ? fourColorClasses : twoColor)[suitIdx],
-        className,
-      )}
+      initial={flip ? { y: -14, opacity: 0 } : deal ? { opacity: 0 } : false}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.25, delay: dealDelay, ease: 'easeOut' }}
+      style={{ perspective: 640 }}
+      className={cn(sizes[size], 'relative shrink-0 select-none', className)}
       aria-label={`${rank}${SUITS[suitIdx]}`}
     >
-      <div className="absolute left-1 top-0.5 font-display font-bold leading-tight">
-        {rank}
-        <div className="-mt-0.5">{glyph}</div>
-      </div>
-      {(size === 'md' || size === 'lg' || size === 'table') && (
-        <div className={cn('absolute inset-0 flex items-center justify-center', centerSizes[size])}>
-          {glyph}
+      <motion.div
+        initial={flip ? { rotateY: 180 } : false}
+        animate={{ rotateY: 0 }}
+        transition={{ type: 'spring', stiffness: 190, damping: 21, delay: dealDelay + 0.1 }}
+        style={{ transformStyle: 'preserve-3d' }}
+        className="absolute inset-0"
+      >
+        <div
+          className={cn(
+            'absolute inset-0 rounded-[inherit] bg-white shadow-sm ring-1 ring-slate-200 [backface-visibility:hidden]',
+            (fourColor ? fourColorClasses : twoColor)[suitIdx],
+          )}
+        >
+          <div className="absolute left-1 top-0.5 font-display font-bold leading-tight">
+            {rank}
+            <div className="-mt-0.5">{glyph}</div>
+          </div>
+          {(size === 'md' || size === 'lg' || size === 'table') && (
+            <div
+              className={cn('absolute inset-0 flex items-center justify-center', centerSizes[size])}
+            >
+              {glyph}
+            </div>
+          )}
+          {size !== 'xl' && (
+            <div className="absolute bottom-0.5 right-1 rotate-180 font-display font-bold leading-tight">
+              {rank}
+              <div className="-mt-0.5">{glyph}</div>
+            </div>
+          )}
         </div>
-      )}
-      {size !== 'xl' && (
-        <div className="absolute bottom-0.5 right-1 rotate-180 font-display font-bold leading-tight">
-          {rank}
-          <div className="-mt-0.5">{glyph}</div>
-        </div>
-      )}
+        {flip && (
+          <div
+            className={cn(
+              'card-back absolute inset-0 rounded-[inherit] shadow-sm ring-1 ring-black/10 [backface-visibility:hidden] [transform:rotateY(180deg)]',
+              `card-back-${cardBack}`,
+            )}
+            aria-hidden="true"
+          />
+        )}
+      </motion.div>
     </motion.div>
   );
 }

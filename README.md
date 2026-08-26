@@ -1,6 +1,6 @@
 # 4AM Casino
 
-**Provably-fair Texas Hold'em for friend groups. Nobody sees a card they shouldn't — not even the server.**
+**Provably-fair Texas Hold'em for friend groups. Nobody sees a card they shouldn't — not even the server. Now with a 3D casino you can walk around in.**
 
 [**Play it live →**](https://poker.notpritam.in) · [How it's fair (60s animated tour)](https://poker.notpritam.in/fair) · [Give an AI a seat](apps/mcp/README.md) · [MIT licensed](LICENSE)
 
@@ -20,16 +20,29 @@ No real payments, ever.
 
 | The table | The fairness tour |
 | --- | --- |
-| ![A hand in progress on the wireframe-grid table](docs/media/table.png) | ![The animated mental-poker explainer](docs/media/fair.png) |
+| ![A hand in progress on the round isometric table](docs/media/table.png) | ![The animated mental-poker explainer](docs/media/fair.png) |
+
+![The 3D casino: characters around a purple table, slot machines and a roulette wheel behind them](docs/media/world3d.jpg)
 
 ## What's inside
 
-**The game.** No-limit Hold'em with a turn timer the banker picks (15s to no-limit),
-one-tap quick bets and pre-selected actions so you never stall the table, auto-deal when the
-banker is online, winner-reveal choreography with plain-English reasoning for why the hand won,
-full hand replays rebuilt from the signed game record, sit-out, four card-back colorways and a
-4-color deck option, and three themes — the default cyberpunk terminal look, plus light and
-dark.
+**The game.** No-limit Hold'em on a round isometric table where seats arrange themselves
+live and yours is always bottom-center. A turn timer the banker picks (15s to no-limit),
+one-tap quick bets and pre-selected actions so you never stall the table, a blinking
+can't-miss-it highlight on whoever's turn it is, chip stacks that slide to the pot and sweep
+in at street end, board cards that flip over back-to-face with a cascading flop, big
+draggable hole cards, auto-deal when the banker is online, winner-reveal choreography with
+plain-English reasoning for why the hand won, full hand replays rebuilt from the signed game
+record, sit-out, four card-back colorways and a 4-color deck option, and three themes — the
+default cyberpunk terminal look, plus light and dark.
+
+**The world.** Every table has a [three.js](https://threejs.org) casino behind it — hit the
+cube icon and you're standing in it: a purple-neon room with slot machines, a roulette wheel,
+a bar (with a cat), and everyone at the table as a customisable character (colors, glow trim,
+heads, hats, victory blasts) that the whole room sees. 26 broadcast emotes from wave to
+levitate, mischief on tap — shove a friend, slap them, throw a chip at them — fold slumps,
+bust-out explosions you pick yourself, and free camera flight with one-tap presets. Same
+hand, same proofs, just louder.
 
 **The people.** Friends with live presence, table invites (with an opt-in auto-join), public
 tables listed in every lobby or private 6-letter codes, watch-only spectator links where

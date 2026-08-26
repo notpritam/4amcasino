@@ -821,6 +821,27 @@ export function Table3DPage() {
     const charBySeat = new Map<number, THREE.Group>();
     const homeBySeat = new Map<number, THREE.Vector3>();
     const seen = new Set<string>();
+    // newly dealt cards drop onto the felt and flip from back to face; a
+    // rebuild mid-flip just snaps the fresh mesh to its landed pose
+    const cardAnims: {
+      mesh: THREE.Mesh;
+      t0: number;
+      dur: number;
+      baseY: number;
+      baseRX: number;
+    }[] = [];
+    const spawnCard = (mesh: THREE.Mesh, key: string, delayMs: number) => {
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      mesh.visible = false;
+      cardAnims.push({
+        mesh,
+        t0: performance.now() + delayMs,
+        dur: 520,
+        baseY: mesh.position.y,
+        baseRX: mesh.rotation.x,
+      });
+    };
     const particles: { pts: THREE.Points; vel: Float32Array; t0: number; dur: number }[] = [];
 
     const burst = (at: THREE.Vector3, color: number, count: number, spread: number, up: number) => {
@@ -941,7 +962,12 @@ export function Table3DPage() {
       }
     };
     window.addEventListener('4am-emote', onEmote);
-    (window as unknown as Record<string, unknown>).__dbg = { anims, charBySeat, homeBySeat };
+    (window as unknown as Record<string, unknown>).__dbg = {
+      anims,
+      charBySeat,
+      homeBySeat,
+      cardAnims,
+    };
 
     /* tap a player to shove them (a click, not an orbit-drag) */
     const ray = new THREE.Raycaster();
@@ -1122,6 +1148,8 @@ export function Table3DPage() {
         cardMesh.position.x = (i - 2) * 0.72;
         cardMesh.position.z = 0.1;
         dynamic.add(cardMesh);
+        // the flop cascades left to right; turn and river flip on arrival
+        spawnCard(cardMesh, h.handId ? `${h.handId}:b:${i}` : '', h.board.length === 3 ? i * 150 : 0);
       });
       const mySeatNow = r.players.find((p) => p.userId === myId)?.seat ?? null;
       if (mySeatNow !== null && h.myCards.length > 0 && h.handId) {
@@ -1130,6 +1158,7 @@ export function Table3DPage() {
           mine.position.x = (i - 0.5) * 0.8;
           mine.position.z = 2.0;
           dynamic.add(mine);
+          spawnCard(mine, `${h.handId}:mine:${i}`, i * 140);
         });
       }
 
@@ -1197,6 +1226,26 @@ export function Table3DPage() {
         if (armR) armR.rotation.set(0, 0, 0.16 - Math.sin(t * 1.1 + seat) * 0.05);
         if (headObj) headObj.rotation.set(0, Math.sin(t * 0.4 + seat * 2) * 0.22, 0);
         char.scale.setScalar(1 + Math.sin(t * 1.3 + seat) * 0.012);
+      }
+      // dealt cards: drop from above while flipping face-down → face-up
+      for (let i = cardAnims.length - 1; i >= 0; i--) {
+        const ca = cardAnims[i]!;
+        const cp = (nowMs - ca.t0) / ca.dur;
+        if (cp < 0) {
+          ca.mesh.visible = false;
+          continue;
+        }
+        if (cp >= 1 || !ca.mesh.parent) {
+          ca.mesh.visible = true;
+          ca.mesh.position.y = ca.baseY;
+          ca.mesh.rotation.x = ca.baseRX;
+          cardAnims.splice(i, 1);
+          continue;
+        }
+        ca.mesh.visible = true;
+        const ease = 1 - Math.pow(1 - cp, 3);
+        ca.mesh.position.y = ca.baseY + (1 - ease) * 0.8;
+        ca.mesh.rotation.x = ca.baseRX + (1 - ease) * Math.PI;
       }
       for (let i = anims.length - 1; i >= 0; i--) {
         const anim = anims[i]!;
