@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../../shared/api.ts';
 import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
+import { useAsyncGuard } from '../../shared/lib/useAsyncGuard.ts';
 import { Badge, Button, Dialog, Input } from '../../shared/ui/index.tsx';
 import { CaretDown, Coins, HandCoins, Tray } from '@phosphor-icons/react';
 
@@ -35,6 +36,10 @@ export function BankControls({
   const [note, setNote] = useState('');
   const [sent, setSent] = useState(false);
   const [requests, setRequests] = useState<BuyRequest[]>([]);
+  // one in-flight guard per money action, so a double-tap cannot buy or send twice
+  const buyGuard = useAsyncGuard();
+  const sendGuard = useAsyncGuard();
+  const [deciding, setDeciding] = useState<Set<number>>(new Set());
   const [hubOpen, setHubOpen] = useState(false);
   const hubTriggerRef = useRef<HTMLButtonElement>(null);
   const firstHubActionRef = useRef<HTMLButtonElement>(null);
@@ -80,27 +85,40 @@ export function BankControls({
     });
   }
 
-  async function buy(e: React.FormEvent) {
+  function buy(e: React.FormEvent) {
     e.preventDefault();
-    try {
-      await api.buy(roomId, amount, note || undefined);
-      setSent(true);
-      setTimeout(() => {
-        setBuyOpen(false);
-        setSent(false);
-        setNote('');
-      }, 1200);
-    } catch (err) {
-      pushError(err instanceof Error ? err.message : 'buy failed');
-    }
+    // the guard holds the button until the request settles, so the second tap
+    // of a double-tap never becomes a second buy-in
+    buyGuard.run(async () => {
+      try {
+        await api.buy(roomId, amount, note || undefined);
+        setSent(true);
+        setTimeout(() => {
+          setBuyOpen(false);
+          setSent(false);
+          setNote('');
+        }, 1200);
+      } catch (err) {
+        pushError(err instanceof Error ? err.message : 'buy failed');
+      }
+    });
   }
 
   async function decide(id: number, approve: boolean) {
+    // a second tap on Approve used to push the buy through twice
+    if (deciding.has(id)) return;
+    setDeciding((d) => new Set(d).add(id));
     try {
       await api.approve(roomId, id, approve);
       setRequests((rs) => rs.filter((r) => r.id !== id));
     } catch (err) {
       pushError(err instanceof Error ? err.message : 'approval failed');
+    } finally {
+      setDeciding((d) => {
+        const next = new Set(d);
+        next.delete(id);
+        return next;
+      });
     }
   }
 
@@ -237,8 +255,8 @@ export function BankControls({
                 placeholder="paid via UPI"
               />
             </label>
-            <Button type="submit" className="w-full">
-              Request {fmt(amount)} points
+            <Button type="submit" className="w-full" disabled={buyGuard.busy}>
+              {buyGuard.busy ? 'Requesting…' : `Request ${fmt(amount)} points`}
             </Button>
           </form>
         )}
@@ -252,17 +270,19 @@ export function BankControls({
             onSubmit={(e) => {
               e.preventDefault();
               if (sendTo === '') return;
-              void api
-                .transfer(roomId, sendTo, sendAmount, sendNote || undefined)
-                .then(() => {
-                  setSendDone('Sent. It is on the ledger.');
-                  setTimeout(() => {
-                    setSendOpen(false);
-                    setSendDone(null);
-                    setSendNote('');
-                  }, 1200);
-                })
-                .catch((err) => pushError(err instanceof Error ? err.message : 'transfer failed'));
+              sendGuard.run(() =>
+                api
+                  .transfer(roomId, sendTo, sendAmount, sendNote || undefined)
+                  .then(() => {
+                    setSendDone('Sent. It is on the ledger.');
+                    setTimeout(() => {
+                      setSendOpen(false);
+                      setSendDone(null);
+                      setSendNote('');
+                    }, 1200);
+                  })
+                  .catch((err) => pushError(err instanceof Error ? err.message : 'transfer failed')),
+              );
             }}
             className="space-y-3"
           >
@@ -305,8 +325,8 @@ export function BankControls({
                 placeholder="loan until next buy-in"
               />
             </label>
-            <Button type="submit" className="w-full" disabled={sendTo === ''}>
-              Send {fmt(sendAmount)}
+            <Button type="submit" className="w-full" disabled={sendTo === '' || sendGuard.busy}>
+              {sendGuard.busy ? 'Sending…' : `Send ${fmt(sendAmount)}`}
             </Button>
           </form>
         )}
@@ -422,10 +442,10 @@ export function BankControls({
                   </div>
                   {r.note && <div className="text-xs text-slate-500">{r.note}</div>}
                 </div>
-                <Button variant="danger" onClick={() => decide(r.id, false)}>
+                <Button variant="danger" disabled={deciding.has(r.id)} onClick={() => void decide(r.id, false)}>
                   Reject
                 </Button>
-                <Button variant="success" onClick={() => decide(r.id, true)}>
+                <Button variant="success" disabled={deciding.has(r.id)} onClick={() => void decide(r.id, true)}>
                   Approve
                 </Button>
               </div>

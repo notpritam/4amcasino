@@ -191,6 +191,44 @@ describe('user profile page data', () => {
     expect(own.transactions).toHaveLength(3);
   });
 
+  it('treats an instant repeat buy-in as the same buy, not a second one', async () => {
+    const host = await user('dedup1');
+    const room = (
+      await ctx.app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: auth(host.token),
+        payload: { name: 'dd', sb: 1, bb: 2 },
+      })
+    ).json();
+    const buy = () =>
+      ctx.app.inject({
+        method: 'POST',
+        url: `/api/rooms/${room.id}/buy`,
+        headers: auth(host.token),
+        payload: { amount: 500 },
+      });
+
+    const first = (await buy()).json();
+    const second = (await buy()).json();
+    // the double-tap gets the first request back rather than creating another
+    expect(second.duplicate).toBe(true);
+    expect(second.id).toBe(first.id);
+    const rows = ctx.db
+      .prepare('SELECT COUNT(*) as n FROM buy_requests WHERE room_id = ? AND user_id = ?')
+      .get(room.id, host.userId) as { n: number };
+    expect(rows.n).toBe(1);
+
+    // a different amount is a different intent and still goes through
+    const other = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/buy`,
+      headers: auth(host.token),
+      payload: { amount: 250 },
+    });
+    expect(other.json().duplicate).toBeUndefined();
+  });
+
   it('charges house dues to the players who won the raked pots', async () => {
     const winner = await user('hd1');
     const loser = await user('hd2');

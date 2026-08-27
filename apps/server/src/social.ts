@@ -339,6 +339,17 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
       .get(id, req.userId) as { stack: number } | undefined;
     if (!sender || sender.stack < parsed.data.amount)
       return reply.code(400).send({ error: 'not enough chips to send that' });
+    // Same idempotency as buy-ins: a double-tap on Send used to move the chips
+    // twice, and the second one is indistinguishable from a deliberate repeat
+    // once it is on the ledger. An identical transfer to the same person
+    // moments later is treated as the same transfer.
+    const dupe = db
+      .prepare(
+        `SELECT 1 FROM ledger WHERE room_id = ? AND user_id = ? AND kind = 'transfer'
+           AND delta = ? AND ts > ? LIMIT 1`,
+      )
+      .get(id, parsed.data.toUserId, parsed.data.amount, Date.now() - LIMITS.dedupWindowMs);
+    if (dupe) return { ok: true, duplicate: true };
     const names = db
       .prepare('SELECT id, COALESCE(display_name, username) as name FROM users WHERE id IN (?, ?)')
       .all(req.userId, parsed.data.toUserId) as { id: number; name: string }[];

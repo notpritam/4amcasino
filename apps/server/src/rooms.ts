@@ -243,6 +243,19 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     if (pending.n >= LIMITS.pendingBuysPerRoom) {
       return reply.code(429).send({ error: 'you already have buy requests waiting' });
     }
+    // Idempotency. A double-click, an impatient second tap, or a client retry
+    // used to buy in twice - and in an auto-approve room the chips landed twice
+    // with no banker in the loop to notice. An identical buy moments after the
+    // last one is the same buy, so hand back the first rather than making a
+    // second. Distinct amounts, or the same amount later, are unaffected.
+    const recent = db
+      .prepare(
+        'SELECT id, status FROM buy_requests WHERE room_id = ? AND user_id = ? AND amount = ? AND ts > ? ORDER BY id DESC LIMIT 1',
+      )
+      .get(id, req.userId, parsed.data.amount, Date.now() - LIMITS.dedupWindowMs) as
+      | { id: number; status: string }
+      | undefined;
+    if (recent) return { id: recent.id, status: recent.status, duplicate: true };
     const info = db
       .prepare('INSERT INTO buy_requests (room_id, user_id, amount, note, ts) VALUES (?, ?, ?, ?, ?)')
       .run(id, req.userId, parsed.data.amount, parsed.data.note ?? null, Date.now());

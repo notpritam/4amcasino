@@ -211,14 +211,16 @@ describe('banker revert', () => {
       headers: auth(alice.token),
       payload: { joinCode: room.joinCode },
     });
-    // alice buys twice by mistake
-    for (let i = 0; i < 2; i++) {
+    // two separate buy-ins. Deliberately different amounts: two IDENTICAL buys
+    // this close together are now collapsed into one as a double-tap, so the
+    // old "buys twice by mistake" version of this no longer reaches the ledger.
+    for (const amount of [500, 300]) {
       const req = (
         await ctx.app.inject({
           method: 'POST',
           url: `/api/rooms/${room.id}/buy`,
           headers: auth(alice.token),
-          payload: { amount: 500 },
+          payload: { amount },
         })
       ).json();
       await ctx.app.inject({
@@ -231,7 +233,7 @@ describe('banker revert', () => {
     let state = (
       await ctx.app.inject({ method: 'GET', url: `/api/rooms/${room.id}`, headers: auth(alice.token) })
     ).json();
-    expect(state.players.find((p: any) => p.username === 'al').stack).toBe(1000);
+    expect(state.players.find((p: any) => p.username === 'al').stack).toBe(800);
 
     const ledger = (
       await ctx.app.inject({ method: 'GET', url: `/api/rooms/${room.id}/ledger`, headers: auth(host.token) })
@@ -258,7 +260,7 @@ describe('banker revert', () => {
     state = (
       await ctx.app.inject({ method: 'GET', url: `/api/rooms/${room.id}`, headers: auth(alice.token) })
     ).json();
-    expect(state.players.find((p: any) => p.username === 'al').stack).toBe(500);
+    expect(state.players.find((p: any) => p.username === 'al').stack).toBe(300);
 
     // the chain still verifies and the same purchase cannot be reverted twice
     expect(verifyLedger(ctx.db, room.id).ok).toBe(true);

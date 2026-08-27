@@ -112,6 +112,10 @@ export const LIMITS = {
   pendingBuysPerRoom: 5,
   /** A single buy-in, and a single transfer. */
   maxChipAmount: 10_000_000,
+  /** How close together two identical money requests count as the same one.
+   *  Long enough to swallow a double-click or a client retry, short enough that
+   *  two deliberate identical buys a few seconds apart both land. */
+  dedupWindowMs: 2_500,
   /** Friend requests you may send per day. */
   friendRequestsPerDay: 100,
   /** Inbound WebSocket frame size and rate, per connection. */
