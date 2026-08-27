@@ -807,6 +807,31 @@ describe('player leave resilience', () => {
     expect(ledger.verified.ok).toBe(true);
   }, 20000);
 
+  it('a live player dropping heads-up ends the hand by fold instead of aborting', async () => {
+    const { players, host, room } = await setupRoom(['dropa', 'dropb'], ['passive', 'passive']);
+    const leaver = players[1]!;
+    const stayer = players[0]!;
+    host.send({ t: 'start_hand' });
+    // wait until they are genuinely in the hand and have NOT folded, so this is
+    // the case that used to be unrecoverable: nobody holds their key
+    await leaver.waitFor(() => leaver.myCards.length === 2);
+    expect(leaver.sawOwnFold).toBe(false);
+    leaver.disconnect();
+
+    // folding them leaves one contestant, so the pot is already decided and no
+    // card has to be opened - the hand must finish rather than abort
+    await stayer.waitFor(() => stayer.handEnd !== null, 15000);
+    expect(stayer.handAbort).toBeNull();
+
+    const end = stayer.handEnd!;
+    expect(end.deltas.reduce((s: number, x: { delta: number }) => s + x.delta, 0)).toBe(0);
+    // the player who stayed cannot have lost chips on a hand nobody contested
+    const mine = end.deltas.find((d: { seat: number }) => d.seat === stayer.seat);
+    expect(mine!.delta).toBeGreaterThanOrEqual(0);
+    const ledger = await host.api(`/api/rooms/${room.id}/ledger`);
+    expect(ledger.verified.ok).toBe(true);
+  }, 20000);
+
   it('no escrow, no rescue: a folder without a key still aborts the hand', async () => {
     const { players, room, host } = await setupRoom(
       ['noka', 'nokb', 'nokc'],

@@ -1489,7 +1489,42 @@ class Hand {
       return;
     }
     if (this.phase !== 'deal' && this.phase !== 'reveal') return;
-    this.recoverStalledChains(false);
+    // a folded player's escrowed key lets us finish without them
+    if (this.recoverStalledChains(false)) return;
+    this.foldDroppedIfDecisive(info.seat);
+  }
+
+  /** A live player who drops mid-unmask cannot send their shares, and nobody
+   *  else holds their key, so the hand is otherwise guaranteed to die on an
+   *  unmask timeout. Poker's own answer is that they fold - and if folding them
+   *  leaves exactly one player contesting the pot, the hand is already decided
+   *  and needs no card opened at all. See docs/DROPS.md.
+   *
+   *  With two or more still live we genuinely need their key, and that is what
+   *  deal-time threshold escrow is for; until then this correctly does nothing
+   *  and the hand takes the timeout. */
+  private foldDroppedIfDecisive(seat: number): void {
+    const st = this.betting;
+    if (!st || st.winnerByFold !== null) return;
+    const mine = st.seats.find((s) => s.seat === seat);
+    if (!mine || mine.folded) return;
+    const seats = st.seats.map((s) => (s.seat === seat ? { ...s, folded: true } : { ...s }));
+    const live = seats.filter((s) => !s.folded);
+    if (live.length !== 1) return;
+
+    this.clearTimer();
+    this.chains.clear();
+    this.pendingBoard.clear();
+    this.appendServer('timeout_fold', { seat });
+    this.room.broadcast({
+      t: 'action_applied',
+      handId: this.id,
+      seat,
+      action: { type: 'fold' },
+      auto: true,
+    });
+    this.betting = { ...st, seats, toAct: null, needToAct: [], winnerByFold: live[0]!.seat };
+    this.settle();
   }
 
   /** Compute the absent folder's share ourselves. The DLEQ proof published in
