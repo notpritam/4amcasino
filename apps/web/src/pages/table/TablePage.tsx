@@ -745,9 +745,9 @@ export function TablePage() {
                 <span className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-500">
                   The winning five
                 </span>
-                <div className="flex gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
                   {reasoning.winningFive.map((c) => (
-                    <motion.span key={c} variants={revealCard}>
+                    <motion.span key={c} variants={revealCard} className="shrink-0">
                       <PlayingCard card={c} size="md" />
                     </motion.span>
                   ))}
@@ -760,12 +760,12 @@ export function TablePage() {
               </motion.div>
             )}
             {!hand.showdown?.runTwice && hand.board.length > 0 && (
-              <motion.div variants={revealItem} className="flex items-center gap-1.5">
+              <motion.div variants={revealItem} className="flex flex-wrap items-center gap-1.5">
                 <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
                   The table
                 </span>
                 {hand.board.map((c) => (
-                  <PlayingCard key={c} card={c} size="sm" deal />
+                  <PlayingCard key={c} card={c} size="sm" deal className="shrink-0" />
                 ))}
               </motion.div>
             )}
@@ -1135,6 +1135,20 @@ export function TablePage() {
 
   return (
     <div className="table-app-bg min-h-screen">
+      {/* The showdown result, pinned to the top and above everything.
+          It used to live in the middle of the felt, where it fought the seat
+          pods for the same space and got clipped by the oval. Up here it can be
+          as tall as it needs to be, and it covers nothing that matters - the
+          hand is over. The wrapper ignores pointer events so the table stays
+          usable around it. */}
+      {showResult && (
+        <div className="pointer-events-none fixed inset-x-0 top-3 z-50 flex justify-center px-3">
+          <div className="pointer-events-auto max-h-[86vh] w-full max-w-3xl overflow-y-auto rounded-2xl shadow-2xl">
+            {resultBanner}
+          </div>
+        </div>
+      )}
+
       {/* MOBILE: full-screen Offsuit-style app view */}
       <div
         className="flex min-h-[100dvh] flex-col overflow-x-hidden bg-slate-950 text-white md:hidden"
@@ -1568,7 +1582,12 @@ export function TablePage() {
               <ChipStack amount={pot} bb={room.room.bb} size="lg" className="justify-center" />
             )}
             {showResult ? (
-              <div className="max-h-[44vh] w-full overflow-y-auto">{resultBanner}</div>
+              // The banner itself is rendered as a top overlay, outside the
+              // table: in here it shared a stacking context with the absolutely
+              // positioned seat pods, so the headline drew underneath them and
+              // its cards collided with everyone's. Nothing goes in the middle
+              // of the felt at showdown now.
+              null
             ) : (
               <>
             {hand.ritOffer && (

@@ -41,9 +41,11 @@ export function ShowdownCards({
                 : 'bg-slate-100/80 ring-1 ring-slate-200/70 dark:bg-slate-800/60 dark:ring-slate-700/60',
             )}
           >
-            <div className="flex gap-1">
+            {/* shrink-0: as flex children these were compressed narrower than a
+                card whenever the row was tight, which read as overlapping */}
+            <div className="flex shrink-0 gap-1">
               {r.cards.map((c) => (
-                <PlayingCard key={c} card={c} size="sm" deal />
+                <PlayingCard key={c} card={c} size="sm" deal className="shrink-0" />
               ))}
             </div>
             <div className="min-w-0">
