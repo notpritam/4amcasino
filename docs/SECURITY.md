@@ -69,6 +69,100 @@ for everyone in the room.
   client rather than a forgeable header.
 - The schema had no indexes at all. Added eleven.
 
+## The abort problem, and how to actually fix it
+
+The single worst issue on the list below is that aborting a hand is free and any
+player can force one. It deserves more than a line, because the fix is not
+obvious and half of it is impossible.
+
+### Why you cannot just prevent it
+
+Mental poker needs every player to cooperate to decrypt a card. Nobody holds the
+whole key, which is the entire point — so any player can stall the hand by
+refusing to answer, and no amount of cryptography changes that. This is not a
+bug in our design; it is **Cleve's theorem** (1986): with a dishonest majority,
+a protocol that guarantees output delivery to everyone is impossible. Someone
+who is willing to walk away can always walk away.
+
+So the goal is not "make aborting impossible". It is:
+
+1. make aborting **cost more than losing**, so nobody wants to; and
+2. make an abort **not stall the table**, so one dropout does not cost everyone
+   else their hand.
+
+Those are two different mechanisms and we need both.
+
+### What everyone else does
+
+Commercial online poker sidesteps this entirely — there is a trusted server with
+an RNG, so no player holds a key and no player can stall anything. That is the
+model we deliberately rejected.
+
+Every decentralised poker project that keeps the mental-poker property lands on
+the same two answers: **collateral with slashing** (you post a bond; provable
+misbehaviour forfeits it) and **threshold recovery** (your key is secret-shared
+so the table can finish without you). The academic framing is "MPC with
+penalties" — Bentov and Kumaresan, *How to Use Bitcoin to Design Fair Protocols*
+(CRYPTO 2014) — which exists precisely because Cleve says fairness alone is
+unachievable. Penalties are not a fallback for a weak protocol; they are the
+known-correct answer.
+
+### Fix 1 — stop broadcasting the outcome before it is final (cheap, do first)
+
+Right now `share_applied` is broadcast the moment each showdown share arrives,
+and the payload includes the plaintext card point. So a player watches the
+reveals land, works out that they have lost, and *only then* sends a bad proof.
+The free-roll is profitable because the information arrives before the decision
+has to be made.
+
+Collect all showdown shares server-side and reveal them in one atomic step. That
+alone removes the asymmetry — abort before the reveal and you are folding blind,
+which is just a fold.
+
+### Fix 2 — make a provable fault forfeit the pot (kills the exploit)
+
+Distinguish the two failure modes, because they are not the same:
+
+- **Provable misbehaviour.** A DLEQ proof that fails verification, carrying the
+  player's own signature. There is no innocent explanation — they signed it.
+- **Silence.** A timeout. Could be malice, could be a train tunnel.
+
+For provable misbehaviour, do not refund. Settle the hand as though that seat
+folded: their committed chips are forfeit and go to the players still live, and
+it is written to the ledger like any other settlement. Aborting then costs
+exactly what losing would have, so there is nothing to gain.
+
+For silence, do not punish immediately — that is how a flaky connection turns
+into a fine. Retry, then fall back to Fix 3.
+
+### Fix 3 — the table finishes without you (the real answer to "someone left")
+
+This is what actually stops a hand dying when a player closes their laptop.
+
+At deal time, each player verifiably secret-shares their per-hand key among the
+other seats — Feldman VSS over the same Ristretto group we already use, so every
+share comes with a proof it is a real share of the committed key. If a seat goes
+silent past its deadline, a threshold of the others publish their shares, the
+missing unmasking capability is reconstructed, and the hand plays out.
+
+The privacy cost is real and has to be bounded, or we have quietly rebuilt the
+trusted server out of a quorum of players:
+
+- reconstruction is only reachable **after** a seat has missed its deadline;
+- it recovers **only the specific deck indices** still owed, never the raw key;
+- every reconstruction is written to the transcript, so a table that colludes to
+  recover a live player's cards leaves permanent, signed evidence.
+
+The existing fold-key escrow is the degenerate case of this — a 1-of-1 sharing
+with the server as trustee. Fix 3 generalises it to something that does not
+require trusting us.
+
+### Order of work
+
+Fix 1, then Fix 2 — together they close the exploit, and both are contained
+changes. Fix 3 is a larger project and is what upgrades "the hand aborts and
+everyone is refunded" into "the hand finishes without the player who left".
+
 ## Still open
 
 Listed in the order I would fix them.

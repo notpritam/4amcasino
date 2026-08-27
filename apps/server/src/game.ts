@@ -1203,7 +1203,12 @@ class Hand {
       handId: this.id,
       deckIndex,
       seat: info.seat,
-      out: outHex,
+      // The last share of a showdown chain IS the plaintext card point.
+      // Broadcasting each one as it landed let a player watch the reveals come
+      // in, work out they had lost, and only then stall the hand - which is
+      // what made aborting profitable. Showdown cards now go out together, in
+      // `showdown`, once every chain has completed. See docs/SECURITY.md.
+      out: chain.purpose === 'showdown' ? '' : outHex,
       forSeat: chain.forSeat,
     });
     chain.current = out;
