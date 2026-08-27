@@ -1,17 +1,20 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
-  CaretDown,
   ChartBar,
+  Club,
   GearSix,
   GithubLogo,
+  HouseSimple,
   List,
   Moon,
   ShieldCheck,
+  Sidebar,
   SignOut,
   Sun,
   TerminalWindow,
+  Trophy,
   X,
 } from '@phosphor-icons/react';
 import { api } from '../../shared/api.ts';
@@ -19,15 +22,22 @@ import { useStore } from '../../shared/store.ts';
 import { cn } from '../../shared/lib/cn.ts';
 import { Avatar } from '../../entities/user/Avatar.tsx';
 
-const itemCls =
-  'flex w-full items-center gap-2.5 px-3.5 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800';
-
 const drawerItemCls =
   'flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[0.95rem] font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800';
 
-/** The signed-in chrome: brand, primary nav, account menu, and a slide-in
- *  sidebar on small screens. Used by every page except login, the live
- *  table (own shell), and the public landing. */
+const SIDEBAR_KEY = '4am-sidebar';
+
+interface RoomRow {
+  id: string;
+  name: string;
+  playerCount: number;
+}
+
+/** The signed-in chrome, BB-style: a persistent icon-led left sidebar - nav
+ *  on top, your rooms as a thread list, utilities at the bottom - collapsible
+ *  to an icon rail. Small screens keep the slide-over drawer. Used by every
+ *  page except login, the live table (own shell), and the public landing.
+ *  (requested by notpritam, docs/FEATURES.md) */
 export function AppShell({ children }: { children: ReactNode }) {
   const auth = useStore((s) => s.auth);
   const prefs = useStore((s) => s.prefs);
@@ -35,19 +45,34 @@ export function AppShell({ children }: { children: ReactNode }) {
   const setPrefs = useStore((s) => s.setPrefs);
   const [menuOpen, setMenuOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_KEY) === 'rail');
+  const [rooms, setRooms] = useState<RoomRow[]>([]);
   const loc = useLocation();
   const nav = useNavigate();
   const reduce = useReducedMotion();
+
+  useEffect(() => {
+    void api
+      .myRooms()
+      .then((r) => setRooms((r.rooms as RoomRow[]).slice(0, 12)))
+      .catch(() => {});
+  }, [loc.pathname]);
+
+  const toggleCollapsed = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    localStorage.setItem(SIDEBAR_KEY, next ? 'rail' : 'full');
+  };
 
   // cycle light -> dark -> cyber; the icon shows where the click takes you
   const nextTheme = prefs.theme === 'light' ? 'dark' : prefs.theme === 'dark' ? 'cyber' : 'light';
   const themeIcon =
     nextTheme === 'dark' ? (
-      <Moon size={18} />
+      <Moon size={17} />
     ) : nextTheme === 'cyber' ? (
-      <TerminalWindow size={18} />
+      <TerminalWindow size={17} />
     ) : (
-      <Sun size={18} />
+      <Sun size={17} />
     );
   const toggleTheme = () => {
     setPrefs({ theme: nextTheme });
@@ -61,17 +86,25 @@ export function AppShell({ children }: { children: ReactNode }) {
     nav('/login');
   };
 
-  const navLink = (to: string, label: string) => (
+  const railItem = (
+    to: string,
+    label: string,
+    icon: ReactNode,
+    active: boolean,
+  ) => (
     <Link
       to={to}
+      title={label}
       className={cn(
-        'rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
-        loc.pathname === to
-          ? 'bg-indigo-600 text-white'
-          : 'text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800',
+        'flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[0.86rem] font-medium transition-colors',
+        collapsed && 'justify-center px-0',
+        active
+          ? 'bg-slate-200/80 text-slate-900 dark:bg-slate-800 dark:text-white'
+          : 'text-slate-600 hover:bg-slate-200/50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200',
       )}
     >
-      {label}
+      <span className="shrink-0">{icon}</span>
+      {!collapsed && <span className="truncate">{label}</span>}
     </Link>
   );
 
@@ -79,21 +112,155 @@ export function AppShell({ children }: { children: ReactNode }) {
     <Link
       to={to}
       onClick={() => setDrawerOpen(false)}
-      className={cn(drawerItemCls, loc.pathname === to && 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300')}
+      className={cn(
+        drawerItemCls,
+        loc.pathname === to && 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300',
+      )}
     >
       {icon}
       {label}
     </Link>
   );
 
+  const sidebar = (
+    <aside
+      className={cn(
+        'fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-slate-200/70 bg-slate-100/80 backdrop-blur md:flex dark:border-slate-800/80 dark:bg-slate-950/80',
+        collapsed ? 'w-14 px-2' : 'w-60 px-3',
+      )}
+    >
+      {/* brand + collapse */}
+      <div className={cn('flex h-14 items-center', collapsed ? 'justify-center' : 'justify-between')}>
+        {!collapsed && (
+          <Link to="/lobby" className="flex items-center gap-2 font-display text-lg font-bold">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-sm text-white">
+              ♠
+            </span>
+            4AM
+          </Link>
+        )}
+        <button
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200/60 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+        >
+          <Sidebar size={17} />
+        </button>
+      </div>
+
+      {/* primary nav */}
+      <nav className="space-y-0.5">
+        {railItem('/lobby', 'Lobby', <HouseSimple size={17} />, loc.pathname === '/lobby')}
+        {railItem('/leaderboard', 'Leaderboard', <Trophy size={17} />, loc.pathname === '/leaderboard')}
+        {railItem(
+          `/players/${auth.userId}`,
+          'My stats',
+          <ChartBar size={17} />,
+          loc.pathname === `/players/${auth.userId}`,
+        )}
+        {railItem('/fair', "How it's fair", <ShieldCheck size={17} />, loc.pathname === '/fair')}
+      </nav>
+
+      {/* your rooms, like a thread list */}
+      {rooms.length > 0 && (
+        <div className="mt-5 min-h-0 flex-1 overflow-y-auto">
+          {!collapsed && (
+            <div className="px-2.5 pb-1.5 text-[0.68rem] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              Rooms
+            </div>
+          )}
+          <div className="space-y-0.5">
+            {rooms.map((r) =>
+              railItem(
+                `/room/${r.id}`,
+                r.name,
+                <Club size={16} className="text-slate-400" />,
+                loc.pathname.startsWith(`/room/${r.id}`),
+              ),
+            )}
+          </div>
+        </div>
+      )}
+      {rooms.length === 0 && <div className="flex-1" />}
+
+      {/* utilities */}
+      <div
+        className={cn(
+          'space-y-0.5 border-t border-slate-200/70 py-2.5 dark:border-slate-800/80',
+        )}
+      >
+        {railItem('/settings', 'Settings', <GearSix size={17} />, loc.pathname === '/settings')}
+        <button
+          onClick={toggleTheme}
+          title={`Switch to ${nextTheme} theme`}
+          className={cn(
+            'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[0.86rem] font-medium text-slate-600 hover:bg-slate-200/50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200',
+            collapsed && 'justify-center px-0',
+          )}
+        >
+          <span className="shrink-0">{themeIcon}</span>
+          {!collapsed && <span className="capitalize">{nextTheme} mode</span>}
+        </button>
+        <a
+          href="https://github.com/notpritam/4amcasino"
+          title="GitHub"
+          className={cn(
+            'flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[0.86rem] font-medium text-slate-600 hover:bg-slate-200/50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200',
+            collapsed && 'justify-center px-0',
+          )}
+        >
+          <GithubLogo size={17} className="shrink-0" />
+          {!collapsed && 'GitHub'}
+        </a>
+        <div className={cn('flex items-center gap-2 pt-1.5', collapsed && 'flex-col')}>
+          <Link
+            to={`/players/${auth.userId}`}
+            title={prefs.displayName || auth.username || 'profile'}
+            className={cn(
+              'flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-slate-200/50 dark:hover:bg-slate-800/60',
+              collapsed && 'flex-none px-0',
+            )}
+          >
+            <Avatar
+              userId={auth.userId ?? 0}
+              name={prefs.displayName || auth.username || '?'}
+              version={prefs.avatarVersion}
+              size="sm"
+            />
+            {!collapsed && (
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-semibold">
+                  {prefs.displayName || auth.username}
+                </span>
+                <span className="block truncate text-[0.68rem] text-slate-400">@{auth.username}</span>
+              </span>
+            )}
+          </Link>
+          <button
+            onClick={doLogout}
+            aria-label="Log out"
+            title="Log out"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200/60 hover:text-rose-600 dark:hover:bg-slate-800"
+          >
+            <SignOut size={16} />
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-slate-100/90 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
-        <div className="mx-auto flex h-14 max-w-5xl items-center gap-1.5 px-4">
+      {sidebar}
+
+      {/* small screens keep a slim top bar + the slide-over drawer */}
+      <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-slate-100/90 backdrop-blur md:hidden dark:border-slate-800 dark:bg-slate-950/90">
+        <div className="flex h-14 items-center gap-1.5 px-4">
           <button
             onClick={() => setDrawerOpen(true)}
             aria-label="Open menu"
-            className="rounded-lg p-2 text-slate-600 hover:bg-slate-200/70 sm:hidden dark:text-slate-300 dark:hover:bg-slate-800"
+            className="rounded-lg p-2 text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             <List size={20} />
           </button>
@@ -101,57 +268,46 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-base text-white">
               ♠
             </span>
-            <span className="hidden sm:inline">4AM</span>
+            4AM
           </Link>
-          <nav className="ml-2 hidden items-center gap-1 sm:flex">
-            {navLink('/lobby', 'Lobby')}
-            {navLink('/leaderboard', 'Leaderboard')}
-          </nav>
           <button
             onClick={toggleTheme}
             aria-label={`Switch to ${nextTheme} theme`}
-            title={`Switch to ${nextTheme} theme`}
             className="ml-auto rounded-full p-2 text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             {themeIcon}
           </button>
-          <div className="relative hidden sm:block">
-            <button
-              onClick={() => setMenuOpen((v) => !v)}
-              aria-label="Account menu"
-              className="flex items-center gap-1.5 rounded-full p-1 pr-2 hover:bg-slate-200/70 dark:hover:bg-slate-800"
-            >
-              <Avatar
-                userId={auth.userId ?? 0}
-                name={prefs.displayName || auth.username || '?'}
-                version={prefs.avatarVersion}
-                size="sm"
-              />
-              <CaretDown size={12} className="text-slate-400" />
-            </button>
-            {menuOpen && (
-              <>
-                <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
-                <div className="absolute right-0 z-40 mt-2 w-56 overflow-hidden rounded-xl bg-white py-1.5 shadow-xl ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
-                  <div className="px-3.5 pb-1.5 pt-2 text-xs text-slate-400">
-                    {prefs.displayName || auth.username} · @{auth.username}
-                  </div>
-                  <Link to="/settings" className={itemCls} onClick={() => setMenuOpen(false)}>
-                    <GearSix size={17} /> Settings
-                  </Link>
-                  <Link to={`/players/${auth.userId}`} className={itemCls} onClick={() => setMenuOpen(false)}>
-                    <ChartBar size={17} /> My stats
-                  </Link>
-                  <Link to="/fair" className={itemCls} onClick={() => setMenuOpen(false)}>
-                    <ShieldCheck size={17} /> How it's fair
-                  </Link>
-                  <button className={cn(itemCls, 'text-rose-600 dark:text-rose-400')} onClick={doLogout}>
-                    <SignOut size={17} /> Log out
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          <button onClick={() => setMenuOpen((v) => !v)} aria-label="Account menu" className="p-1">
+            <Avatar
+              userId={auth.userId ?? 0}
+              name={prefs.displayName || auth.username || '?'}
+              version={prefs.avatarVersion}
+              size="sm"
+            />
+          </button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-3 top-12 z-40 w-56 overflow-hidden rounded-xl bg-white py-1.5 shadow-xl ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+                <Link
+                  to={`/players/${auth.userId}`}
+                  className={drawerItemCls}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <ChartBar size={17} /> My stats
+                </Link>
+                <Link to="/settings" className={drawerItemCls} onClick={() => setMenuOpen(false)}>
+                  <GearSix size={17} /> Settings
+                </Link>
+                <button
+                  className={cn(drawerItemCls, 'w-full text-rose-600 dark:text-rose-400')}
+                  onClick={doLogout}
+                >
+                  <SignOut size={17} /> Log out
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </header>
 
@@ -164,7 +320,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="fixed inset-0 z-40 bg-black/40 sm:hidden"
+              className="fixed inset-0 z-40 bg-black/40 md:hidden"
               onClick={() => setDrawerOpen(false)}
             />
             <motion.aside
@@ -172,7 +328,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               animate={{ x: 0 }}
               exit={reduce ? undefined : { x: '-100%' }}
               transition={{ type: 'tween', ease: [0.22, 1, 0.36, 1], duration: 0.25 }}
-              className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-white p-4 shadow-2xl sm:hidden dark:bg-slate-900"
+              className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-white p-4 shadow-2xl md:hidden dark:bg-slate-900"
             >
               <div className="mb-4 flex items-center justify-between">
                 <span className="flex items-center gap-2 font-display text-lg font-bold">
@@ -190,45 +346,44 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </button>
               </div>
 
-              <Link
-                to="/settings"
-                onClick={() => setDrawerOpen(false)}
-                className="mb-3 flex items-center gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60"
-              >
-                <Avatar
-                  userId={auth.userId ?? 0}
-                  name={prefs.displayName || auth.username || '?'}
-                  version={prefs.avatarVersion}
-                  size="md"
-                />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold">
-                    {prefs.displayName || auth.username}
-                  </span>
-                  <span className="block text-xs text-slate-400">@{auth.username}</span>
-                </span>
-              </Link>
-
               <nav className="space-y-0.5">
-                {drawerLink('/lobby', 'Lobby', <span className="text-base">♠</span>)}
-                {drawerLink('/leaderboard', 'Leaderboard', <ChartBar size={19} />)}
+                {drawerLink('/lobby', 'Lobby', <HouseSimple size={19} />)}
+                {drawerLink('/leaderboard', 'Leaderboard', <Trophy size={19} />)}
+                {drawerLink(`/players/${auth.userId}`, 'My stats', <ChartBar size={19} />)}
                 {drawerLink('/settings', 'Settings', <GearSix size={19} />)}
                 {drawerLink('/fair', "How it's fair", <ShieldCheck size={19} />)}
-                <a
-                  href="https://github.com/notpritam/4amcasino"
-                  className={drawerItemCls}
-                  onClick={() => setDrawerOpen(false)}
-                >
-                  <GithubLogo size={19} /> GitHub
-                </a>
               </nav>
 
+              {rooms.length > 0 && (
+                <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+                  <div className="px-3.5 pb-1 text-[0.68rem] font-semibold uppercase tracking-wider text-slate-400">
+                    Rooms
+                  </div>
+                  <div className="space-y-0.5">
+                    {rooms.map((r) => (
+                      <Link
+                        key={r.id}
+                        to={`/room/${r.id}`}
+                        onClick={() => setDrawerOpen(false)}
+                        className={drawerItemCls}
+                      >
+                        <Club size={17} className="text-slate-400" />
+                        <span className="truncate">{r.name}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="mt-auto space-y-0.5 border-t border-slate-100 pt-3 dark:border-slate-800">
-                <button className={drawerItemCls} onClick={toggleTheme}>
+                <button className={cn(drawerItemCls, 'w-full')} onClick={toggleTheme}>
                   {themeIcon}
                   <span className="capitalize">{nextTheme} mode</span>
                 </button>
-                <button className={cn(drawerItemCls, 'text-rose-600 dark:text-rose-400')} onClick={doLogout}>
+                <button
+                  className={cn(drawerItemCls, 'w-full text-rose-600 dark:text-rose-400')}
+                  onClick={doLogout}
+                >
                   <SignOut size={19} /> Log out
                 </button>
               </div>
@@ -237,7 +392,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
       </AnimatePresence>
 
-      <main>{children}</main>
+      <main className={cn('md:transition-[padding]', collapsed ? 'md:pl-14' : 'md:pl-60')}>
+        {children}
+      </main>
     </div>
   );
 }

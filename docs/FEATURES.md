@@ -48,4 +48,6 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | Wider screens everywhere: hands, ledger, leaderboard, and replay pages stop hugging a skinny center column | **notpritam** |
 | Full-screen lobby and pages: lobby goes three-column (actions / game + rooms / friends), the ledger splits report-beside-table, hands and leaderboard become card grids on big monitors | **notpritam** |
 | Best hand showcase: a player's biggest win as a snapshot on their profile - their cards, the board, the amount, one click to the replay - reachable from the leaderboard's "best +N"; the owner can hide it | **notpritam** |
+| BB-style app shell: a persistent icon-led left sidebar - nav, your rooms as a thread list with active highlight, settings/theme/GitHub/account at the bottom - collapsible to an icon rail; mobile keeps the drawer | **notpritam** |
+| Player-wise settle-up (primary): one combined line per person across every room, expandable to the per-room breakdown; the by-room view stays one toggle away | **notpritam** |
 | Everything before 2026-08-24 (mental poker core, ledger and banking, friends and spectating, cyberpunk theme, MCP seat, fairness tour, auto-approve buys, ...) | **notpritam** |

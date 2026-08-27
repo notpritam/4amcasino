@@ -178,14 +178,18 @@ function BestHandCard({ userId, own }: { userId: number; own: boolean }) {
   );
 }
 
-/** Who you owe and who owes you - grouped per room, each room collapsible
- *  with its bottom line in the header, so twenty debts read like five rooms.
- *  Both sides mark "settled" and it resolves on the platform too
+/** Who you owe and who owes you. PRIMARY view: one combined line per PERSON
+ *  across every room ("bhav owes you 2,126 across 3 rooms"), expandable to
+ *  the per-room breakdown where each debt is marked settled - plus a by-room
+ *  view. Both sides mark "settled" and it resolves on the platform too
  *  (requested by notpritam, docs/FEATURES.md). */
 function SettleUpPanel() {
   const [debts, setDebts] = useState<DebtRow[] | null>(null);
   const [settled, setSettled] = useState<SettledRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [view, setView] = useState<'player' | 'room'>(
+    () => (localStorage.getItem('4am-settle-view') === 'room' ? 'room' : 'player'),
+  );
   const [open, setOpen] = useState<Set<string>>(() => {
     try {
       return new Set(JSON.parse(localStorage.getItem(SETTLE_OPEN_KEY) ?? '[]') as string[]);
@@ -210,20 +214,152 @@ function SettleUpPanel() {
     g.rows.push(d);
     rooms.set(d.roomId, g);
   }
-  const toggle = (roomId: string) => {
+  // the primary grouping: one line per person, all rooms combined
+  const people = new Map<number, { name: string; avatarVersion: number; rows: DebtRow[] }>();
+  for (const d of debts) {
+    const g = people.get(d.otherUserId) ?? {
+      name: d.otherName,
+      avatarVersion: d.otherAvatarVersion,
+      rows: [],
+    };
+    g.rows.push(d);
+    people.set(d.otherUserId, g);
+  }
+  const netOf = (rows: DebtRow[]) =>
+    rows.reduce((s, d) => s + (d.direction === 'owed' ? d.amount : -d.amount), 0);
+  const toggle = (key: string) => {
     const next = new Set(open);
-    if (next.has(roomId)) next.delete(roomId);
-    else next.add(roomId);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
     setOpen(next);
     localStorage.setItem(SETTLE_OPEN_KEY, JSON.stringify([...next]));
+  };
+  const pickView = (v: 'player' | 'room') => {
+    setView(v);
+    localStorage.setItem('4am-settle-view', v);
+  };
+  const settleRow = (d: DebtRow) => {
+    const key = `${d.roomId}:${d.otherUserId}`;
+    setBusy(key);
+    void api.markSettled(d.roomId, d.otherUserId).then(load).finally(() => setBusy(null));
   };
 
   return (
     <Panel>
-      <h2 className="mb-1 font-display font-semibold">Settle up</h2>
+      <div className="mb-1 flex flex-wrap items-center gap-3">
+        <h2 className="font-display font-semibold">Settle up</h2>
+        <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs font-semibold dark:bg-slate-800">
+          {(['player', 'room'] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => pickView(v)}
+              className={cn(
+                'rounded-md px-2.5 py-1 capitalize',
+                view === v
+                  ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300',
+              )}
+            >
+              By {v}
+            </button>
+          ))}
+        </div>
+      </div>
       <p className="mb-3 text-xs text-slate-500">
         Square the debt outside the app, then both of you mark it settled and it clears here too.
       </p>
+      {view === 'player' && (
+        <div className="space-y-1.5">
+          {[...people.entries()]
+            .sort((a, b) => Math.abs(netOf(b[1].rows)) - Math.abs(netOf(a[1].rows)))
+            .map(([userId, g]) => {
+              const net = netOf(g.rows);
+              const key = `u${userId}`;
+              const isOpen = open.has(key) || g.rows.length === 1;
+              return (
+                <div
+                  key={key}
+                  className="overflow-hidden rounded-xl ring-1 ring-slate-200/70 dark:ring-slate-700/60"
+                >
+                  <button
+                    onClick={() => toggle(key)}
+                    aria-expanded={isOpen}
+                    className="flex w-full items-center gap-2.5 bg-slate-50 px-3.5 py-2.5 text-left hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800"
+                  >
+                    <Avatar userId={userId} name={g.name} version={g.avatarVersion} size="sm" />
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      {net >= 0 ? (
+                        <>
+                          <b>{g.name}</b> owes you
+                        </>
+                      ) : (
+                        <>
+                          You owe <b>{g.name}</b>
+                        </>
+                      )}
+                      <span className="ml-1 text-xs text-slate-400">
+                        · {g.rows.length} room{g.rows.length === 1 ? '' : 's'}
+                      </span>
+                    </span>
+                    <span
+                      className={cn(
+                        'font-display text-base font-bold',
+                        net > 0 ? 'text-emerald-600' : net < 0 ? 'text-rose-600' : 'text-slate-400',
+                      )}
+                    >
+                      {fmt(Math.abs(net))}
+                    </span>
+                    {g.rows.length > 1 &&
+                      (isOpen ? (
+                        <CaretDown size={13} className="shrink-0 text-slate-400" />
+                      ) : (
+                        <CaretRight size={13} className="shrink-0 text-slate-400" />
+                      ))}
+                  </button>
+                  {isOpen && (
+                    <div className="space-y-1 p-2">
+                      {g.rows.map((d) => {
+                        const rowKey = `${d.roomId}:${d.otherUserId}`;
+                        return (
+                          <div key={rowKey} className="flex flex-wrap items-center gap-3 rounded-lg p-1.5">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm">
+                                <span className="text-slate-500">{d.roomName}:</span>{' '}
+                                {d.direction === 'owe' ? 'you owe' : 'they owe'}{' '}
+                                <span
+                                  className={cn(
+                                    'font-display font-bold',
+                                    d.direction === 'owe' ? 'text-rose-600' : 'text-emerald-600',
+                                  )}
+                                >
+                                  {fmt(d.amount)}
+                                </span>
+                              </div>
+                              {(d.myConfirmed || d.otherConfirmed) && (
+                                <div className="text-xs text-slate-500">
+                                  {d.otherConfirmed && !d.myConfirmed && 'they marked it settled - confirm?'}
+                                  {d.myConfirmed && !d.otherConfirmed && `waiting for ${d.otherName} to confirm`}
+                                </div>
+                              )}
+                            </div>
+                            <Button
+                              variant={d.otherConfirmed && !d.myConfirmed ? 'primary' : 'secondary'}
+                              disabled={d.myConfirmed || busy === rowKey}
+                              onClick={() => settleRow(d)}
+                            >
+                              {d.myConfirmed ? '✓ marked' : 'Mark settled'}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+        </div>
+      )}
+      {view === 'room' && (
       <div className="space-y-1.5">
         {[...rooms.entries()].map(([roomId, g]) => {
           const owedToMe = g.rows.filter((d) => d.direction === 'owed').reduce((s, d) => s + d.amount, 0);
@@ -317,6 +453,9 @@ function SettleUpPanel() {
             </div>
           );
         })}
+      </div>
+      )}
+      <div className="mt-1.5 space-y-1">
         {settled.map((d, i) => (
           <div
             key={`done-${i}`}
