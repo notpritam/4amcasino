@@ -6,6 +6,7 @@ import {
   Club,
   GearSix,
   GithubLogo,
+  HandCoins,
   HouseSimple,
   List,
   Moon,
@@ -33,6 +34,16 @@ interface RoomRow {
   playerCount: number;
 }
 
+/** Everything waiting on you - drives the sidebar badge and the nudge banner. */
+interface PendingTasks {
+  settlementsAwaitingMe: number;
+  openDebts: number;
+  iOweCount: number;
+  invites: number;
+  friendRequests: number;
+  houseOutstanding: number;
+}
+
 /** The signed-in chrome, BB-style: a persistent icon-led left sidebar - nav
  *  on top, your rooms as a thread list, utilities at the bottom - collapsible
  *  to an icon rail. Small screens keep the slide-over drawer. Used by every
@@ -47,6 +58,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_KEY) === 'rail');
   const [rooms, setRooms] = useState<RoomRow[]>([]);
+  const [pending, setPending] = useState<PendingTasks | null>(null);
   const loc = useLocation();
   const nav = useNavigate();
   const reduce = useReducedMotion();
@@ -55,6 +67,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     void api
       .myRooms()
       .then((r) => setRooms((r.rooms as RoomRow[]).slice(0, 12)))
+      .catch(() => {});
+    void api
+      .pendingTasks()
+      .then(setPending)
       .catch(() => {});
   }, [loc.pathname]);
 
@@ -91,10 +107,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     label: string,
     icon: ReactNode,
     active: boolean,
+    badge?: number,
   ) => (
     <Link
       to={to}
-      title={label}
+      title={badge ? `${label} (${badge} waiting)` : label}
       className={cn(
         'flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[0.86rem] font-medium transition-colors',
         collapsed && 'justify-center px-0',
@@ -103,8 +120,20 @@ export function AppShell({ children }: { children: ReactNode }) {
           : 'text-slate-600 hover:bg-slate-200/50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200',
       )}
     >
-      <span className="shrink-0">{icon}</span>
+      <span className="relative shrink-0">
+        {icon}
+        {/* collapsed to an icon rail there is no room for a count, but the dot
+            still says "something is waiting in here" */}
+        {!!badge && collapsed && (
+          <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-indigo-500 ring-2 ring-slate-100 dark:ring-slate-900" />
+        )}
+      </span>
       {!collapsed && <span className="truncate">{label}</span>}
+      {!!badge && !collapsed && (
+        <span className="ml-auto rounded-full bg-indigo-100 px-1.5 py-0.5 text-[0.65rem] font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+          {badge}
+        </span>
+      )}
     </Link>
   );
 
@@ -152,6 +181,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* primary nav */}
       <nav className="space-y-0.5">
         {railItem('/lobby', 'Lobby', <HouseSimple size={17} />, loc.pathname === '/lobby')}
+        {railItem(
+          '/settle',
+          'Settle up',
+          <HandCoins size={17} />,
+          loc.pathname === '/settle',
+          pending ? pending.settlementsAwaitingMe + pending.iOweCount : 0,
+        )}
         {railItem('/leaderboard', 'Leaderboard', <Trophy size={17} />, loc.pathname === '/leaderboard')}
         {railItem(
           `/players/${auth.userId}`,
@@ -395,6 +431,79 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main className={cn('md:transition-[padding]', collapsed ? 'md:pl-14' : 'md:pl-60')}>
         {children}
       </main>
+
+      <PendingNudge pending={pending} />
+    </div>
+  );
+}
+
+const NUDGE_KEY = '4am-nudge-seen';
+
+/** A single, dismissible prompt for the things that actually need a decision.
+ *
+ *  Deliberately narrow: it fires when someone is waiting on YOU to confirm a
+ *  settlement, or when there is a real invite to answer. Owing money is not a
+ *  reason to interrupt someone every time they open the app - that lives in the
+ *  sidebar badge instead. Once dismissed it stays quiet for the session. */
+function PendingNudge({ pending }: { pending: PendingTasks | null }) {
+  const [dismissed, setDismissed] = useState(() => !!sessionStorage.getItem(NUDGE_KEY));
+  if (!pending || dismissed) return null;
+  const waiting = pending.settlementsAwaitingMe;
+  const invites = pending.invites;
+  const friendRequests = pending.friendRequests;
+  if (waiting + invites + friendRequests === 0) return null;
+
+  const close = () => {
+    setDismissed(true);
+    try {
+      sessionStorage.setItem(NUDGE_KEY, '1');
+    } catch {
+      /* storage disabled: it just reappears next navigation */
+    }
+  };
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+      <div className="flex items-start gap-3">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-indigo-100 dark:bg-indigo-950">
+          <HandCoins size={17} className="text-indigo-600 dark:text-indigo-300" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-semibold">Waiting on you</h3>
+          <ul className="mt-1 space-y-0.5 text-xs text-slate-500">
+            {waiting > 0 && (
+              <li>
+                {waiting} settlement{waiting === 1 ? '' : 's'} the other side already confirmed
+              </li>
+            )}
+            {invites > 0 && (
+              <li>
+                {invites} table invite{invites === 1 ? '' : 's'}
+              </li>
+            )}
+            {friendRequests > 0 && (
+              <li>
+                {friendRequests} friend request{friendRequests === 1 ? '' : 's'}
+              </li>
+            )}
+          </ul>
+          <div className="mt-3 flex gap-2">
+            <Link
+              to={waiting > 0 ? '/settle' : '/lobby'}
+              onClick={close}
+              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+            >
+              {waiting > 0 ? 'Review settlements' : 'Take a look'}
+            </Link>
+            <button
+              onClick={close}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Later
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

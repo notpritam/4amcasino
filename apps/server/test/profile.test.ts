@@ -191,6 +191,41 @@ describe('user profile page data', () => {
     expect(own.transactions).toHaveLength(3);
   });
 
+  it('charges house dues to the players who won the raked pots', async () => {
+    const winner = await user('hd1');
+    const loser = await user('hd2');
+    const room = (
+      await ctx.app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: auth(winner.token),
+        payload: { name: 'rake', sb: 1, bb: 2 },
+      })
+    ).json();
+
+    // one hand: the winner takes 198 of a 200 pot, 2 goes to the house
+    appendLedger(ctx.db, { roomId: room.id, userId: winner.userId, delta: 198, kind: 'hand-settlement', ref: 'hh1' });
+    appendLedger(ctx.db, { roomId: room.id, userId: loser.userId, delta: -200, kind: 'hand-settlement', ref: 'hh1' });
+    appendLedger(ctx.db, { roomId: room.id, userId: winner.userId, delta: 2, kind: 'commission', ref: 'hh1' });
+
+    const duesOf = async (u: { token: string }) =>
+      (await ctx.app.inject({ method: 'GET', url: '/api/me/house', headers: auth(u.token) })).json();
+
+    // the rake came off the pot the winner collected, so it is theirs to owe
+    expect(await duesOf(winner)).toMatchObject({ accrued: 2, paid: 0, outstanding: 2 });
+    // the player who lost the hand did not pay the rake and owes the house nothing
+    expect(await duesOf(loser)).toMatchObject({ accrued: 0, outstanding: 0 });
+
+    const paid = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/house/pay',
+      headers: auth(winner.token),
+      payload: { amount: 2, note: 'upi' },
+    });
+    expect(paid.statusCode).toBe(200);
+    expect(await duesOf(winner)).toMatchObject({ accrued: 2, paid: 2, outstanding: 0 });
+  });
+
   it('numbers players by the order they joined the platform', async () => {
     const before = (
       ctx.db.prepare('SELECT COALESCE(MAX(join_number), 0) as n FROM users').get() as { n: number }

@@ -194,6 +194,33 @@ function migrate(db: DB): void {
       ts INTEGER NOT NULL
     );
   `);
+  db.exec(`
+    -- What each side said when they marked a debt settled: a remark, and
+    -- optionally a photo of the transfer. One row per person per settlement, so
+    -- both halves of the story are kept separately rather than overwriting.
+    CREATE TABLE IF NOT EXISTS settlement_marks (
+      settlement_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      note TEXT,
+      proof BLOB,
+      proof_mime TEXT,
+      ts INTEGER NOT NULL,
+      PRIMARY KEY (settlement_id, user_id)
+    );
+    -- Money owed to the house for keeping the servers up. Dues are derived from
+    -- the rake the ledger already records; this table is only the paying side.
+    CREATE TABLE IF NOT EXISTS house_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      amount INTEGER NOT NULL,
+      note TEXT,
+      proof BLOB,
+      proof_mime TEXT,
+      ts INTEGER NOT NULL,
+      confirmed INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_house_payments_user ON house_payments(user_id);
+  `);
   // The schema had no indexes at all, so every ledger and transcript read was a
   // full table scan - which is what turns "this table has played a lot of hands"
   // into "the settle-up page times out".

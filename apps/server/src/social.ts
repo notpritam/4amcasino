@@ -6,6 +6,7 @@ import { canBank, getRoom, isMember, isSpectator, roomEvents, roomPlayers } from
 import { appendLedger } from './ledger.js';
 import { activeHands } from './liveHands.js';
 import { LIMITS } from './limits.js';
+import { decodeProof, registerSettleRoutes } from './settle.js';
 import { randomBytes } from 'node:crypto';
 
 /** Friends, presence, room invites, and banker invalidation. */
@@ -574,12 +575,42 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
   });
 
   app.post('/api/settlements', authed, async (req, reply) => {
-    const parsed = z.object({ roomId: z.string(), otherUserId: z.number().int() }).safeParse(req.body);
+    const parsed = z
+      .object({
+        roomId: z.string(),
+        otherUserId: z.number().int(),
+        // what you want on the record: "sent on UPI at 9pm", plus a screenshot
+        note: z.string().max(300).optional(),
+        proof: z.string().max(1_000_000).optional(),
+      })
+      .safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
-    const { roomId, otherUserId } = parsed.data;
+    const { roomId, otherUserId, note } = parsed.data;
+    if (otherUserId === req.userId) return reply.code(400).send({ error: 'you cannot settle with yourself' });
     if (!getRoom(db, roomId)) return reply.code(404).send({ error: 'no such room' });
     if (!isMember(db, roomId, req.userId) || !isMember(db, roomId, otherUserId))
       return reply.code(403).send({ error: 'both players must be in this room' });
+    let proofBytes: Buffer | null = null;
+    let proofMime: string | null = null;
+    if (parsed.data.proof) {
+      const decoded = decodeProof(parsed.data.proof);
+      if (!decoded) return reply.code(400).send({ error: 'that photo is not a usable image' });
+      proofBytes = decoded.bytes;
+      proofMime = decoded.mime;
+    }
+    /** Both sides get to leave their own remark and their own photo. */
+    const mark = (settlementId: number) =>
+      db
+        .prepare(
+          `INSERT INTO settlement_marks (settlement_id, user_id, note, proof, proof_mime, ts)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(settlement_id, user_id) DO UPDATE SET
+             note = COALESCE(excluded.note, note),
+             proof = COALESCE(excluded.proof, proof),
+             proof_mime = COALESCE(excluded.proof_mime, proof_mime),
+             ts = excluded.ts`,
+        )
+        .run(settlementId, req.userId, note ?? null, proofBytes, proofMime, Date.now());
     const [low, high] = pairOf(req.userId, otherUserId);
     const mySide = req.userId === low ? 'confirmed_low' : 'confirmed_high';
     const open = db
@@ -589,11 +620,12 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
       .get(roomId, low, high) as { id: number; confirmed_low: number; confirmed_high: number } | undefined;
     if (open) {
       db.prepare(`UPDATE settlements SET ${mySide} = 1 WHERE id = ?`).run(open.id);
+      mark(open.id);
       const both =
         (mySide === 'confirmed_low' ? 1 : open.confirmed_low) &&
         (mySide === 'confirmed_high' ? 1 : open.confirmed_high);
       if (both) db.prepare('UPDATE settlements SET settled_ts = ? WHERE id = ?').run(Date.now(), open.id);
-      return { ok: true, settled: !!both };
+      return { ok: true, settled: !!both, settlementId: open.id };
     }
     // first mark: pin the settlement to the CURRENT outstanding amount
     const debt = roomDebts(roomId).find(
@@ -603,11 +635,15 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
     );
     const outstanding = debt ? debt.amount - settledSum(roomId, debt.from, debt.to) : 0;
     if (!debt || outstanding <= 0) return reply.code(400).send({ error: 'nothing to settle between you two here' });
-    db.prepare(
-      `INSERT INTO settlements (room_id, low_user, high_user, amount, debtor, ${mySide}, created_ts)
-       VALUES (?, ?, ?, ?, ?, 1, ?)`,
-    ).run(roomId, low, high, outstanding, debt.from, Date.now());
-    return { ok: true, settled: false };
+    const info = db
+      .prepare(
+        `INSERT INTO settlements (room_id, low_user, high_user, amount, debtor, ${mySide}, created_ts)
+         VALUES (?, ?, ?, ?, ?, 1, ?)`,
+      )
+      .run(roomId, low, high, outstanding, debt.from, Date.now());
+    const settlementId = Number(info.lastInsertRowid);
+    mark(settlementId);
+    return { ok: true, settled: false, settlementId };
   });
 
   /** Rooms two players share - the places one can send the other points. */
@@ -624,4 +660,8 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
       .all(req.userId, otherId) as { id: string; name: string; myStack: number }[];
     return { rooms: rooms.map((r) => ({ ...r, handActive: activeHands.has(r.id) })) };
   });
+
+  // the cross-room settle view, payment redirects and house dues all need the
+  // same debt maths, so they are handed the helpers rather than reimplementing them
+  registerSettleRoutes(app, db, { roomDebts, settledSum, pairOf });
 }

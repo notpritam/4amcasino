@@ -142,8 +142,21 @@ export const api = {
   myDebts: () => req('/api/me/debts'),
   handHistory: () => req('/api/me/hand-history'),
   bestHand: (userId: number) => req(`/api/users/${userId}/best-hand`),
-  markSettled: (roomId: string, otherUserId: number) =>
-    req('/api/settlements', { roomId, otherUserId }),
+  markSettled: (roomId: string, otherUserId: number, note?: string, proof?: string) =>
+    req('/api/settlements', {
+      roomId,
+      otherUserId,
+      ...(note ? { note } : {}),
+      ...(proof ? { proof } : {}),
+    }),
+  // settling up across rooms: one line per person, plus the redirects that close
+  // two debts with one payment (requested by notpritam)
+  settleView: () => req('/api/me/settle'),
+  pendingTasks: () => req('/api/me/pending'),
+  settlementMarks: (settlementId: number) => req(`/api/settlements/${settlementId}/marks`),
+  houseDues: () => req('/api/me/house'),
+  payHouse: (amount: number, note?: string, proof?: string) =>
+    req('/api/house/pay', { amount, ...(note ? { note } : {}), ...(proof ? { proof } : {}) }),
   sharedRooms: (userId: number) => req(`/api/users/${userId}/shared-rooms`),
   roomSettings: (roomId: string, actionSecs: number) =>
     req(`/api/rooms/${roomId}/settings`, { actionSecs }, 'PUT'),

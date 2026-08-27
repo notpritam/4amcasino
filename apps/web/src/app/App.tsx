@@ -46,6 +46,9 @@ const FairPage = lazy(() =>
 const JoinPage = lazy(() =>
   import('../pages/join/JoinPage.tsx').then((module) => ({ default: module.JoinPage })),
 );
+const SettlePage = lazy(() =>
+  import('../pages/settle/SettlePage.tsx').then((module) => ({ default: module.SettlePage })),
+);
 const AppShell = lazy(() =>
   import('../widgets/nav/AppShell.tsx').then((module) => ({ default: module.AppShell })),
 );
@@ -162,6 +165,16 @@ export function App() {
               <RequireAuth>
                 <AppShell>
                   <SettingsPage />
+                </AppShell>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/settle"
+            element={
+              <RequireAuth>
+                <AppShell>
+                  <SettlePage />
                 </AppShell>
               </RequireAuth>
             }
