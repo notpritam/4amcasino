@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { CaretLeft, CaretRight, DownloadSimple, SkipBack } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, DownloadSimple, FilmSlate, SkipBack } from '@phosphor-icons/react';
+import { renderReplayGif } from '../../features/share/replayGif.ts';
 import { api } from '../../shared/api.ts';
 import { buildReplay, type Replay } from '../../shared/replay.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
@@ -42,6 +43,37 @@ export function ReplayPage() {
       });
     });
   }, [roomId, handId]);
+
+  // one animated GIF of the whole hand, sized for a tweet
+  // (requested by notpritam, docs/FEATURES.md)
+  const [gifBusy, setGifBusy] = useState<string | null>(null);
+  const shareGif = async () => {
+    if (!replay || gifBusy) return;
+    try {
+      const nameOf = (seat: number) => {
+        const uid = replay.seats.find((s) => s.seat === seat)?.userId;
+        return (uid !== undefined && players.get(uid)?.displayName) || `Seat ${seat + 1}`;
+      };
+      const roomName = 'the 4AM table';
+      const blob = await renderReplayGif(replay, nameOf, roomName, (done, total) =>
+        setGifBusy(`${done}/${total}`),
+      );
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `4am-hand-${handId?.slice(0, 8)}.gif`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      // the GIF downloads; the intent opens with the words - attach and post
+      window.open(
+        `https://twitter.com/intent/tweet?text=${encodeURIComponent(
+          'This hand at 4AM Casino ♠ provably fair poker with friends - poker.notpritam.in',
+        )}`,
+        '_blank',
+      );
+    } finally {
+      setGifBusy(null);
+    }
+  };
 
   const saveRecord = () => {
     const blob = new Blob([JSON.stringify(record, null, 2)], { type: 'application/json' });
@@ -94,7 +126,17 @@ export function ReplayPage() {
           blinds {replay.sb}/{replay.bb}
         </Badge>
         {replay.tv && <Badge tone="amber">TV replay</Badge>}
-        <Button variant="secondary" className="ml-auto" onClick={saveRecord} disabled={!record}>
+        <Button
+          variant="secondary"
+          className="ml-auto"
+          onClick={() => void shareGif()}
+          disabled={!!gifBusy}
+          title="Renders the whole hand as a GIF, downloads it, and opens a tweet - attach the GIF and post"
+        >
+          <FilmSlate size={15} weight="bold" className="mr-1 inline" />
+          {gifBusy ? `GIF ${gifBusy}…` : 'GIF for Twitter'}
+        </Button>
+        <Button variant="secondary" onClick={saveRecord} disabled={!record}>
           <DownloadSimple size={15} weight="bold" className="mr-1 inline" />
           Save hand
         </Button>

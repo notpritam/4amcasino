@@ -89,8 +89,15 @@ interface HandHistoryRow {
   outcome: string;
   board: CardId[];
   myCards: CardId[] | null;
+  /** What my cards made, e.g. "a Flush, King high" (board complete + cards known). */
+  label: string | null;
+  /** Every other revealed hand at showdown: who, their cards, what they made. */
+  opponents: { name: string; cards: CardId[]; label: string | null }[];
   voided: boolean;
 }
+
+const HAND_FILTERS = ['all', 'won', 'lost', 'folded'] as const;
+type HandFilter = (typeof HAND_FILTERS)[number];
 
 const SETTLE_OPEN_KEY = '4am-settle-open';
 
@@ -593,11 +600,25 @@ function PlayerActions({ userId, name }: { userId: number; name: string }) {
 function HistoryRail({ own, transactions }: { own: boolean; transactions: PlayerProfile['transactions'] }) {
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') === 'money' || !own ? 'money' : 'hands';
+  const filter = (
+    HAND_FILTERS.includes(params.get('hf') as HandFilter) ? params.get('hf') : 'all'
+  ) as HandFilter;
   const [hands, setHands] = useState<HandHistoryRow[] | null>(null);
   const [openHand, setOpenHand] = useState<string | null>(null);
   useEffect(() => {
     if (own) void api.handHistory().then((r) => setHands(r.hands as HandHistoryRow[]));
   }, [own]);
+  const setFilter = (f: HandFilter) => {
+    const next = new URLSearchParams(params);
+    if (f === 'all') next.delete('hf');
+    else next.set('hf', f);
+    setParams(next, { replace: true });
+  };
+  const matches = (h: HandHistoryRow) =>
+    filter === 'all' ||
+    (filter === 'won' && h.net > 0) ||
+    (filter === 'lost' && h.net < 0 && !h.outcome.includes('folded')) ||
+    (filter === 'folded' && h.outcome === 'folded');
   const money = useMemo(
     () => transactions.filter((t) => t.kind !== 'hand-settlement').slice(0, 40),
     [transactions],
@@ -644,8 +665,25 @@ function HistoryRail({ own, transactions }: { own: boolean; transactions: Player
         ) : hands.length === 0 ? (
           <p className="p-4 text-sm text-slate-400">No hands on record yet.</p>
         ) : (
+          <>
+          <div className="flex gap-1 px-3 pt-2.5">
+            {HAND_FILTERS.map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={cn(
+                  'rounded-full px-2.5 py-1 text-xs font-semibold capitalize',
+                  filter === f
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-slate-100 text-slate-500 hover:text-slate-700 dark:bg-slate-800 dark:hover:text-slate-300',
+                )}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
           <div className="divide-y divide-slate-50 dark:divide-slate-800/70">
-            {hands.map((h) => {
+            {hands.filter(matches).map((h) => {
               const isOpen = openHand === h.handId;
               return (
                 <div key={h.handId}>
@@ -666,7 +704,7 @@ function HistoryRail({ own, transactions }: { own: boolean; transactions: Player
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">
-                        {h.outcome}
+                        {h.net > 0 && h.label ? `won with ${h.label}` : h.outcome}
                         {h.voided && (
                           <span className="ml-1.5 text-xs font-normal text-slate-400">(voided)</span>
                         )}
@@ -698,6 +736,11 @@ function HistoryRail({ own, transactions }: { own: boolean; transactions: Player
                   </button>
                   {isOpen && (
                     <div className="space-y-2 bg-slate-50/60 px-3.5 py-2.5 dark:bg-slate-800/40">
+                      {h.label && (
+                        <div className="text-xs text-slate-500">
+                          You made <b>{h.label}</b>
+                        </div>
+                      )}
                       {h.board.length > 0 && (
                         <div className="flex items-center gap-1">
                           <span className="mr-1 text-[0.65rem] uppercase tracking-wide text-slate-400">
@@ -708,6 +751,17 @@ function HistoryRail({ own, transactions }: { own: boolean; transactions: Player
                           ))}
                         </div>
                       )}
+                      {h.opponents.map((o, i) => (
+                        <div key={i} className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <span className="min-w-0 truncate">
+                            against <b>{o.name}</b>
+                            {o.label ? `'s ${o.label.replace(/^an? /, '')}` : ''}
+                          </span>
+                          {o.cards.map((c) => (
+                            <PlayingCard key={c} card={c} size="xs" />
+                          ))}
+                        </div>
+                      ))}
                       <Link
                         to={`/room/${h.roomId}/replay/${h.handId}`}
                         className="inline-block text-xs font-semibold text-indigo-600 dark:text-indigo-400"
@@ -720,6 +774,7 @@ function HistoryRail({ own, transactions }: { own: boolean; transactions: Player
               );
             })}
           </div>
+          </>
         )
       ) : (
         <div className="divide-y divide-slate-50 dark:divide-slate-800/70">

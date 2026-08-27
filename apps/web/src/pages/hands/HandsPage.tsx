@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { verifyHandTranscript, type TranscriptEntry } from '@4am/mental-poker';
 import { api } from '../../shared/api.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
@@ -33,10 +33,29 @@ function netLabel(net: number | null): string {
   return `${net > 0 ? '+' : '−'}${fmt(Math.abs(net))}`;
 }
 
+const FILTERS = ['all', 'won', 'lost', 'folded', 'showdown'] as const;
+type Filter = (typeof FILTERS)[number];
+
 export function HandsPage() {
   const { id: roomId } = useParams<{ id: string }>();
   const [hands, setHands] = useState<HandRef[] | null>(null);
   const [detail, setDetail] = useState<HandDetail | null>(null);
+  // which hands you want to relive rides the URL, so the view is shareable
+  // (filters requested by notpritam, docs/FEATURES.md)
+  const [params, setParams] = useSearchParams();
+  const filter = (FILTERS.includes(params.get('f') as Filter) ? params.get('f') : 'all') as Filter;
+  const setFilter = (f: Filter) => {
+    const next = new URLSearchParams(params);
+    if (f === 'all') next.delete('f');
+    else next.set('f', f);
+    setParams(next, { replace: true });
+  };
+  const matchesFilter = (h: HandRef) =>
+    filter === 'all' ||
+    (filter === 'won' && (h.myNet ?? 0) > 0) ||
+    (filter === 'lost' && (h.myNet ?? 0) < 0 && !h.outcome.startsWith('folded')) ||
+    (filter === 'folded' && h.outcome.startsWith('folded')) ||
+    (filter === 'showdown' && h.outcome.includes('showdown'));
 
   useEffect(() => {
     api.hands(roomId!).then((r) => setHands(r.hands));
@@ -108,11 +127,28 @@ export function HandsPage() {
         </Panel>
       )}
 
+      <div className="flex flex-wrap gap-1.5">
+        {FILTERS.map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={cn(
+              'rounded-full px-3 py-1.5 text-xs font-semibold capitalize',
+              filter === f
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white text-slate-500 ring-1 ring-slate-200/70 hover:text-slate-700 dark:bg-slate-900 dark:ring-slate-700/70 dark:hover:text-slate-300',
+            )}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+
       {hands.length === 0 ? (
         <Panel className="text-sm text-slate-500">No completed hands yet.</Panel>
       ) : (
         <div className="grid gap-2 lg:grid-cols-2 2xl:grid-cols-3">
-          {hands.map((h) => (
+          {hands.filter(matchesFilter).map((h) => (
             <button
               key={h.handId}
               onClick={() => api.hand(roomId!, h.handId).then(setDetail)}

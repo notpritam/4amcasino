@@ -37,7 +37,7 @@ function roundRect(
   ctx.roundRect(x, y, w, h, r);
 }
 
-function drawCardFace(
+export function drawCardFace(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,

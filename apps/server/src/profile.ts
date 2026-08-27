@@ -450,9 +450,23 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       if (!mine) continue; // a hand in my room that I sat out
       const settlement = entries.find((e) => e.type === 'settlement');
       const board = (settlement?.payload.board as number[] | undefined) ?? [];
-      const reveal = (
-        (settlement?.payload.reveals as { seat: number; cards: number[] }[] | undefined) ?? []
-      ).find((x) => x.seat === mine.seat);
+      const allReveals =
+        (settlement?.payload.reveals as { seat: number; cards: number[] }[] | undefined) ?? [];
+      const reveal = allReveals.find((x) => x.seat === mine.seat);
+      const labelOf = (cards: number[]): string | null =>
+        board.length === 5 ? describeScore(evaluate7([...cards, ...board] as never)) : null;
+      // who I beat (or lost to): every OTHER revealed hand, with what it made
+      const opponents = allReveals
+        .filter((x) => x.seat !== mine.seat)
+        .map((x) => {
+          const uid = seats.find((sx) => sx.seat === x.seat)?.userId;
+          const who = uid
+            ? (db.prepare('SELECT COALESCE(display_name, username) as name FROM users WHERE id = ?').get(uid) as
+                | { name: string }
+                | undefined)
+            : undefined;
+          return { name: who?.name ?? `Seat ${x.seat + 1}`, cards: x.cards, label: labelOf(x.cards) };
+        });
       const decrypted = entries.find(
         (e) => e.type === 'hole_cards' && (e.payload.seat as number) === mine.seat,
       );
@@ -475,6 +489,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
             : net > 0
               ? 'won quietly'
               : 'played';
+      const myCards = reveal?.cards ?? (decrypted?.payload.cards as number[] | undefined) ?? null;
       hands.push({
         handId: row.handId,
         roomId: row.roomId,
@@ -483,7 +498,9 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
         net,
         outcome,
         board,
-        myCards: reveal?.cards ?? (decrypted?.payload.cards as number[] | undefined) ?? null,
+        myCards,
+        label: myCards ? labelOf(myCards) : null,
+        opponents,
         voided: !!voidStmt.get(row.head),
       });
     }
