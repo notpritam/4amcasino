@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { useStore } from '../shared/store.ts';
 import { applyTheme, loadPrefs } from '../shared/prefs.ts';
+import { peekPendingJoin } from '../shared/pendingJoin.ts';
 import { LandingPage } from '../pages/landing/LandingPage.tsx';
 
 const LoginPage = lazy(() =>
@@ -55,6 +56,19 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return children;
 }
 
+/** The mirror of RequireAuth: someone already signed in has no business looking
+ *  at a login form. If a share link sent them here, hand them to /j/CODE so they
+ *  land at the table instead of the lobby - that route already knows how to join
+ *  and forward. `?switch=1` opts out, so changing accounts is still possible. */
+function RedirectIfAuthed({ children }: { children: ReactNode }) {
+  const token = useStore((s) => s.auth.token);
+  if (!token) return children;
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('switch')) return children;
+  const code = params.get('join') ?? peekPendingJoin();
+  return <Navigate to={code ? `/j/${code}` : '/lobby'} replace />;
+}
+
 export function App() {
   const token = useStore((s) => s.auth.token);
   const theme = useStore((s) => s.prefs.theme);
@@ -78,7 +92,14 @@ export function App() {
               </RequireAuth>
             }
           />
-          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/login"
+            element={
+              <RedirectIfAuthed>
+                <LoginPage />
+              </RedirectIfAuthed>
+            }
+          />
           <Route
             path="/lobby"
             element={
