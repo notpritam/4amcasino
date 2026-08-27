@@ -23,6 +23,10 @@ export interface ReplayStep {
   reveals: Record<number, CardId[]>;
   awards: { seat: number; amount: number }[] | null;
   actor: number | null;
+  /** What each seat last did on the current street, cleared when the street
+   *  turns - the same thing the live table puts on the seat pods, so a replay
+   *  can render through exactly the same widgets. */
+  lastActions: Record<number, PlayerAction & { auto?: boolean }>;
 }
 
 export interface Replay {
@@ -85,6 +89,7 @@ export function buildReplay(entries: TranscriptEntry[]): Replay | null {
   let board: CardId[] = [];
   let board2: CardId[] = [];
   let reveals: Record<number, CardId[]> = {};
+  let lastActions: Record<number, PlayerAction & { auto?: boolean }> = {};
 
   const push = (label: string, actor: number | null = null, awards: ReplayStep['awards'] = null) =>
     steps.push({
@@ -95,6 +100,7 @@ export function buildReplay(entries: TranscriptEntry[]): Replay | null {
       reveals: { ...tvBySeat, ...reveals },
       awards,
       actor,
+      lastActions: { ...lastActions },
     });
 
   push('Cards dealt face down');
@@ -118,6 +124,7 @@ export function buildReplay(entries: TranscriptEntry[]): Replay | null {
           const action = p.action as PlayerAction;
           const seat = (p.seat as number) ?? betting.toAct;
           betting = applyAction(betting, seat!, action);
+          lastActions[seat!] = action;
           const amount = action.amount !== undefined ? ` ${action.amount}` : '';
           push(`Seat ${seat! + 1} ${ACTION_WORDS[action.type]}${amount}`, seat);
           break;
@@ -126,6 +133,7 @@ export function buildReplay(entries: TranscriptEntry[]): Replay | null {
           if (!betting) break;
           const seat = p.seat as number;
           betting = applyAction(betting, seat, { type: 'fold' });
+          lastActions[seat] = { type: 'fold', auto: true };
           push(`Seat ${seat + 1} timed out and folds`, seat);
           break;
         }
@@ -151,6 +159,7 @@ export function buildReplay(entries: TranscriptEntry[]): Replay | null {
         }
         case 'street': {
           if (betting) betting = nextStreet(betting);
+          lastActions = {}; // the seat pods clear when the street turns
           push(`${String(p.street)[0]?.toUpperCase()}${String(p.street).slice(1)} betting`);
           break;
         }

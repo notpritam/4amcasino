@@ -4,10 +4,12 @@ import { CaretLeft, CaretRight, DownloadSimple, FilmSlate, SkipBack } from '@pho
 import { renderReplayGif } from '../../features/share/replayGif.ts';
 import { api } from '../../shared/api.ts';
 import { buildReplay, type Replay } from '../../shared/replay.ts';
-import { cn, fmt } from '../../shared/lib/cn.ts';
+import { fmt } from '../../shared/lib/cn.ts';
 import { Badge, Button, Panel, Spinner } from '../../shared/ui/index.tsx';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
-import { Avatar } from '../../entities/user/Avatar.tsx';
+import { useStore } from '../../shared/store.ts';
+import { RoundTable } from '../../widgets/table/RoundTable.tsx';
+import type { SeatView } from '../../widgets/table/players.tsx';
 
 interface RoomPlayer {
   userId: number;
@@ -23,6 +25,7 @@ export function ReplayPage() {
   const [record, setRecord] = useState<unknown>(null);
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const auth = useStore((s) => s.auth);
 
   useEffect(() => {
     void Promise.all([api.hand(roomId!, handId!), api.getRoom(roomId!)]).then(([hand, room]) => {
@@ -103,6 +106,62 @@ export function ReplayPage() {
     [step],
   );
 
+  /** Translate one replay step into the shape the live table renders. */
+  const seatViews: SeatView[] = useMemo(() => {
+    if (!replay || !step) return [];
+    // blind positions, standard rules: heads-up the button posts the small
+    const order = replay.seats.map((s) => s.seat).sort((a, b) => a - b);
+    const bi = Math.max(0, order.indexOf(replay.buttonSeat));
+    const heads = order.length === 2;
+    const sbSeat = heads ? replay.buttonSeat : order[(bi + 1) % order.length];
+    const bbSeat = order[(bi + (heads ? 1 : 2)) % order.length];
+
+    return replay.seats.map((s) => {
+      const info = players.get(s.userId);
+      const es = step.betting?.seats.find((x) => x.seat === s.seat);
+      const award = step.awards?.find((a) => a.seat === s.seat);
+      return {
+        seat: s.seat,
+        userId: s.userId,
+        username: info?.username ?? `seat${s.seat + 1}`,
+        displayName: info?.displayName ?? `Seat ${s.seat + 1}`,
+        avatarVersion: info?.avatarVersion ?? 0,
+        stack: es ? es.stack : s.stack,
+        isButton: replay.buttonSeat === s.seat,
+        isSB: sbSeat === s.seat,
+        isBB: bbSeat === s.seat,
+        isToAct: step.actor === s.seat,
+        folded: !!es?.folded,
+        allIn: !!es && es.stack === 0 && !es.folded,
+        inHand: true,
+        broke: false,
+        sittingOut: false,
+        isLeader: false,
+        // a recording has no live presence, so nobody is dimmed as offline
+        connected: true,
+        speaking: false,
+        voiceMuted: false,
+        revealed: step.reveals[s.seat],
+        won: !!award && award.amount > 0,
+        pendingBuy: 0,
+        lastAction: step.lastActions[s.seat],
+      };
+    });
+  }, [replay, step, players]);
+
+  // if the viewer played this hand, their seat rotates to the bottom exactly as
+  // it does at a live table, and their cards sit where they always sit
+  const mySeat = useMemo(
+    () => replay?.seats.find((s) => s.userId === auth.userId)?.seat ?? null,
+    [replay, auth.userId],
+  );
+  const myCards = (mySeat !== null && step?.reveals[mySeat]) || [];
+  const committedBySeat = useMemo(() => {
+    const out: Record<number, number> = {};
+    for (const s of step?.betting?.seats ?? []) out[s.seat] = s.committed;
+    return out;
+  }, [step]);
+
   if (!replay || !step) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -112,7 +171,7 @@ export function ReplayPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-6">
+    <div className="mx-auto max-w-6xl space-y-4 p-4 md:p-6">
       <header className="flex items-center gap-3">
         <Link
           to={`/room/${roomId}/hands`}
@@ -147,81 +206,56 @@ export function ReplayPage() {
           : 'Rebuilt from the signed transcript, showing only what was public. Folded cards stay secret forever.'}
       </p>
 
-      {/* board */}
-      <Panel className="flex flex-col items-center gap-4">
-        <div className="rounded-xl bg-indigo-600 px-5 py-1.5 font-display text-lg font-bold text-white">
-          POT {fmt(pot)}
-        </div>
-        <div className="flex gap-2">
-          {[0, 1, 2, 3, 4].map((i) =>
-            step.board[i] !== undefined ? (
-              <PlayingCard key={`${i}-${step.board[i]}`} card={step.board[i]} size="md" deal />
-            ) : (
-              <div key={i} className="h-20 w-14 rounded-lg border-2 border-dashed border-slate-300 md:h-24 md:w-[4.2rem] md:rounded-xl dark:border-slate-700" />
-            ),
-          )}
-        </div>
-        {step.board2.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-fuchsia-500/15 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-fuchsia-500">
-              Run 2
-            </span>
-            {step.board2.map((c) => (
-              <PlayingCard key={`r2-${c}`} card={c} size="sm" deal />
-            ))}
+      {/* The felt itself. Same widget the live table uses, fed from the
+          transcript instead of a socket, so a replay looks like the hand looked
+          rather than like a report about it. */}
+      <section className="rounded-3xl bg-gradient-to-b from-slate-100 to-slate-200/70 p-3 dark:from-slate-900 dark:to-slate-950">
+        <RoundTable
+          seats={seatViews}
+          mySeat={mySeat}
+          myUserId={auth.userId}
+          myCards={myCards}
+          committedBySeat={committedBySeat}
+          urgent={false}
+          handLive={step.awards === null}
+          canSit={false}
+          onSit={() => {}}
+          canKick={false}
+          onKick={() => {}}
+          bankerId={0}
+          coBankerId={null}
+          bb={replay.bb}
+        >
+          <div className="rounded-xl bg-indigo-600 px-5 py-1.5 font-display text-lg font-bold text-white shadow-lg">
+            POT {fmt(pot)}
           </div>
-        )}
-        <div className="text-sm font-medium text-slate-600 dark:text-slate-300">{step.label}</div>
-      </Panel>
-
-      {/* seats */}
-      <div className="space-y-2">
-        {replay.seats.map((s) => {
-          const info = players.get(s.userId);
-          const es = step.betting?.seats.find((x) => x.seat === s.seat);
-          const award = step.awards?.find((a) => a.seat === s.seat);
-          const revealed = step.reveals[s.seat];
-          return (
-            <div
-              key={s.seat}
-              className={cn(
-                'flex items-center gap-3 rounded-xl bg-white p-3 ring-1 ring-slate-200/70 dark:bg-slate-900 dark:ring-slate-700/70',
-                step.actor === s.seat && 'ring-2 ring-indigo-500',
-                es?.folded && 'opacity-45',
-              )}
-            >
-              <Avatar
-                userId={s.userId}
-                name={info?.displayName ?? `Seat ${s.seat + 1}`}
-                version={info?.avatarVersion ?? 0}
-                size="sm"
-              />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold">
-                  {info?.displayName ?? `Seat ${s.seat + 1}`}
-                  {replay.buttonSeat === s.seat && <span className="ml-1.5 text-xs text-slate-400">(D)</span>}
-                </div>
-                <div className="font-display text-xs text-slate-500">
-                  {fmt(es ? es.stack : s.stack)}
-                  {es && es.committed > 0 && <span className="ml-2 text-indigo-500">bet {fmt(es.committed)}</span>}
-                </div>
-              </div>
-              {es?.folded && <Badge tone="rose">FOLDED</Badge>}
-              {award && award.amount > 0 && <Badge tone="emerald">+{fmt(award.amount)}</Badge>}
-              <div className="flex gap-1">
-                {revealed ? (
-                  revealed.map((c) => <PlayingCard key={c} card={c} size="xs" deal />)
-                ) : es && !es.folded ? (
-                  <>
-                    <PlayingCard faceDown size="xs" />
-                    <PlayingCard faceDown size="xs" />
-                  </>
-                ) : null}
-              </div>
+          <div className="flex gap-1.5 md:gap-2">
+            {[0, 1, 2, 3, 4].map((i) =>
+              step.board[i] !== undefined ? (
+                <PlayingCard key={`${i}-${step.board[i]}`} card={step.board[i]} size="md" deal />
+              ) : (
+                <div
+                  key={i}
+                  className="h-20 w-14 rounded-lg border-2 border-dashed border-slate-400/40 md:h-24 md:w-[4.2rem] md:rounded-xl dark:border-slate-600/50"
+                />
+              ),
+            )}
+          </div>
+          {step.board2.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-fuchsia-500/15 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-fuchsia-500">
+                Run 2
+              </span>
+              {step.board2.map((c) => (
+                <PlayingCard key={`r2-${c}`} card={c} size="sm" deal />
+              ))}
             </div>
-          );
-        })}
-      </div>
+          )}
+          <div className="rounded-full bg-white/80 px-4 py-1.5 text-sm font-semibold text-slate-700 shadow-sm dark:bg-slate-800/90 dark:text-slate-200">
+            {step.label}
+          </div>
+        </RoundTable>
+      </section>
 
       {/* controls */}
       <Panel className="flex flex-wrap items-center gap-2.5">
