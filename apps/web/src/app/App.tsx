@@ -42,6 +42,9 @@ const SettingsPage = lazy(() =>
 const FairPage = lazy(() =>
   import('../pages/fair/FairPage.tsx').then((module) => ({ default: module.FairPage })),
 );
+const JoinPage = lazy(() =>
+  import('../pages/join/JoinPage.tsx').then((module) => ({ default: module.JoinPage })),
+);
 const AppShell = lazy(() =>
   import('../widgets/nav/AppShell.tsx').then((module) => ({ default: module.AppShell })),
 );
@@ -163,6 +166,8 @@ export function App() {
             }
           />
           <Route path="/fair" element={<FairPage />} />
+          {/* share link: works logged out, joins the table on the way back in */}
+          <Route path="/j/:code" element={<JoinPage />} />
           <Route path="*" element={<Navigate to="/lobby" replace />} />
         </Routes>
       </Suspense>

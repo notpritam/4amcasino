@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import { z } from 'zod';
@@ -10,6 +10,8 @@ import { checkLogin, createSession, createUser, requireUser } from './auth.js';
 import { registerRoomRoutes } from './rooms.js';
 import { registerProfileRoutes } from './profile.js';
 import { registerSocialRoutes } from './social.js';
+import { registerAccountRoutes } from './account.js';
+import { forgive, hitNamed, LIMITS, rateLimit } from './limits.js';
 
 const registerSchema = z.object({
   username: z.string().min(2).max(24).regex(/^[a-zA-Z0-9_]+$/),
@@ -23,7 +25,17 @@ export function createApp(
   storageInfo?: () => Record<string, unknown>,
 ): { app: FastifyInstance; db: DB } {
   const db = openDb(dbPath);
-  const app = Fastify({ forceCloseConnections: true });
+  // Trust exactly one hop - the immediate peer, which in production is Render's
+  // load balancer. req.ip then resolves to the address that balancer observed
+  // rather than the left-most X-Forwarded-For entry, which any client can forge
+  // to sidestep the rate limiter. Typed as FastifyServerOptions so TS picks the
+  // plain-HTTP overload.
+  const serverOptions: FastifyServerOptions = {
+    forceCloseConnections: true,
+    trustProxy: (_address: string, hop: number) => hop === 0,
+    bodyLimit: LIMITS.bodyBytes,
+  };
+  const app = Fastify(serverOptions);
   void app.register(cors, { origin: true });
 
   app.addHook('onClose', async () => {
@@ -36,7 +48,10 @@ export function createApp(
     ...(storageInfo?.() ?? { storage: dbPath.startsWith('/data') ? 'disk' : 'ephemeral' }),
   }));
 
-  app.post('/api/register', async (req, reply) => {
+  app.post(
+    '/api/register',
+    { preHandler: rateLimit({ name: 'register', limit: 10, windowMs: 60 * 60_000, by: 'ip' }) },
+    async (req, reply) => {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
     const { username, authKey, publicKey } = parsed.data;
@@ -49,15 +64,30 @@ export function createApp(
       }
       throw e;
     }
-  });
+    },
+  );
 
-  app.post('/api/login', async (req, reply) => {
-    const parsed = loginSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
-    const res = checkLogin(db, parsed.data.username, parsed.data.authKey);
-    if (!res) return reply.code(401).send({ error: 'bad credentials' });
-    return { userId: res.userId, publicKey: res.publicKey, token: createSession(db, res.userId) };
-  });
+  app.post(
+    '/api/login',
+    { preHandler: rateLimit({ name: 'login-ip', limit: 30, windowMs: 15 * 60_000, by: 'ip' }) },
+    async (req, reply) => {
+      const parsed = loginSchema.safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+      // also cap attempts against a single NAME, so spraying one account from a
+      // botnet is throttled even though every request comes from a fresh IP
+      const perName = hitNamed('login-name', parsed.data.username, 20, 15 * 60_000);
+      if (!perName.ok) {
+        return reply
+          .code(429)
+          .header('retry-after', String(perName.retryAfterSecs))
+          .send({ error: `too many attempts - try again in ${perName.retryAfterSecs}s` });
+      }
+      const res = checkLogin(db, parsed.data.username, parsed.data.authKey);
+      if (!res) return reply.code(401).send({ error: 'bad credentials' });
+      forgive(`login-name|n:${parsed.data.username.toLowerCase()}`);
+      return { userId: res.userId, publicKey: res.publicKey, token: createSession(db, res.userId) };
+    },
+  );
 
   app.get('/api/me', { preHandler: requireUser(db) }, async (req) => {
     const row = db.prepare('SELECT id, username, pubkey FROM users WHERE id = ?').get(req.userId) as {
@@ -71,6 +101,7 @@ export function createApp(
   registerRoomRoutes(app, db);
   registerProfileRoutes(app, db);
   registerSocialRoutes(app, db);
+  registerAccountRoutes(app, db);
 
   // self-host convenience: serve the built web app when it exists
   const webDist = join(dirname(fileURLToPath(import.meta.url)), '../../web/dist');

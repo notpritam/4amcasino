@@ -102,6 +102,27 @@ export const api = {
   ledger: (roomId: string) => req(`/api/rooms/${roomId}/ledger`),
   hands: (roomId: string) => req(`/api/rooms/${roomId}/hands`),
   hand: (roomId: string, handId: string) => req(`/api/rooms/${roomId}/hands/${handId}`),
+  // account security: every one of these re-derives your signing identity in the
+  // browser, so they all carry a fresh publicKey (requested by notpritam)
+  changePassword: (currentAuthKey: string, newAuthKey: string, newPublicKey: string) =>
+    req('/api/me/password', { currentAuthKey, newAuthKey, newPublicKey }),
+  changeUsername: (
+    username: string,
+    currentAuthKey: string,
+    newAuthKey: string,
+    newPublicKey: string,
+  ) => req('/api/me/username', { username, currentAuthKey, newAuthKey, newPublicKey }),
+  recoveryStatus: () => req('/api/me/recovery'),
+  setRecovery: (currentAuthKey: string, recoveryAuthKey: string | null) =>
+    req('/api/me/recovery', { currentAuthKey, recoveryAuthKey }, 'PUT'),
+  recover: (
+    username: string,
+    recoveryAuthKey: string,
+    newAuthKey: string,
+    newPublicKey: string,
+  ) => req('/api/recover', { username, recoveryAuthKey, newAuthKey, newPublicKey }),
+  sessions: () => req('/api/me/sessions'),
+  revokeOtherSessions: () => req('/api/me/sessions/revoke-others', {}),
   profile: () => req('/api/profile'),
   updateProfile: (p: Record<string, unknown>) => req('/api/profile', p, 'PUT'),
   uploadAvatar: (image: string) => req('/api/profile/avatar', { image }, 'PUT'),

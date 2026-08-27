@@ -7,6 +7,7 @@ import { cn } from '../../shared/lib/cn.ts';
 import { Button, Input } from '../../shared/ui/index.tsx';
 import { Avatar } from '../../entities/user/Avatar.tsx';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
+import { SettingsCard } from '../settings/SettingsCard.tsx';
 import { cardFromName } from '@4am/shared';
 
 const BACKS: Prefs['cardBack'][] = ['indigo', 'crimson', 'emerald', 'slate'];
@@ -22,8 +23,19 @@ async function toAvatarDataUrl(file: File): Promise<string> {
   return canvas.toDataURL('image/jpeg', 0.85);
 }
 
-/** The profile form. Lives on /settings; the dialog wrapper below is legacy. */
-export function ProfileEditor({ onSaved, wide = false }: { onSaved?: () => void; wide?: boolean }) {
+/** The profile form. Lives on /settings; the dialog wrapper below is legacy.
+ *  `sectioned` splits it into the settings page's titled cards with a sticky save
+ *  bar - one instance either way, so the two halves can never save over each
+ *  other's stale copy of a field (requested by notpritam, docs/FEATURES.md). */
+export function ProfileEditor({
+  onSaved,
+  wide = false,
+  sectioned = false,
+}: {
+  onSaved?: () => void;
+  wide?: boolean;
+  sectioned?: boolean;
+}) {
   const auth = useStore((s) => s.auth);
   const prefs = useStore((s) => s.prefs);
   const setPrefs = useStore((s) => s.setPrefs);
@@ -256,6 +268,43 @@ export function ProfileEditor({ onSaved, wide = false }: { onSaved?: () => void;
       )}
     </>
   );
+
+  if (sectioned) {
+    return (
+      <div className="space-y-6">
+        <SettingsCard
+          id="profile"
+          title="Profile"
+          icon="👤"
+          desc="Your face and name at the table, and the phrases you can fire into chat in one tap."
+        >
+          <div className="space-y-4">{identity}</div>
+        </SettingsCard>
+
+        <SettingsCard
+          id="table"
+          title="Table & play"
+          icon="🎴"
+          desc="How the felt looks and sounds for you, and what other players get to see."
+        >
+          <div className="space-y-4">{tableStyle}</div>
+        </SettingsCard>
+
+        {/* follows you down the page so a change three sections up is never
+            stranded behind a scroll */}
+        <div className="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/90 px-4 py-3 shadow-lg backdrop-blur dark:border-slate-700/70 dark:bg-slate-900/90">
+          <Button onClick={() => void save()} disabled={saving}>
+            {saving ? 'Saving…' : 'Save profile'}
+          </Button>
+          {error && <p className="text-sm text-rose-600">{error}</p>}
+          {saved && <p className="text-sm text-emerald-600">✓ Saved.</p>}
+          {!error && !saved && (
+            <p className="text-xs text-slate-400">Deck, theme and sound apply instantly.</p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={wide ? 'grid gap-x-10 gap-y-4 md:grid-cols-2' : 'space-y-4'}>

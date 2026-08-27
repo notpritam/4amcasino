@@ -118,6 +118,13 @@ function migrate(db: DB): void {
   ensureColumn(db, 'rooms', 'allow_spectators', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'rooms', 'tv_replays', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'users', 'show_best_hand', 'INTEGER NOT NULL DEFAULT 1');
+  // account recovery: hash of the one-time recovery code, salted like a password
+  // (requested by notpritam, docs/FEATURES.md)
+  ensureColumn(db, 'users', 'recovery_hash', 'TEXT');
+  ensureColumn(db, 'users', 'recovery_salt', 'TEXT');
+  ensureColumn(db, 'users', 'recovery_set_at', 'INTEGER');
+  ensureColumn(db, 'sessions', 'last_used', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'sessions', 'label', 'TEXT');
   db.exec(`
     CREATE TABLE IF NOT EXISTS settlements (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

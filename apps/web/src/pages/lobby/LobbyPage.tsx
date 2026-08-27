@@ -5,6 +5,7 @@ import { useStore } from '../../shared/store.ts';
 import { Badge, Button, Dialog, Input, Panel } from '../../shared/ui/index.tsx';
 import { FriendsPanel, InvitesPanel } from '../../features/friends/FriendsPanel.tsx';
 import { NetAreaChart } from '../../features/stats/charts.tsx';
+import { CopyInvite } from '../../features/share/ShareRoom.tsx';
 import { fmt } from '../../shared/lib/cn.ts';
 
 interface RoomSummary {
@@ -141,19 +142,24 @@ export function LobbyPage() {
           ) : (
             <div className="grid gap-2 xl:grid-cols-2">
               {rooms.map((r) => (
-                <Link
+                // the whole card is the link, but the share control has to sit
+                // above it - an interactive element cannot nest inside an anchor
+                <div
                   key={r.id}
-                  to={`/room/${r.id}`}
-                  className="flex items-center justify-between rounded-xl bg-white p-4 ring-1 ring-slate-200/70 transition-shadow hover:shadow-md dark:bg-slate-900 dark:ring-slate-700/70"
+                  className="relative flex items-center justify-between rounded-xl bg-white p-4 ring-1 ring-slate-200/70 transition-shadow hover:shadow-md dark:bg-slate-900 dark:ring-slate-700/70"
                 >
-                  <div>
+                  <Link to={`/room/${r.id}`} className="absolute inset-0 rounded-xl" aria-label={`Open ${r.name}`} />
+                  <div className="min-w-0">
                     <div className="font-medium">{r.name}</div>
                     <div className="text-xs text-slate-500">
                       Blinds {r.sb}/{r.bb} · Code {r.joinCode}
                     </div>
                   </div>
-                  <Badge tone="indigo">{r.playerCount} players</Badge>
-                </Link>
+                  <div className="relative z-10 flex items-center gap-2">
+                    <CopyInvite joinCode={r.joinCode} roomName={r.name} />
+                    <Badge tone="indigo">{r.playerCount} players</Badge>
+                  </div>
+                </div>
               ))}
             </div>
           )}

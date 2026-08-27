@@ -59,6 +59,7 @@ import { BrokeBuyInDialog } from '../../features/bank/BrokeBuyInDialog.tsx';
 import { InviteFriendsDialogBody } from '../../features/friends/FriendsPanel.tsx';
 import { LeaderboardTable, type LeaderboardRow } from '../leaderboard/LeaderboardPage.tsx';
 import { ShareHandDialog } from '../../features/share/ShareHandDialog.tsx';
+import { ShareRoom } from '../../features/share/ShareRoom.tsx';
 import type { ShareData } from '../../features/share/shareCard.ts';
 import {
   tableUtilityGroups,
@@ -1358,9 +1359,14 @@ export function TablePage() {
             </h1>
             <div className="mt-0.5 flex items-center gap-2 text-[0.68rem] text-slate-500">
               {room.room.joinCode !== '' && (
-                <span className="font-display font-semibold tracking-[0.16em] text-indigo-600 dark:text-indigo-300">
+                <button
+                  type="button"
+                  onClick={() => setInviteOpen(true)}
+                  title="Copy or share this table's invite link"
+                  className="font-display font-semibold tracking-[0.16em] text-indigo-600 hover:underline dark:text-indigo-300"
+                >
                   {room.room.joinCode}
-                </span>
+                </button>
               )}
               <span>
                 blinds {room.room.sb}/{room.room.bb}
@@ -1740,7 +1746,17 @@ export function TablePage() {
         onClose={() => setInviteOpen(false)}
         title="Invite friends to this table"
       >
-        <InviteFriendsDialogBody roomId={roomId!} memberIds={room.players.map((p) => p.userId)} />
+        <div className="space-y-5">
+          {room.room.joinCode !== '' && (
+            <ShareRoom joinCode={room.room.joinCode} roomName={room.room.name} />
+          )}
+          <div className="border-t border-slate-200/70 pt-4 dark:border-slate-700/70">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Or invite a friend directly
+            </p>
+            <InviteFriendsDialogBody roomId={roomId!} memberIds={room.players.map((p) => p.userId)} />
+          </div>
+        </div>
       </Dialog>
       <Dialog open={watchOpen} onClose={() => setWatchOpen(false)} title="Watch-only share link">
         <div className="space-y-4">

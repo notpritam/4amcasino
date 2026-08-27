@@ -52,4 +52,8 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | Player-wise settle-up (primary): one combined line per person across every room, expandable to the per-room breakdown; the by-room view stays one toggle away | **notpritam** |
 | Hands that tell the story: "won with a Flush" titles, and each history row expands to who you beat and what THEY held; win/lost/folded/showdown filters ride the URL on both the profile rail and the hands page | **notpritam** |
 | Replay to GIF: one button renders the whole hand as an animated GIF (board, actions, reveals, winnings), downloads it, and opens a ready tweet - brag on Twitter in two clicks | **notpritam** |
+| Settings as a real page: sticky section rail (Profile / Table & play / Account & security / Session), titled cards, a save bar that follows you down the page | **notpritam** |
+| Edit your password and your username - both re-derive your card-signing key in the browser, upload the new pubkey, and sign out every other device | **notpritam** |
+| Forgotten-password recovery: a one-time 120-bit recovery code you arm in settings and redeem on the login page; single-use, burns every session, constant-time so it never reveals whether an account exists | **notpritam** |
+| Shareable table links: copy the code, copy a `/j/CODE` link, or hand it to the OS share sheet - a logged-out friend opens it, signs up, and lands in the room automatically | **notpritam** |
 | Everything before 2026-08-24 (mental poker core, ledger and banking, friends and spectating, cyberpunk theme, MCP seat, fairness tour, auto-approve buys, ...) | **notpritam** |
