@@ -1851,7 +1851,7 @@ export function TablePage() {
           )}
         </div>
       </Dialog>
-      <Dialog open={standingsOpen} onClose={() => setStandingsOpen(false)} title="Room standings">
+      <Dialog open={standingsOpen} onClose={() => setStandingsOpen(false)} title="Room standings" size="lg">
         {standings === null ? (
           <Spinner label="Counting the chips…" />
         ) : standings.length === 0 ? (

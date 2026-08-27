@@ -26,7 +26,13 @@ export function LeaderboardTable({ rows, minHands = 0 }: { rows: LeaderboardRow[
           Winnings count in settle-up after {minHands} hand{minHands === 1 ? '' : 's'} played.
         </p>
       )}
-      <div className="grid gap-2.5 lg:grid-cols-2 2xl:grid-cols-3">
+      {/* Container queries, not viewport ones. These cards also render inside
+          the "Room standings" dialog, which is a fraction of the screen wide -
+          with `2xl:grid-cols-3` a wide monitor forced three columns into it, so
+          each name column collapsed to about one character wide and wrapped
+          letter-by-letter. The columns now follow the space actually available. */}
+      <div className="@container">
+      <div className="grid gap-2.5 @2xl:grid-cols-2 @5xl:grid-cols-3">
       {rows.map((r, i) => (
         <Link
           key={r.userId}
@@ -57,7 +63,9 @@ export function LeaderboardTable({ rows, minHands = 0 }: { rows: LeaderboardRow[
             </span>
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block break-words font-semibold leading-snug">
+            {/* break-all was what let a squeezed column split mid-word into one
+                letter per line; a long name now wraps at words or truncates */}
+            <span className="block truncate font-semibold leading-snug" title={r.displayName ?? r.username}>
               {r.displayName ?? r.username}
             </span>
             <span className="mt-0.5 block text-xs leading-relaxed text-slate-400">
@@ -81,6 +89,7 @@ export function LeaderboardTable({ rows, minHands = 0 }: { rows: LeaderboardRow[
           </span>
         </Link>
       ))}
+      </div>
       </div>
     </div>
   );

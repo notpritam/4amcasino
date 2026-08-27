@@ -84,11 +84,14 @@ export function Dialog({
   onClose,
   title,
   children,
+  size = 'md',
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
+  /** `lg` for dialogs that hold a grid or a table rather than a short form. */
+  size?: 'md' | 'lg';
 }) {
   if (!open) return null;
   return (
@@ -100,7 +103,10 @@ export function Dialog({
       aria-label={title}
     >
       <div
-        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900"
+        className={cn(
+          'max-h-[86vh] w-full overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900',
+          size === 'lg' ? 'max-w-3xl' : 'max-w-md',
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
