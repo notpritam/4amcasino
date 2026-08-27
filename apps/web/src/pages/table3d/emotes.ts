@@ -2,6 +2,7 @@
 // ABOUTME: program applied to a character rig (body + shoulder-pivoted arms),
 // ABOUTME: broadcast over the websocket so the whole table watches together.
 import * as THREE from 'three';
+import { EMOTE_KINDS } from '@4am/shared';
 import type { SoundName } from '../../shared/sounds.ts';
 
 /** Progress-driven pose program. `p` runs 0..1 over `dur`; `t` is wall time
@@ -29,7 +30,11 @@ const rig = (char: THREE.Group): Rig => char.userData as Rig;
 const wave = (p: number) => Math.sin(Math.PI * p);
 const osc = (t: number, hz: number) => Math.sin(t * hz * Math.PI * 2);
 
-export const EMOTES: Record<string, EmoteDef> = {
+export type EmoteKind = (typeof EMOTE_KINDS)[number];
+
+// Partial because the wire allowlist also covers the targeted attacks below,
+// which animate the TARGET and so have no entry here.
+const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
   wave: {
     emoji: '👋',
     label: 'Wave',
@@ -339,6 +344,16 @@ export const EMOTES: Record<string, EmoteDef> = {
     },
   },
 };
+
+/** Null-prototype on purpose. A plain object literal inherits from
+ *  Object.prototype, so EMOTES['__proto__'] returns a truthy object with no
+ *  `apply` - and the resulting throw lands inside the render loop, freezing the
+ *  3D table for every player in the room until they reload. The wire format
+ *  rejects unknown kinds too; this is the belt to that pair of braces. */
+export const EMOTES: Partial<Record<EmoteKind, EmoteDef>> = Object.assign(
+  Object.create(null) as Partial<Record<EmoteKind, EmoteDef>>,
+  EMOTE_DEFS,
+);
 
 /** Targeted mischief: applied to the TARGET character. */
 export const ATTACKS: Record<string, { dur: number; sound: SoundName }> = {

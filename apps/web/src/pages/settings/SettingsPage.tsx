@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { api } from '../../shared/api.ts';
 import { loadPrefs } from '../../shared/prefs.ts';
 import { useStore } from '../../shared/store.ts';
 import { Button, Spinner } from '../../shared/ui/index.tsx';
@@ -133,8 +134,15 @@ export function SettingsPage() {
             <Button
               variant="danger"
               onClick={() => {
-                logout();
-                nav('/login');
+                // kill the session server-side too, then clear this browser -
+                // clearing localStorage alone left the token live forever
+                void api
+                  .logout()
+                  .catch(() => {})
+                  .finally(() => {
+                    logout();
+                    nav('/login');
+                  });
               }}
             >
               Sign out

@@ -15,7 +15,7 @@ import { api } from '../../shared/api.ts';
 import { play } from '../../shared/sounds.ts';
 import { cn } from '../../shared/lib/cn.ts';
 import { ActionBar } from '../../widgets/table/ActionBar.tsx';
-import { ATTACKS, EMOTES } from './emotes.ts';
+import { ATTACKS, EMOTES, type EmoteKind } from './emotes.ts';
 
 /* ── the character wardrobe ─────────────────────────────────────────────── */
 
@@ -960,7 +960,7 @@ export function Table3DPage() {
         }
         return;
       }
-      const def = EMOTES[d.kind];
+      const def = EMOTES[d.kind as EmoteKind];
       if (def && d.fromSeat !== null) {
         anims.push({ kind: 'emote', emote: d.kind, seat: d.fromSeat, t0: performance.now() });
         if (def.sound) play(def.sound);
@@ -1268,7 +1268,7 @@ export function Table3DPage() {
         const home = homeBySeat.get(anim.seat);
         const dur =
           anim.kind === 'emote'
-            ? (EMOTES[anim.emote ?? '']?.dur ?? 1600)
+            ? (EMOTES[(anim.emote ?? '') as EmoteKind]?.dur ?? 1600)
             : anim.kind === 'poke'
               ? 1100
               : anim.kind === 'slap'
@@ -1286,7 +1286,7 @@ export function Table3DPage() {
         const wave = Math.sin(Math.PI * prog);
         const away = home.clone().normalize();
         if (anim.kind === 'emote') {
-          const def = EMOTES[anim.emote ?? ''];
+          const def = EMOTES[(anim.emote ?? '') as EmoteKind];
           if (def) {
             def.apply(char, prog, t);
             if (def.burst && !anim.fired && prog > 0.4) {
@@ -1527,7 +1527,7 @@ export function Table3DPage() {
       <div className="absolute bottom-28 right-3 z-10 flex flex-col items-end gap-2">
         {emoteOpen && (
           <div className="grid max-h-72 w-64 grid-cols-4 gap-1 overflow-y-auto rounded-2xl bg-[#1d1033]/95 p-2 ring-1 ring-violet-400/30 backdrop-blur">
-            {Object.entries(EMOTES)
+            {(Object.entries(EMOTES) as [EmoteKind, NonNullable<(typeof EMOTES)[EmoteKind]>][])
               .filter(([k]) => k !== 'celebrate')
               .map(([kind, def]) => (
                 <button

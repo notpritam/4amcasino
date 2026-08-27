@@ -4,7 +4,31 @@ import type { CardId } from './cards.js';
 
 const hex = (len?: number) => (len ? z.string().length(len).regex(/^[0-9a-f]+$/) : z.string().regex(/^[0-9a-f]+$/));
 
-export const dleqProofSchema = z.object({ A1: hex(64), A2: hex(64), z: z.string().regex(/^[0-9a-f]+$/) });
+/** Hand ids are randomBytes(8); bound them so an unbounded string never reaches
+ *  a map key or a DB lookup. */
+const handId = z.string().min(1).max(64);
+
+/** A scalar reduced mod the group order, so at most 64 hex characters - but
+ *  these are produced by BigInt.toString(16), which does not zero-pad, so a
+ *  short one is perfectly legitimate. Bounded rather than fixed-width: leaving
+ *  them open let a single frame carry ~100MB of hex straight into
+ *  BigInt('0x'+...), which is superlinear in V8 and blocks the one thread every
+ *  live table shares. */
+const scalarHex = z.string().min(1).max(64).regex(/^[0-9a-f]+$/);
+
+export const dleqProofSchema = z.object({ A1: hex(64), A2: hex(64), z: scalarHex });
+
+/** The 3D emote set, as a closed list. It has to be a real allowlist rather than
+ *  a free string: the client looks the value up on a plain object, so a `kind` of
+ *  `__proto__` resolves to Object.prototype - truthy, but with no `apply` - and
+ *  the throw lands inside requestAnimationFrame, permanently killing the render
+ *  loop for everyone at the table. */
+export const EMOTE_KINDS = [
+  'wave', 'dance', 'disco', 'robot', 'twirl', 'jump', 'clap', 'bow', 'flex',
+  'facepalm', 'rage', 'laugh', 'cry', 'shrug', 'heart', 'thumbs', 'headbang',
+  'moonwalk', 'spin', 'wiggle', 'salute', 'guitar', 'dab', 'chicken', 'pray',
+  'levitate', 'celebrate', 'shove', 'slap', 'chip',
+] as const;
 
 export const playerActionSchema = z.object({
   type: z.enum(['fold', 'check', 'call', 'bet', 'raise']),
@@ -28,7 +52,7 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
     sig: hex(128),
   }),
   z.object({ t: z.literal('action'), handId: z.string(), action: playerActionSchema, sig: hex(128) }),
-  z.object({ t: z.literal('reveal_key'), handId: z.string(), key: z.string().regex(/^[0-9a-f]+$/), sig: hex(128) }),
+  z.object({ t: z.literal('reveal_key'), handId, key: scalarHex, sig: hex(128) }),
   z.object({
     t: z.literal('show_cards'),
     handId: z.string(),
@@ -41,12 +65,12 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('sit_out'), sittingOut: z.boolean() }),
   z.object({ t: z.literal('im_ready') }),
   z.object({ t: z.literal('rit_vote'), handId: z.string(), yes: z.boolean(), sig: hex(128) }),
-  z.object({ t: z.literal('fold_key'), handId: z.string(), key: z.string().regex(/^[0-9a-f]+$/), sig: hex(128) }),
+  z.object({ t: z.literal('fold_key'), handId, key: scalarHex, sig: hex(128) }),
   z.object({
     t: z.literal('peek_offer'),
-    handId: z.string(),
+    handId,
     targetSeat: z.number().int().min(0).max(8),
-    amount: z.number().int().positive(),
+    amount: z.number().int().positive().max(1_000_000),
   }),
   z.object({
     t: z.literal('peek_accept'),
@@ -61,7 +85,7 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('peek_decline'), handId: z.string(), offerId: z.string() }),
   z.object({
     t: z.literal('chat'),
-    text: z.string().min(1).max(500),
+    text: z.string().min(1).max(400),
     kind: z.enum(['text', 'sticker', 'phrase']).optional(),
   }),
   z.object({
@@ -70,10 +94,16 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
   }),
   z.object({
     t: z.literal('emote'),
-    kind: z.string().min(1).max(24),
+    kind: z.enum(EMOTE_KINDS),
     targetSeat: z.number().int().min(0).max(8).optional(),
   }),
-  z.object({ t: z.literal('rtc'), to: z.number().int(), data: z.unknown() }),
+  // relayed verbatim to another player, so it needs its own ceiling - SDP and
+  // ICE payloads are a few KB, nowhere near this
+  z.object({
+    t: z.literal('rtc'),
+    to: z.number().int(),
+    data: z.unknown().refine((d) => JSON.stringify(d ?? null).length <= 8192, 'rtc payload too large'),
+  }),
   z.object({ t: z.literal('voice_state'), muted: z.boolean() }),
 ]);
 export type ClientMsg = z.infer<typeof clientMsgSchema>;

@@ -1,6 +1,6 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import type { DB } from './db.js';
+import { SESSION_TTL_MS, type DB } from './db.js';
 
 export function hashAuthKey(authKey: string, salt: string): string {
   return scryptSync(authKey, salt, 32).toString('hex');
@@ -38,19 +38,30 @@ export function checkLogin(
 
 export function createSession(db: DB, userId: number): string {
   const token = randomBytes(32).toString('hex');
-  db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)').run(
-    token,
-    userId,
-    Date.now(),
-  );
+  const now = Date.now();
+  db.prepare(
+    'INSERT INTO sessions (token, user_id, created_at, last_used, expires_at) VALUES (?, ?, ?, ?, ?)',
+  ).run(token, userId, now, now, now + SESSION_TTL_MS);
+  // opportunistic sweep so the table cannot grow forever on dead logins
+  if (Math.random() < 0.02) db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now);
   return token;
 }
 
 export function userForToken(db: DB, token: string): number | null {
-  const row = db.prepare('SELECT user_id FROM sessions WHERE token = ?').get(token) as
-    | { user_id: number }
-    | undefined;
-  return row ? row.user_id : null;
+  const row = db
+    .prepare('SELECT user_id, expires_at FROM sessions WHERE token = ?')
+    .get(token) as { user_id: number; expires_at: number } | undefined;
+  if (!row) return null;
+  if (row.expires_at <= Date.now()) {
+    db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+    return null;
+  }
+  return row.user_id;
+}
+
+/** Ends one session - the logout the app never had. */
+export function endSession(db: DB, token: string): void {
+  db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
 }
 
 const seenCache = new Map<number, number>();

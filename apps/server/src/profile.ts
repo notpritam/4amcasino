@@ -158,12 +158,33 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
     const row = db
       .prepare(
         `SELECT id, username, COALESCE(display_name, username) as displayName, bio, avatar_version as avatarVersion,
-                avatar IS NOT NULL as hasAvatar, created_at as createdAt FROM users WHERE id = ?`,
+                avatar IS NOT NULL as hasAvatar, created_at as createdAt, private_mode as privateMode FROM users WHERE id = ?`,
       )
       .get(id) as
-      | { id: number; username: string; displayName: string; bio: string | null; avatarVersion: number; hasAvatar: number; createdAt: number }
+      | { id: number; username: string; displayName: string; bio: string | null; avatarVersion: number; hasAvatar: number; createdAt: number; privateMode: number }
       | undefined;
     if (!row) return reply.code(404).send({ error: 'no such user' });
+
+    // Private mode was honoured on the leaderboard and in the session report but
+    // not here, so this route handed any logged-in user anyone else's lifetime
+    // P&L, their whole opponent graph, and their last 100 ledger rows - notes
+    // included, which is where people write how they actually settled up.
+    const isSelf = req.userId === id;
+    if (row.privateMode && !isSelf) {
+      return {
+        userId: row.id,
+        username: row.username,
+        displayName: row.displayName,
+        bio: row.bio ?? '',
+        avatarVersion: row.avatarVersion,
+        hasAvatar: !!row.hasAvatar,
+        createdAt: row.createdAt,
+        stats: null,
+        rivals: [],
+        transactions: [],
+        hidden: true,
+      };
+    }
 
     const stats = db
       .prepare(
@@ -207,13 +228,18 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
         return { userId, ...u, ...agg };
       });
 
-    const transactions = db
-      .prepare(
-        `SELECT l.room_id as roomId, r.name as roomName, l.delta, l.kind, l.note, l.ref, l.ts
-         FROM ledger l JOIN rooms r ON r.id = l.room_id
-         WHERE l.user_id = ? ORDER BY l.id DESC LIMIT 100`,
-      )
-      .all(id);
+    // The money rail is only ever rendered on your own profile, and the notes
+    // are settlement details people typed for themselves ("paid via UPI"), so
+    // it never leaves the owner's account.
+    const transactions = isSelf
+      ? db
+          .prepare(
+            `SELECT l.room_id as roomId, r.name as roomName, l.delta, l.kind, l.note, l.ref, l.ts
+             FROM ledger l JOIN rooms r ON r.id = l.room_id
+             WHERE l.user_id = ? ORDER BY l.id DESC LIMIT 100`,
+          )
+          .all(id)
+      : [];
 
     return {
       userId: row.id,

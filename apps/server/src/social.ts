@@ -4,7 +4,8 @@ import type { DB } from './db.js';
 import { ONLINE_WINDOW_MS, requireUser } from './auth.js';
 import { canBank, getRoom, isMember, isSpectator, roomEvents, roomPlayers } from './rooms.js';
 import { appendLedger } from './ledger.js';
-import { activeHands } from './game.js';
+import { activeHands } from './liveHands.js';
+import { LIMITS } from './limits.js';
 import { randomBytes } from 'node:crypto';
 
 /** Friends, presence, room invites, and banker invalidation. */
@@ -316,7 +317,9 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
     const parsed = z
       .object({
         toUserId: z.number().int(),
-        amount: z.number().int().positive(),
+        // bounded for the same reason buy-ins are: past 2^63 the stack column
+        // silently becomes a float and every later debit rounds away
+        amount: z.number().int().positive().max(LIMITS.maxChipAmount),
         note: z.string().max(120).optional(),
       })
       .safeParse(req.body);
@@ -393,13 +396,21 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
     const room = getRoom(db, id);
     if (!room) return reply.code(404).send({ error: 'no such room' });
     if (!canBank(room, req.userId)) return reply.code(403).send({ error: 'banker only' });
+    // chips at risk in a live hand are not deducted from the stack yet, so
+    // reversing an older hand now can settle a player straight into a negative
+    if (activeHands.has(id)) {
+      return reply.code(400).send({ error: 'wait for the hand to finish' });
+    }
     const already = db
       .prepare("SELECT 1 FROM ledger WHERE room_id = ? AND kind = 'void-hand' AND ref = ?")
       .get(id, parsed.data.handId);
     if (already) return reply.code(400).send({ error: 'that hand was already voided' });
+    // The commission rides the same ref as the settlement. Reversing only the
+    // settlements made every player whole while the banker kept the rake, so
+    // each void quietly minted 1% of the pot out of nothing.
     const entries = db
       .prepare(
-        "SELECT user_id, delta FROM ledger WHERE room_id = ? AND kind = 'hand-settlement' AND ref = ?",
+        "SELECT user_id, delta FROM ledger WHERE room_id = ? AND kind IN ('hand-settlement', 'commission') AND ref = ?",
       )
       .all(id, parsed.data.handId) as { user_id: number; delta: number }[];
     if (entries.length === 0) return reply.code(404).send({ error: 'no settled hand with that id' });
@@ -470,13 +481,23 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
 
   const pairOf = (a: number, b: number) => (a < b ? [a, b] : [b, a]) as [number, number];
 
-  const settledSum = (roomId: string, a: number, b: number): number => {
-    const [low, high] = pairOf(a, b);
+  /** Settled amounts between two people, signed against `debtor`.
+   *
+   *  This used to sum the pair regardless of who had owed whom, so a debt that
+   *  was properly settled in one direction silently cancelled the next debt in
+   *  the other direction: A pays B 500 and settles, B later loses 500 back, and
+   *  the platform reports a clean slate while A keeps the money. Netting by
+   *  direction is the whole point - a settlement in the opposite direction is a
+   *  reason the current debt is LARGER, not smaller. */
+  const settledSum = (roomId: string, debtor: number, creditor: number): number => {
+    const [low, high] = pairOf(debtor, creditor);
     const row = db
       .prepare(
-        'SELECT COALESCE(SUM(amount), 0) as total FROM settlements WHERE room_id = ? AND low_user = ? AND high_user = ? AND settled_ts IS NOT NULL',
+        `SELECT COALESCE(SUM(CASE WHEN debtor = ? THEN amount ELSE -amount END), 0) as total
+         FROM settlements
+         WHERE room_id = ? AND low_user = ? AND high_user = ? AND settled_ts IS NOT NULL`,
       )
-      .get(roomId, low, high) as { total: number };
+      .get(debtor, roomId, low, high) as { total: number };
     return row.total;
   };
 

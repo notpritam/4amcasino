@@ -41,10 +41,20 @@ function signed(handId: string, t: string, body: unknown): string {
   return signContent(auth.identity!.secretKey, handId, t, body);
 }
 
+/** Hands this browser actually folded, and hands it has seen end.
+ *
+ *  The client holds secrets the server is never supposed to learn, and the
+ *  server is the one narrating what happened - so "the server told me I folded"
+ *  and "the server asked me for my key" are not, on their own, reasons to hand
+ *  anything over. These two sets are the local record we check against instead. */
+const foldedByMe = new Set<string>();
+const endedHands = new Set<string>();
+
 /** Send a betting action for the current hand (called from the UI). */
 export function act(action: PlayerAction): void {
   const handId = useStore.getState().hand.handId;
   if (!handId) return;
+  if (action.type === 'fold') foldedByMe.add(handId);
   wsClient.send({ t: 'action', handId, action, sig: signed(handId, 'action', { action }) });
 }
 
@@ -206,6 +216,20 @@ function handle(msg: ServerMsg): void {
     }
 
     case 'need_share': {
+      // Unmasking is a capability, not a favour. If the server can get us to
+      // strip our own mask off an arbitrary point it hands us, it can feed us
+      // our own encrypted hole card and read the plaintext we return - which
+      // would defeat the whole premise. Refuse the two shapes that means.
+      const h0 = useStore.getState().hand;
+      const mine = mySeatIn(h0.seats);
+      if (h0.myCardPoints.some((c) => c.deckIndex === msg.deckIndex)) {
+        store.pushError('Refused an unmask request for one of my own cards.');
+        return;
+      }
+      if (msg.purpose === 'hole' && mine !== null && msg.forSeat === mine) {
+        store.pushError('Refused an unmask request for a card dealt to me.');
+        return;
+      }
       const k = handKeyFor(msg.handId);
       const { out, proof } = proveUnmask(k, pointFromHex(msg.point));
       const body = { deckIndex: msg.deckIndex, out: pointHex(out), proof };
@@ -298,7 +322,15 @@ function handle(msg: ServerMsg): void {
       play(soundFor[msg.action.type]);
       // my fold escrows my hand key with the server, so the hand can carry on
       // without me if I disappear (requested by notpritam, docs/FEATURES.md)
-      if (msg.action.type === 'fold' && hand.handId === msg.handId && msg.seat === mySeatIn(hand.seats)) {
+      // ...but only for a fold this browser actually made. Taking the server's
+      // word for it would let a forged action_applied pull the hand key out of a
+      // player who is still contesting the pot.
+      if (
+        msg.action.type === 'fold' &&
+        hand.handId === msg.handId &&
+        msg.seat === mySeatIn(hand.seats) &&
+        foldedByMe.has(msg.handId)
+      ) {
         const key = handKeyFor(msg.handId).toString(16);
         wsClient.send({ t: 'fold_key', handId: msg.handId, key, sig: signed(msg.handId, 'fold_key', { key }) });
       }
@@ -417,11 +449,13 @@ function handle(msg: ServerMsg): void {
       // (requested by notpritam, docs/FEATURES.md)
       play('thunder');
       window.dispatchEvent(new CustomEvent('4am-thunder'));
+      endedHands.add(msg.handId);
       store.patchHand({ showdown: msg });
       return;
     }
 
     case 'hand_end': {
+      endedHands.add(msg.handId);
       const state = useStore.getState();
       const mySeat = mySeatIn(state.hand.seats);
       const myDelta = msg.deltas.find((d) => d.seat === mySeat)?.delta ?? 0;
@@ -449,11 +483,19 @@ function handle(msg: ServerMsg): void {
     }
 
     case 'hand_abort': {
+      endedHands.add(msg.handId);
       store.patchHand({ abort: msg, deadline: null });
       return;
     }
 
     case 'need_keys': {
+      // The audit key opens the whole deck, so it goes out only once the hand is
+      // genuinely over. Answering this mid-hand - which the server can ask for at
+      // any moment - would hand it every hole card at the table at once.
+      if (!endedHands.has(msg.handId)) {
+        store.pushError('Refused a key request for a hand that has not finished.');
+        return;
+      }
       const k = handKeyFor(msg.handId);
       const key = k.toString(16);
       wsClient.send({ t: 'reveal_key', handId: msg.handId, key, sig: signed(msg.handId, 'reveal_key', { key }) });

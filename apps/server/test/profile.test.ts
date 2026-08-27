@@ -182,6 +182,32 @@ describe('user profile page data', () => {
     expect(p.stats).toMatchObject({ net: 40, handsPlayed: 3, biggestWin: 50 });
     expect(p.rivals[0]).toMatchObject({ username: 'bb', handsTogether: 2, netVs: 30 });
     expect(p.rivals[1]).toMatchObject({ username: 'cc', handsTogether: 1, netVs: 10 });
-    expect(p.transactions).toHaveLength(3);
+    // the money rail carries settlement notes, so it is owner-only
+    expect(p.transactions).toEqual([]);
+
+    const own = (
+      await ctx.app.inject({ method: 'GET', url: `/api/users/${a.userId}/profile`, headers: auth(a.token) })
+    ).json();
+    expect(own.transactions).toHaveLength(3);
+  });
+
+  it('hides stats and rivals from others when private mode is on', async () => {
+    const a = await user('pa');
+    const b = await user('pb');
+    ctx.db.prepare('UPDATE users SET private_mode = 1 WHERE id = ?').run(a.userId);
+
+    const seen = (
+      await ctx.app.inject({ method: 'GET', url: `/api/users/${a.userId}/profile`, headers: auth(b.token) })
+    ).json();
+    expect(seen.hidden).toBe(true);
+    expect(seen.stats).toBeNull();
+    expect(seen.rivals).toEqual([]);
+    expect(seen.transactions).toEqual([]);
+    // ...but the owner still sees their own page in full
+    const mine = (
+      await ctx.app.inject({ method: 'GET', url: `/api/users/${a.userId}/profile`, headers: auth(a.token) })
+    ).json();
+    expect(mine.hidden).toBeUndefined();
+    expect(mine.stats).not.toBeNull();
   });
 });

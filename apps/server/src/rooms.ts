@@ -5,6 +5,8 @@ import { z } from 'zod';
 import type { DB } from './db.js';
 import { requireUser } from './auth.js';
 import { appendLedger, verifyLedger } from './ledger.js';
+import { LIMITS } from './limits.js';
+import { activeHands } from './liveHands.js';
 
 export interface RoomRow {
   id: string;
@@ -164,7 +166,9 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
   });
 
   app.post('/api/rooms/join', authed, async (req, reply) => {
-    const parsed = z.object({ joinCode: z.string() }).safeParse(req.body);
+    // codes are exactly 6 chars from a 32-char alphabet; an unbounded string here
+    // was a free brute-force surface against the room-membership gate
+    const parsed = z.object({ joinCode: z.string().trim().length(6) }).safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
     const room = db
       .prepare('SELECT * FROM rooms WHERE join_code = ?')
@@ -215,13 +219,28 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
 
   app.post('/api/rooms/:id/buy', authed, async (req, reply) => {
     const { id } = req.params as { id: string };
+    // The cap is load-bearing, not cosmetic. Without it ~10 buys of 1e18 push
+    // room_players.stack past 2^63, SQLite silently retypes the value to REAL,
+    // and from then on every debit rounds away to nothing while every credit
+    // lands - an unlimited chip faucet for anyone at a table with auto-approve.
     const parsed = z
-      .object({ amount: z.number().int().positive(), note: z.string().max(200).optional() })
+      .object({
+        amount: z.number().int().positive().max(LIMITS.maxChipAmount),
+        note: z.string().max(200).optional(),
+      })
       .safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
     const room = getRoom(db, id);
     if (!room) return reply.code(404).send({ error: 'no such room' });
     if (!isMember(db, id, req.userId)) return reply.code(403).send({ error: 'not a member' });
+    const pending = db
+      .prepare(
+        "SELECT COUNT(*) as n FROM buy_requests WHERE room_id = ? AND user_id = ? AND status = 'pending'",
+      )
+      .get(id, req.userId) as { n: number };
+    if (pending.n >= LIMITS.pendingBuysPerRoom) {
+      return reply.code(429).send({ error: 'you already have buy requests waiting' });
+    }
     const info = db
       .prepare('INSERT INTO buy_requests (room_id, user_id, amount, note, ts) VALUES (?, ?, ?, ?, ?)')
       .run(id, req.userId, parsed.data.amount, parsed.data.note ?? null, Date.now());
@@ -335,6 +354,12 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     const room = getRoom(db, id);
     if (!room) return reply.code(404).send({ error: 'no such room' });
     if (!canBank(room, req.userId)) return reply.code(403).send({ error: 'banker only' });
+    // Chips at risk in a live hand are held in memory, not deducted from the
+    // stack, so a mid-hand revert passes its own solvency check and then settles
+    // into a negative balance. Transfers already refuse for the same reason.
+    if (activeHands.has(id)) {
+      return reply.code(400).send({ error: 'wait for the hand to finish' });
+    }
     const entry = db
       .prepare('SELECT * FROM ledger WHERE id = ? AND room_id = ?')
       .get(parsed.data.entryId, id) as
@@ -392,6 +417,13 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     if (!room) return reply.code(404).send({ error: 'no such room' });
     if (room.host_id !== req.userId && !canBank(room, req.userId))
       return reply.code(403).send({ error: 'host or banker only' });
+    // Auto-approve and visibility are the two settings that grant money or
+    // access, so a backup banker must not be able to flip them - otherwise the
+    // backup turns auto-approve on, buys itself a fortune, and turns it back off.
+    const privileged = parsed.data.autoApproveBuys !== undefined || parsed.data.visibility !== undefined;
+    if (privileged && room.banker_id !== req.userId && room.host_id !== req.userId) {
+      return reply.code(403).send({ error: 'only the host or the main banker can change that' });
+    }
     if (parsed.data.actionSecs !== undefined)
       db.prepare('UPDATE rooms SET action_secs = ? WHERE id = ?').run(parsed.data.actionSecs, id);
     if (parsed.data.minSettleHands !== undefined)

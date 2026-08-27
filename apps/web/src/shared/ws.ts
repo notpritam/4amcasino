@@ -49,7 +49,10 @@ class WsClient {
     if (!token || this.ws) return;
     this.closedByUs = false;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(`${proto}://${location.host}/ws?token=${token}`);
+    // The token rides in Sec-WebSocket-Protocol rather than the query string:
+    // proxies and platform access logs record the request line verbatim, and
+    // these sessions are long-lived, so a token in a log is a live credential.
+    const ws = new WebSocket(`${proto}://${location.host}/ws`, ['bearer', token]);
     this.ws = ws;
     ws.onopen = () => {
       this.retry = 0;

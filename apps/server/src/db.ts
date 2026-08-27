@@ -2,6 +2,10 @@ import Database from 'better-sqlite3';
 
 export type DB = Database.Database;
 
+/** How long a login lasts. Long enough that a weekly game never re-authenticates
+ *  mid-session, short enough that a leaked token eventually dies. */
+export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 export function openDb(path: string): DB {
   const db = new Database(path);
   db.pragma('journal_mode = WAL');
@@ -125,6 +129,14 @@ function migrate(db: DB): void {
   ensureColumn(db, 'users', 'recovery_set_at', 'INTEGER');
   ensureColumn(db, 'sessions', 'last_used', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'sessions', 'label', 'TEXT');
+  // Sessions used to be immortal: nothing wrote an expiry and nothing swept the
+  // table, so a token lifted from a log line or a backup stayed live forever.
+  // Existing rows are grandfathered a full window rather than logged out on deploy.
+  ensureColumn(db, 'sessions', 'expires_at', 'INTEGER NOT NULL DEFAULT 0');
+  db.prepare('UPDATE sessions SET expires_at = ? WHERE expires_at = 0').run(
+    Date.now() + SESSION_TTL_MS,
+  );
+  db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
   db.exec(`
     CREATE TABLE IF NOT EXISTS settlements (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -168,6 +180,22 @@ function migrate(db: DB): void {
       status TEXT NOT NULL DEFAULT 'pending',
       ts INTEGER NOT NULL
     );
+  `);
+  // The schema had no indexes at all, so every ledger and transcript read was a
+  // full table scan - which is what turns "this table has played a lot of hands"
+  // into "the settle-up page times out".
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_ledger_room ON ledger(room_id, id);
+    CREATE INDEX IF NOT EXISTS idx_ledger_user ON ledger(user_id, kind);
+    CREATE INDEX IF NOT EXISTS idx_ledger_ref ON ledger(ref);
+    CREATE INDEX IF NOT EXISTS idx_transcripts_room ON transcripts(room_id, ts);
+    CREATE INDEX IF NOT EXISTS idx_transcripts_head ON transcripts(head);
+    CREATE INDEX IF NOT EXISTS idx_buyreq_room ON buy_requests(room_id, status);
+    CREATE INDEX IF NOT EXISTS idx_roomplayers_user ON room_players(user_id);
+    CREATE INDEX IF NOT EXISTS idx_invites_to ON invites(to_id, status);
+    CREATE INDEX IF NOT EXISTS idx_joinreq_room ON join_requests(room_id, status);
+    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_settlements_pair ON settlements(room_id, low_user, high_user);
   `);
 }
 

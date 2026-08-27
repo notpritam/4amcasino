@@ -73,7 +73,8 @@ interface Chain {
 }
 
 /** Rooms with a hand in flight; REST money moves must wait for the settle. */
-export const activeHands = new Set<string>();
+import { activeHands } from './liveHands.js';
+export { activeHands };
 
 /** The classic house rule: 7-2 offsuit wins collect a bounty from everyone. */
 export function isSevenDeuce(cards: CardId[]): boolean {
@@ -152,6 +153,9 @@ export class GameRoom {
   ) {}
 
   join(userId: number, ws: WebSocket): void {
+    // a reconnect used to orphan the previous socket, which then lingered
+    const prev = this.sockets.get(userId);
+    if (prev && prev !== ws) prev.close(1000, 'replaced');
     this.sockets.set(userId, ws);
     this.broadcastRoomState();
     // late joiners and reconnects still get to see voluntarily shown cards
@@ -185,6 +189,12 @@ export class GameRoom {
 
   isConnected(userId: number): boolean {
     return this.sockets.has(userId);
+  }
+
+  /** Nobody is connected and nothing is in flight, so the hub can drop this room
+   *  instead of holding it (and its per-hand maps) for the life of the process. */
+  isIdle(): boolean {
+    return this.sockets.size === 0 && this.hand === null && this.readyCheck === null;
   }
 
   shutdown(): void {

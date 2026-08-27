@@ -121,6 +121,7 @@ export const api = {
     newAuthKey: string,
     newPublicKey: string,
   ) => req('/api/recover', { username, recoveryAuthKey, newAuthKey, newPublicKey }),
+  logout: () => req('/api/logout', {}),
   sessions: () => req('/api/me/sessions'),
   revokeOtherSessions: () => req('/api/me/sessions/revoke-others', {}),
   profile: () => req('/api/profile'),

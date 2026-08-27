@@ -14,6 +14,16 @@ interface Bucket {
 
 const buckets = new Map<string, Bucket>();
 
+/** Off under vitest: the suite drives hundreds of requests from one address in
+ *  seconds, and every bucket here is process-wide, so tests would throttle each
+ *  other rather than the thing under test. */
+const DISABLED = !!process.env.VITEST || process.env.RATE_LIMITS === 'off';
+
+/** Drops every bucket. For tests and for a deliberate operational reset. */
+export function resetLimits(): void {
+  buckets.clear();
+}
+
 // the limiter's own memory is an attack surface: an attacker who can mint
 // unlimited distinct keys would grow this map forever, so sweep dead buckets
 const SWEEP_MS = 60_000;
@@ -33,6 +43,7 @@ export function hit(
   limit: number,
   windowMs: number,
 ): { ok: boolean; retryAfterSecs: number; remaining: number } {
+  if (DISABLED) return { ok: true, retryAfterSecs: 0, remaining: limit };
   const now = Date.now();
   sweep(now);
   const b = buckets.get(key);

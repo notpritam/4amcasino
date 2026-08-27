@@ -2,7 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from './db.js';
-import { createSession, hashAuthKey, requireUser } from './auth.js';
+import { createSession, endSession, hashAuthKey, requireUser } from './auth.js';
 import { forgive, hitNamed, rateLimit } from './limits.js';
 
 /** Editing your password, your username, and getting back in when you have
@@ -267,6 +267,14 @@ export function registerAccountRoutes(app: FastifyInstance, db: DB): void {
       return { userId, username: parsed.data.username, token: createSession(db, userId) };
     },
   );
+
+  /** Ends this session server-side. Clearing localStorage never did that, so a
+   *  token copied off a shared machine outlived the "log out" click. */
+  app.post('/api/logout', authed, async (req) => {
+    const token = bearer(req);
+    if (token) endSession(db, token);
+    return { ok: true };
+  });
 
   /** Sign out every other device without changing anything else. */
   app.post('/api/me/sessions/revoke-others', authed, async (req) => {

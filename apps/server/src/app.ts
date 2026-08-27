@@ -36,7 +36,51 @@ export function createApp(
     bodyLimit: LIMITS.bodyBytes,
   };
   const app = Fastify(serverOptions);
-  void app.register(cors, { origin: true });
+  // Reflecting every origin let any page on the internet call the credential
+  // routes and read the answer, which spreads a login-guessing campaign across
+  // its visitors' IPs and defeats a per-IP limit. Auth is Bearer-only so there
+  // was never CSRF exposure, but the allowlist costs nothing.
+  const allowedOrigins = [
+    'https://poker.notpritam.in',
+    ...(process.env.ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+  ];
+  void app.register(cors, {
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true); // curl, native clients, same-origin
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      try {
+        const host = new URL(origin).hostname;
+        const local =
+          host === 'localhost' || host === '127.0.0.1' || /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host);
+        return cb(null, local);
+      } catch {
+        return cb(null, false);
+      }
+    },
+  });
+
+  // The web app persists a card-signing key in localStorage, so anything that
+  // can run script on this origin can walk off with a player's identity. A CSP
+  // is the difference between "an injected script exfiltrates it" and "an
+  // injected script cannot reach a network it is allowed to talk to".
+  app.addHook('onSend', async (_req, reply) => {
+    void reply.headers({
+      'content-security-policy': [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        'font-src https://fonts.gstatic.com data:',
+        "img-src 'self' data: blob:",
+        "connect-src 'self' ws: wss:",
+        "frame-ancestors 'none'",
+        "object-src 'none'",
+        "base-uri 'none'",
+      ].join('; '),
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer',
+      'strict-transport-security': 'max-age=31536000; includeSubDomains',
+    });
+  });
 
   app.addHook('onClose', async () => {
     db.close();
@@ -50,7 +94,9 @@ export function createApp(
 
   app.post(
     '/api/register',
-    { preHandler: rateLimit({ name: 'register', limit: 10, windowMs: 60 * 60_000, by: 'ip' }) },
+    // Generous on purpose: the common case is a house game where nine people
+    // sign up from the same wifi inside ten minutes, and they all share one IP.
+    { preHandler: rateLimit({ name: 'register', limit: 40, windowMs: 60 * 60_000, by: 'ip' }) },
     async (req, reply) => {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
