@@ -49,7 +49,15 @@ interface PendingTasks {
  *  to an icon rail. Small screens keep the slide-over drawer. Used by every
  *  page except login, the live table (own shell), and the public landing.
  *  (requested by notpritam, docs/FEATURES.md) */
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  children,
+  newTab = false,
+}: {
+  children: ReactNode;
+  /** At a live table every nav click would otherwise abandon the hand, so the
+   *  rail opens elsewhere in a new tab and the felt stays put. */
+  newTab?: boolean;
+}) {
   const auth = useStore((s) => s.auth);
   const prefs = useStore((s) => s.prefs);
   const logout = useStore((s) => s.logout);
@@ -111,7 +119,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   ) => (
     <Link
       to={to}
-      title={badge ? `${label} (${badge} waiting)` : label}
+      {...(newTab && !active ? { target: '_blank', rel: 'noreferrer' } : {})}
+      title={
+        newTab && !active
+          ? `${label} — opens in a new tab${badge ? ` (${badge} waiting)` : ''}`
+          : badge
+            ? `${label} (${badge} waiting)`
+            : label
+      }
       className={cn(
         'flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[0.86rem] font-medium transition-colors',
         collapsed && 'justify-center px-0',

@@ -117,7 +117,11 @@ export function App() {
             path="/room/:id"
             element={
               <RequireAuth>
-                <TablePage />
+                {/* the rail is here too, but every link opens a new tab: leaving
+                    the page mid-hand would fold you by timeout */}
+                <AppShell newTab>
+                  <TablePage />
+                </AppShell>
               </RequireAuth>
             }
           />
