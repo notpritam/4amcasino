@@ -102,8 +102,8 @@ export function createApp(
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
     const { username, authKey, publicKey } = parsed.data;
     try {
-      const { userId } = createUser(db, username, authKey, publicKey);
-      return { userId, token: createSession(db, userId) };
+      const { userId, joinNumber } = createUser(db, username, authKey, publicKey);
+      return { userId, joinNumber, token: createSession(db, userId) };
     } catch (e) {
       if (e instanceof Error && e.message.includes('UNIQUE')) {
         return reply.code(409).send({ error: 'username taken' });
@@ -136,12 +136,20 @@ export function createApp(
   );
 
   app.get('/api/me', { preHandler: requireUser(db) }, async (req) => {
-    const row = db.prepare('SELECT id, username, pubkey FROM users WHERE id = ?').get(req.userId) as {
+    const row = db
+      .prepare('SELECT id, username, pubkey, join_number as joinNumber FROM users WHERE id = ?')
+      .get(req.userId) as {
       id: number;
       username: string;
       pubkey: string;
+      joinNumber: number | null;
     };
-    return { userId: row.id, username: row.username, publicKey: row.pubkey };
+    return {
+      userId: row.id,
+      username: row.username,
+      publicKey: row.pubkey,
+      joinNumber: row.joinNumber,
+    };
   });
 
   registerRoomRoutes(app, db);

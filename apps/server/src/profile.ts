@@ -158,12 +158,18 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
     const row = db
       .prepare(
         `SELECT id, username, COALESCE(display_name, username) as displayName, bio, avatar_version as avatarVersion,
-                avatar IS NOT NULL as hasAvatar, created_at as createdAt, private_mode as privateMode FROM users WHERE id = ?`,
+                avatar IS NOT NULL as hasAvatar, created_at as createdAt, private_mode as privateMode,
+                join_number as joinNumber FROM users WHERE id = ?`,
       )
       .get(id) as
-      | { id: number; username: string; displayName: string; bio: string | null; avatarVersion: number; hasAvatar: number; createdAt: number; privateMode: number }
+      | { id: number; username: string; displayName: string; bio: string | null; avatarVersion: number; hasAvatar: number; createdAt: number; privateMode: number; joinNumber: number | null }
       | undefined;
     if (!row) return reply.code(404).send({ error: 'no such user' });
+
+    // Where they sit in the signup queue, and how big the queue is - "#7 of 42"
+    // reads as a story, "#7" on its own does not. Not private: it says nothing
+    // about money, only about having been early.
+    const { total } = db.prepare('SELECT COUNT(*) as total FROM users').get() as { total: number };
 
     // Private mode was honoured on the leaderboard and in the session report but
     // not here, so this route handed any logged-in user anyone else's lifetime
@@ -179,6 +185,8 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
         avatarVersion: row.avatarVersion,
         hasAvatar: !!row.hasAvatar,
         createdAt: row.createdAt,
+        joinNumber: row.joinNumber,
+        memberCount: total,
         stats: null,
         rivals: [],
         transactions: [],
@@ -249,6 +257,8 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       avatarVersion: row.avatarVersion,
       hasAvatar: !!row.hasAvatar,
       createdAt: row.createdAt,
+      joinNumber: row.joinNumber,
+      memberCount: total,
       stats,
       rivals,
       transactions,

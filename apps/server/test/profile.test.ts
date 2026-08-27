@@ -191,6 +191,30 @@ describe('user profile page data', () => {
     expect(own.transactions).toHaveLength(3);
   });
 
+  it('numbers players by the order they joined the platform', async () => {
+    const before = (
+      ctx.db.prepare('SELECT COALESCE(MAX(join_number), 0) as n FROM users').get() as { n: number }
+    ).n;
+    const first = await user('jo1');
+    const second = await user('jo2');
+    const third = await user('jo3');
+
+    const numberOf = async (u: { userId: number; token: string }) =>
+      (await ctx.app.inject({ method: 'GET', url: `/api/users/${u.userId}/profile`, headers: auth(u.token) })).json()
+        .joinNumber;
+
+    expect(await numberOf(first)).toBe(before + 1);
+    expect(await numberOf(second)).toBe(before + 2);
+    expect(await numberOf(third)).toBe(before + 3);
+
+    // the number is its own fact, not a restatement of the row id: it must
+    // survive a gap in the primary key
+    ctx.db.prepare('DELETE FROM users WHERE id = ?').run(second.userId);
+    const fourth = await user('jo4');
+    expect(await numberOf(fourth)).toBe(before + 4);
+    expect(await numberOf(third)).toBe(before + 3);
+  });
+
   it('hides stats and rivals from others when private mode is on', async () => {
     const a = await user('pa');
     const b = await user('pb');

@@ -11,14 +11,22 @@ export function createUser(
   username: string,
   authKey: string,
   publicKey: string,
-): { userId: number } {
+): { userId: number; joinNumber: number } {
   const salt = randomBytes(16).toString('hex');
-  const info = db
-    .prepare(
-      'INSERT INTO users (username, auth_hash, auth_salt, pubkey, created_at, theme) VALUES (?, ?, ?, ?, ?, ?)',
-    )
-    .run(username, hashAuthKey(authKey, salt), salt, publicKey, Date.now(), 'cyber');
-  return { userId: Number(info.lastInsertRowid) };
+  // one transaction so the number handed out is the number written - two
+  // signups landing together must not both read the same MAX
+  const create = db.transaction(() => {
+    const { n } = db
+      .prepare('SELECT COALESCE(MAX(join_number), 0) + 1 AS n FROM users')
+      .get() as { n: number };
+    const info = db
+      .prepare(
+        'INSERT INTO users (username, auth_hash, auth_salt, pubkey, created_at, theme, join_number) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(username, hashAuthKey(authKey, salt), salt, publicKey, Date.now(), 'cyber', n);
+    return { userId: Number(info.lastInsertRowid), joinNumber: n };
+  });
+  return create.immediate();
 }
 
 export function checkLogin(

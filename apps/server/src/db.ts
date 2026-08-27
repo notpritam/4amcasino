@@ -124,6 +124,19 @@ function migrate(db: DB): void {
   ensureColumn(db, 'users', 'show_best_hand', 'INTEGER NOT NULL DEFAULT 1');
   // account recovery: hash of the one-time recovery code, salted like a password
   // (requested by notpritam, docs/FEATURES.md)
+  // Signup order, as its own fact rather than something inferred from the
+  // primary key. `id` happens to be sequential today, but it is an
+  // implementation detail: a restore, a merge, or a deleted row puts gaps in it,
+  // and then "member #7" would quietly change meaning. This column never does.
+  ensureColumn(db, 'users', 'join_number', 'INTEGER');
+  db.exec(`
+    UPDATE users SET join_number = (
+      SELECT COUNT(*) FROM users u2
+      WHERE u2.created_at < users.created_at
+         OR (u2.created_at = users.created_at AND u2.id <= users.id)
+    ) WHERE join_number IS NULL
+  `);
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_join_number ON users(join_number)');
   ensureColumn(db, 'users', 'recovery_hash', 'TEXT');
   ensureColumn(db, 'users', 'recovery_salt', 'TEXT');
   ensureColumn(db, 'users', 'recovery_set_at', 'INTEGER');

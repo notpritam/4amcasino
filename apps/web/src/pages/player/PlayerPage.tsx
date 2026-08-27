@@ -19,6 +19,13 @@ import { Avatar } from '../../entities/user/Avatar.tsx';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
 import { StyleRadar } from '../../features/stats/charts.tsx';
 
+/** 1 -> "1st", 2 -> "2nd", 11 -> "11th". */
+function ordinal(n: number): string {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+}
+
 interface PlayStyle {
   hands: number;
   vpipPct: number;
@@ -38,6 +45,9 @@ interface PlayerProfile {
   bio: string;
   avatarVersion: number;
   createdAt: number;
+  /** Where they sit in the signup queue: 1 is the very first account. */
+  joinNumber: number | null;
+  memberCount: number;
   stats: { net: number; handsPlayed: number; biggestWin: number };
   rivals: {
     userId: number;
@@ -896,8 +906,23 @@ export function PlayerPage() {
                     #{rank} on the leaderboard
                   </div>
                 )}
-                <div className="mt-1 text-xs text-slate-400">
-                  joined {new Date(p.createdAt).toLocaleDateString()}
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-400">
+                  <span>joined {new Date(p.createdAt).toLocaleDateString()}</span>
+                  {p.joinNumber !== null && (
+                    <span
+                      title={`The ${ordinal(p.joinNumber)} account ever created on 4AM Casino`}
+                      className={cn(
+                        'inline-flex items-center rounded-full px-2 py-0.5 font-semibold',
+                        p.joinNumber <= 10
+                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                          : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+                      )}
+                    >
+                      {p.joinNumber <= 10 ? '★ ' : ''}
+                      member #{p.joinNumber}
+                      {p.memberCount > 0 && ` of ${p.memberCount}`}
+                    </span>
+                  )}
                 </div>
                 {p.bio && (
                   <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{p.bio}</p>
