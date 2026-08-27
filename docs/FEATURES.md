@@ -64,3 +64,4 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | Auto ready: a profile toggle that counts you as ready the moment a ready check opens, held server-side so it works with the tab in the background; if everyone at the table has it on the check is skipped entirely | **notpritam** |
 | Archive a table: the host or banker retires a finished game - it leaves the room list, stops dealing, and stops counting towards stats, while the ledger, every hand and anything still owed stay exactly where they are. Reversible from the lobby | **notpritam** |
 | Host badge on the seat, next to the banker's, and the host role moves to someone still at the table after 60s offline - the banker never moves on a timer | **notpritam** |
+| Standings docked above the table chat: who is up and who is down is always on screen and refreshes at the end of every hand, instead of a dialog you reopen after each one. Collapsible and remembered | **notpritam** |

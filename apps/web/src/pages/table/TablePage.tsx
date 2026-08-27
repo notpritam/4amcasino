@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
+  CaretDown,
   CornersIn,
   CornersOut,
   Cube,
@@ -169,6 +170,10 @@ export function TablePage() {
   const [peekSent, setPeekSent] = useState<Record<number, boolean>>({});
   const [shareOpen, setShareOpen] = useState(false);
   const [standingsOpen, setStandingsOpen] = useState(false);
+  // the docked copy is collapsible and remembers itself, like the last-hand strip
+  const [standingsDockOpen, setStandingsDockOpen] = useState(
+    () => localStorage.getItem('4am-standings-dock') !== 'off',
+  );
   const [inviteOpen, setInviteOpen] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
   const [watchInfo, setWatchInfo] = useState<{ allow: boolean; token: string } | null>(null);
@@ -396,14 +401,17 @@ export function TablePage() {
     return () => clearInterval(iv);
   }, [watchOpen, isBankerHere, roomId]);
 
+  // Standings live in the side dock now, so they load whenever the dock or the
+  // dialog is showing - and refresh at the end of every hand, which is the only
+  // moment the numbers can change. Previously they were fetched once per dialog
+  // open, which is why you had to keep reopening it to see where you stood.
   useEffect(() => {
-    if (!standingsOpen) return;
-    setStandings(null);
+    if (!standingsOpen && !(chatOpen && standingsDockOpen)) return;
     api
       .roomLeaderboard(roomId!)
       .then((r) => setStandings(r.rows))
       .catch(() => setStandings([]));
-  }, [standingsOpen, roomId]);
+  }, [standingsOpen, chatOpen, standingsDockOpen, roomId, hand.result, hand.abort]);
 
   // re-arm the buy-in prompt whenever the broke state resolves (approval landed / stood up)
   useEffect(() => {
@@ -1735,6 +1743,41 @@ export function TablePage() {
             aria-label="Table chat"
             className="sticky top-4 hidden max-h-[calc(100dvh-2rem)] min-h-[30rem] w-80 shrink-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/70 md:flex dark:bg-slate-900 dark:ring-slate-700/70"
           >
+            {/* Standings ride above the chat in the same rail, so who is up and
+                who is down is just there - it used to be a dialog you had to
+                open again after every hand. Collapsible, because on a short
+                screen the chat needs the room more. */}
+            <div className="border-b border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !standingsDockOpen;
+                  setStandingsDockOpen(next);
+                  localStorage.setItem('4am-standings-dock', next ? 'on' : 'off');
+                }}
+                aria-expanded={standingsDockOpen}
+                className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60"
+              >
+                <h2 className="font-display text-sm font-semibold">Standings</h2>
+                <CaretDown
+                  size={14}
+                  weight="bold"
+                  className={cn(
+                    'text-slate-400 transition-transform',
+                    !standingsDockOpen && '-rotate-90',
+                  )}
+                />
+              </button>
+              {standingsDockOpen && (
+                <div className="max-h-[38vh] overflow-y-auto px-2.5 pb-2.5">
+                  {standings === null ? (
+                    <p className="px-1.5 py-2 text-xs text-slate-400">Counting chips…</p>
+                  ) : (
+                    <LeaderboardTable rows={standings} minHands={room.room.minSettleHands} />
+                  )}
+                </div>
+              )}
+            </div>
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2.5 dark:border-slate-800">
               <h2 className="font-display text-sm font-semibold">Table chat</h2>
               <button
