@@ -77,6 +77,7 @@ export function ProfileEditor({
         fourColor: prefs.fourColor,
         privateMode: prefs.privateMode,
         autoJoinInvites: prefs.autoJoinInvites,
+        autoReady: prefs.autoReady,
         theme: prefs.theme,
         quickPhrases,
       });
@@ -190,6 +191,19 @@ export function ProfileEditor({
         />
         <span>
           Auto-join: when a friend invites me to a table, add me right away instead of asking.
+        </span>
+      </label>
+
+      <label className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
+        <input
+          type="checkbox"
+          checked={prefs.autoReady}
+          onChange={(e) => setPrefs({ autoReady: e.target.checked })}
+          className="mt-0.5"
+        />
+        <span>
+          Auto ready: deal me into every hand without asking. Skips the "I'm ready" check — turn it
+          off if you want a beat to step away between hands.
         </span>
       </label>
 

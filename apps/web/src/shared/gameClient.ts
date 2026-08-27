@@ -216,17 +216,22 @@ function handle(msg: ServerMsg): void {
     }
 
     case 'need_share': {
-      // Unmasking is a capability, not a favour. If the server can get us to
-      // strip our own mask off an arbitrary point it hands us, it can feed us
-      // our own encrypted hole card and read the plaintext we return - which
-      // would defeat the whole premise. Refuse the two shapes that means.
+      // Unmasking is a capability, not a favour: if the server can get us to
+      // strip our own mask off a point it chose, it can feed us our own
+      // encrypted hole card and read back the plaintext.
+      //
+      // But a showdown legitimately needs exactly that. The card is masked by
+      // EVERY player's key including its owner's, so at showdown the owner must
+      // contribute their share too or nobody can see the hand. Refusing that
+      // stalled every showdown into an unmask timeout, blaming the player who
+      // was following the protocol correctly.
+      //
+      // So: refuse only the shapes that are never legitimate - being asked,
+      // during the deal or a board opening, to unmask a card that is ours.
       const h0 = useStore.getState().hand;
       const mine = mySeatIn(h0.seats);
-      if (h0.myCardPoints.some((c) => c.deckIndex === msg.deckIndex)) {
-        store.pushError('Refused an unmask request for one of my own cards.');
-        return;
-      }
-      if (msg.purpose === 'hole' && mine !== null && msg.forSeat === mine) {
+      const isMyCard = h0.myCardPoints.some((c) => c.deckIndex === msg.deckIndex);
+      if (msg.purpose !== 'showdown' && (isMyCard || (mine !== null && msg.forSeat === mine))) {
         store.pushError('Refused an unmask request for a card dealt to me.');
         return;
       }
@@ -488,14 +493,20 @@ function handle(msg: ServerMsg): void {
       return;
     }
 
+    case 'transcript_entry': {
+      // The settlement entry is the hand's terminal record, and it is broadcast
+      // BEFORE the server asks for audit keys - whereas hand_end comes after,
+      // and a hand won by everyone folding never produces a showdown at all. So
+      // this, not hand_end, is the signal that answering need_keys is safe.
+      if (msg.type === 'settlement' || msg.type === 'hand_abort') endedHands.add(msg.handId);
+      return;
+    }
+
     case 'need_keys': {
       // The audit key opens the whole deck, so it goes out only once the hand is
       // genuinely over. Answering this mid-hand - which the server can ask for at
       // any moment - would hand it every hole card at the table at once.
-      if (!endedHands.has(msg.handId)) {
-        store.pushError('Refused a key request for a hand that has not finished.');
-        return;
-      }
+      if (!endedHands.has(msg.handId)) return;
       const k = handKeyFor(msg.handId);
       const key = k.toString(16);
       wsClient.send({ t: 'reveal_key', handId: msg.handId, key, sig: signed(msg.handId, 'reveal_key', { key }) });

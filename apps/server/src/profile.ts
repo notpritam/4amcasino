@@ -20,6 +20,7 @@ const profileSchema = z.object({
   quickPhrases: z.array(z.string().trim().min(1).max(60)).max(8).optional(),
   privateMode: z.boolean().optional(),
   autoJoinInvites: z.boolean().optional(),
+  autoReady: z.boolean().optional(),
   showBestHand: z.boolean().optional(),
 });
 
@@ -42,7 +43,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
   app.get('/api/profile', authed, async (req) => {
     const row = db
       .prepare(
-        'SELECT id, username, display_name, bio, avatar_version, card_back, four_color, theme, avatar3d, quick_phrases, private_mode, auto_join_invites, avatar IS NOT NULL as hasAvatar FROM users WHERE id = ?',
+        'SELECT id, username, display_name, bio, avatar_version, card_back, four_color, theme, avatar3d, quick_phrases, private_mode, auto_join_invites, auto_ready, avatar IS NOT NULL as hasAvatar FROM users WHERE id = ?',
       )
       .get(req.userId) as {
       id: number;
@@ -57,6 +58,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       quick_phrases: string | null;
       private_mode: number;
       auto_join_invites: number;
+      auto_ready: number;
       hasAvatar: number;
     };
     return {
@@ -73,6 +75,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       quickPhrases: row.quick_phrases ? (JSON.parse(row.quick_phrases) as string[]) : [],
       privateMode: !!row.private_mode,
       autoJoinInvites: !!row.auto_join_invites,
+      autoReady: !!row.auto_ready,
     };
   });
 
@@ -85,6 +88,11 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
     if (parsed.data.autoJoinInvites !== undefined)
       db.prepare('UPDATE users SET auto_join_invites = ? WHERE id = ?').run(
         parsed.data.autoJoinInvites ? 1 : 0,
+        req.userId,
+      );
+    if (parsed.data.autoReady !== undefined)
+      db.prepare('UPDATE users SET auto_ready = ? WHERE id = ?').run(
+        parsed.data.autoReady ? 1 : 0,
         req.userId,
       );
     if (parsed.data.showBestHand !== undefined)

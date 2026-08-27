@@ -29,6 +29,8 @@ export interface Prefs {
   privateMode: boolean;
   /** Friends' table invites add me to the room automatically. */
   autoJoinInvites: boolean;
+  /** Skip the ready check: deal me in without asking every hand. */
+  autoReady: boolean;
 }
 
 export const defaultPrefs: Prefs = {
@@ -42,6 +44,7 @@ export const defaultPrefs: Prefs = {
   quickPhrases: [],
   privateMode: false,
   autoJoinInvites: false,
+  autoReady: false,
 };
 
 export interface AuthState {

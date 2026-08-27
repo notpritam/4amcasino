@@ -330,7 +330,7 @@ let clients: TestClient[] = [];
 
 beforeEach(async () => {
   ctx = createApp(':memory:');
-  attachHub(ctx.app, ctx.db, { cryptoTimeoutMs: 1500, actionTimeoutMs: 1500, autoDealMs: 800, readyCheckMs: 1500, ritVoteMs: 1500 });
+  attachHub(ctx.app, ctx.db, { cryptoTimeoutMs: 1500, actionTimeoutMs: 1500, autoDealMs: 800, readyCheckMs: 1500, ritVoteMs: 1500, runItTwice: true });
   await ctx.app.listen({ port: 0 });
   const addr = ctx.app.server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${addr.port}`;

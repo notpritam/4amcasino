@@ -47,6 +47,9 @@ export interface GameOpts {
   readyCheckMs?: number;
   /** How long the run-it-twice vote stays open when everyone is all-in (default 15s). */
   ritVoteMs?: number;
+  /** Offer run-it-twice at all. Off by default: the second-board unmask chains
+   *  were hanging and aborting hands. */
+  runItTwice?: boolean;
   /** TV replays: save every player's hand key post-hand so replays show all cards. */
   tvReplays?: boolean;
 }
@@ -153,9 +156,11 @@ export class GameRoom {
   ) {}
 
   join(userId: number, ws: WebSocket): void {
-    // a reconnect used to orphan the previous socket, which then lingered
-    const prev = this.sockets.get(userId);
-    if (prev && prev !== ws) prev.close(1000, 'replaced');
+    // Deliberately does NOT close the socket it replaces. Closing it made two
+    // tabs on the same room fight: the server hangs up on tab A, tab A's client
+    // reconnects and displaces tab B, B reconnects and displaces A, forever -
+    // and a player stuck in that loop answers no crypto requests, so every hand
+    // they are dealt into stalls out. The orphan is cheap; the loop was not.
     this.sockets.set(userId, ws);
     this.broadcastRoomState();
     // late joiners and reconnects still get to see voluntarily shown cards
@@ -236,13 +241,27 @@ export class GameRoom {
     if (eligible.length < 2) return;
     const ms = this.opts.readyCheckMs ?? 20_000;
     const deadline = Date.now() + ms;
+    // Players who asked to be dealt in automatically count as ready the moment
+    // the check opens. Held server-side rather than auto-clicking in the client,
+    // so it still works with the tab in the background - which is exactly when
+    // clicking every hand was annoying enough to ask for this.
+    const ids = eligible.map((p) => Number(p.userId));
+    const autoReady = new Set(
+      (
+        this.db
+          .prepare(`SELECT id FROM users WHERE auto_ready = 1 AND id IN (${ids.map(() => '?').join(',')})`)
+          .all(...ids) as { id: number }[]
+      ).map((r) => r.id),
+    );
     this.readyCheck = {
       deadline,
       timer: setTimeout(() => this.resolveReadyCheck(), ms),
-      eligible: new Set(eligible.map((p) => p.userId)),
-      ready: new Set(),
+      eligible: new Set(ids),
+      ready: autoReady,
     };
     this.broadcastReadyCheck();
+    // everyone at the table opted in: skip the wait entirely
+    if (autoReady.size === ids.length) this.resolveReadyCheck();
   }
 
   private broadcastReadyCheck(): void {
@@ -1343,7 +1362,12 @@ class Hand {
       this.runout = true;
       const inHand = st.seats.filter((x) => !x.folded);
       const boardIncomplete = this.boardIndexes().some((i) => !this.boardCards.has(i));
-      if (inHand.length >= 2 && boardIncomplete) {
+      // Run-it-twice is off by default. It adds a vote round and a second
+      // runout, and both were stalling into unmask timeouts and aborting hands
+      // that would otherwise have completed. The remaining streets now deal
+      // once, which is the normal all-in path. Re-enable per-instance with
+      // `runItTwice: true` once the second-board chains are trustworthy.
+      if (this.opts.runItTwice && inHand.length >= 2 && boardIncomplete) {
         this.beginRitVote(inHand.map((x) => x.seat));
         return;
       }
