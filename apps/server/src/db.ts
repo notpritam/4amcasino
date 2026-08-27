@@ -116,6 +116,12 @@ function migrate(db: DB): void {
   ensureColumn(db, 'users', 'last_seen', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'users', 'auto_join_invites', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'rooms', 'voided', 'INTEGER NOT NULL DEFAULT 0');
+  // Archiving retires a finished table: it leaves the room list, stops dealing,
+  // and its results stop counting towards stats. Nothing is deleted - the
+  // ledger and every transcript stay readable, and money still owed between
+  // players stays owed. See the comment on /api/rooms/:id/archive.
+  ensureColumn(db, 'rooms', 'archived', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'rooms', 'archived_at', 'INTEGER');
   ensureColumn(db, 'rooms', 'meet_link', 'TEXT');
   ensureColumn(db, 'rooms', 'visibility', "TEXT NOT NULL DEFAULT 'private'");
   ensureColumn(db, 'rooms', 'spectate_token', 'TEXT');

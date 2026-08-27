@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Crown } from '@phosphor-icons/react';
 import { api } from '../../shared/api.ts';
 import { useStore } from '../../shared/store.ts';
@@ -60,6 +60,7 @@ interface Entry {
 }
 
 export function LedgerPage() {
+  const nav = useNavigate();
   const { id: roomId } = useParams<{ id: string }>();
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [verified, setVerified] = useState<{ ok: boolean } | null>(null);
@@ -282,9 +283,25 @@ export function LedgerPage() {
         </div>
       )}
       {amBanker && (
-        <Button variant="secondary" onClick={() => void api.voidRoom(roomId!, !voided).then(load)}>
-          {voided ? 'Restore this table (results count again)' : 'Void this table (results stop counting)'}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => void api.voidRoom(roomId!, !voided).then(load)}>
+            {voided ? 'Restore this table (results count again)' : 'Void this table (results stop counting)'}
+          </Button>
+          {/* archiving is the tidy-away, not the undo: history survives and so
+              does anything still owed (requested by notpritam) */}
+          <Button
+            variant="secondary"
+            title="Retires the table: it leaves your room list and stops counting towards stats. Nothing is deleted and debts stay owed."
+            onClick={() =>
+              void api
+                .archiveRoom(roomId!, true)
+                .then(() => nav('/lobby'))
+                .catch(() => {})
+            }
+          >
+            Archive this table
+          </Button>
+        </div>
       )}
       {revertErr && <p className="text-sm text-rose-600">Could not revert: {revertErr}</p>}
       </div>

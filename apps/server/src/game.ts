@@ -436,6 +436,9 @@ export class GameRoom {
         const room = getRoom(this.db, this.roomId)!;
         if (room.host_id !== userId)
           return this.send(userId, { t: 'error', message: 'only the host starts hands' });
+        // an archived table is retired: history stays readable, play does not resume
+        if (room.archived)
+          return this.send(userId, { t: 'error', message: 'this table is archived - unarchive it to deal again' });
         if (this.hand) return this.send(userId, { t: 'error', message: 'hand already running' });
         if (this.autoDeal) {
           clearTimeout(this.autoDeal);

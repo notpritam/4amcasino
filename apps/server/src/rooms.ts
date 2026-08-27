@@ -22,6 +22,7 @@ export interface RoomRow {
   min_settle_hands: number;
   seven_deuce_bonus: number;
   voided: number;
+  archived: number;
   meet_link: string | null;
   visibility: string;
   spectate_token: string | null;
@@ -132,6 +133,7 @@ function roomJson(db: DB, room: RoomRow) {
     minSettleHands: room.min_settle_hands,
     sevenDeuceBonus: room.seven_deuce_bonus,
     voided: !!room.voided,
+    archived: !!room.archived,
     meetLink: room.meet_link,
     visibility: room.visibility,
     allowSpectators: !!room.allow_spectators,
@@ -448,7 +450,7 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
   app.get('/api/my-rooms', authed, async (req) => {
     const rows = db
       .prepare(
-        `SELECT r.id, r.name, r.join_code as joinCode, r.sb, r.bb,
+        `SELECT r.id, r.name, r.join_code as joinCode, r.sb, r.bb, r.archived as archived,
                 (SELECT COUNT(*) FROM room_players rp2 WHERE rp2.room_id = r.id) as playerCount
          FROM rooms r JOIN room_players rp ON rp.room_id = r.id
          WHERE rp.user_id = ? ORDER BY r.created_at DESC`,

@@ -15,6 +15,8 @@ interface RoomSummary {
   sb: number;
   bb: number;
   playerCount: number;
+  /** Retired table: kept for its history, out of the active list. */
+  archived?: number;
 }
 
 export function LobbyPage() {
@@ -141,7 +143,7 @@ export function LobbyPage() {
             <p className="text-sm text-slate-500">No rooms yet. Create one and share the code.</p>
           ) : (
             <div className="grid gap-2 xl:grid-cols-2">
-              {rooms.map((r) => (
+              {rooms.filter((r) => !r.archived).map((r) => (
                 // the whole card is the link, but the share control has to sit
                 // above it - an interactive element cannot nest inside an anchor
                 <div
@@ -162,6 +164,44 @@ export function LobbyPage() {
                 </div>
               ))}
             </div>
+          )}
+          {rooms.some((r) => r.archived) && (
+            <details className="mt-6">
+              <summary className="cursor-pointer text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
+                Archived tables ({rooms.filter((r) => r.archived).length})
+              </summary>
+              <p className="mt-1.5 text-xs text-slate-400">
+                Retired, not deleted. The ledger and every hand stay readable, and anything still
+                owed is still owed — they just stop counting towards your stats.
+              </p>
+              <div className="mt-2 space-y-1.5">
+                {rooms
+                  .filter((r) => r.archived)
+                  .map((r) => (
+                    <div
+                      key={r.id}
+                      className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-sm ring-1 ring-slate-200/70 dark:bg-slate-900/60 dark:ring-slate-700/70"
+                    >
+                      <Link to={`/room/${r.id}/ledger`} className="min-w-0 flex-1 truncate hover:underline">
+                        {r.name}
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void api
+                            .archiveRoom(r.id, false)
+                            .then(() => api.myRooms())
+                            .then((x) => setRooms(x.rooms))
+                            .catch(() => {})
+                        }
+                        className="rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950"
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </details>
           )}
           {publicRooms.length > 0 && (
             <>

@@ -82,6 +82,10 @@ export const api = {
   invites: () => req('/api/invites'),
   respondInvite: (inviteId: number, accept: boolean) => req(`/api/invites/${inviteId}/respond`, { accept }),
   voidRoom: (roomId: string, voided: boolean) => req(`/api/rooms/${roomId}/void`, { voided }),
+  // retire a finished table: it leaves the room list and stops counting towards
+  // stats, but nothing is deleted and debts stay owed (requested by notpritam)
+  archiveRoom: (roomId: string, archived: boolean) =>
+    req(`/api/rooms/${roomId}/archive`, { archived }),
   publicRooms: () => req('/api/rooms/public'),
   joinPublic: (roomId: string) => req(`/api/rooms/${roomId}/join-public`, {}),
   spectateSettings: (roomId: string, allow?: boolean) =>

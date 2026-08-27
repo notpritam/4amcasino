@@ -376,6 +376,40 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
 
   // ---------- banker invalidation ----------
 
+  /** Retire a finished table.
+   *
+   *  Archiving is deliberately NOT a delete. The ledger, every hand transcript
+   *  and the whole history stay exactly where they are and stay readable - the
+   *  room simply leaves the active list, stops dealing, and its results stop
+   *  counting towards stats and the leaderboard.
+   *
+   *  Debts between players survive on purpose. Making money owed disappear by
+   *  archiving would hand the person who is down the most a one-click way to
+   *  erase it, which is the same hole the audit flagged on /void. Settle up
+   *  first, or settle up after - either way the number does not move because a
+   *  table was tidied away.
+   *
+   *  Host or banker, reversible, and refused mid-hand so nothing is retired out
+   *  from under a live deal. */
+  app.post('/api/rooms/:id/archive', authed, async (req, reply) => {
+    const parsed = z.object({ archived: z.boolean() }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+    const { id } = req.params as { id: string };
+    const room = getRoom(db, id);
+    if (!room) return reply.code(404).send({ error: 'no such room' });
+    if (room.host_id !== req.userId && !canBank(room, req.userId))
+      return reply.code(403).send({ error: 'only the host or the banker can archive a table' });
+    if (parsed.data.archived && activeHands.has(id))
+      return reply.code(400).send({ error: 'a hand is in progress - wait for it to finish' });
+    db.prepare('UPDATE rooms SET archived = ?, archived_at = ? WHERE id = ?').run(
+      parsed.data.archived ? 1 : 0,
+      parsed.data.archived ? Date.now() : null,
+      id,
+    );
+    roomEvents.emit('changed', id);
+    return { ok: true, archived: parsed.data.archived };
+  });
+
   // void a whole table: its results stop counting anywhere outside the room
   app.post('/api/rooms/:id/void', authed, async (req, reply) => {
     const parsed = z.object({ voided: z.boolean() }).safeParse(req.body);
