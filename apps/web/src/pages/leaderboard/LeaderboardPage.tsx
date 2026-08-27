@@ -92,7 +92,7 @@ export function LeaderboardPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 p-6">
+    <div className="mx-auto max-w-4xl space-y-6 p-6">
       <header>
         <h1 className="font-display text-xl font-bold">Leaderboard</h1>
       </header>

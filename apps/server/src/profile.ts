@@ -408,4 +408,78 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       players: masked,
     };
   });
+
+  // Your recent hands across every room, compressed for the profile's history
+  // rail: outcome, net, the board, and YOUR cards whenever the transcript
+  // knows them (showdown, voluntary show, or a TV-replay key reveal).
+  // Requested by notpritam, docs/FEATURES.md.
+  app.get('/api/me/hand-history', authed, async (req) => {
+    const rows = db
+      .prepare(
+        `SELECT t.hand_id as handId, t.room_id as roomId, r.name as roomName, t.head, t.entries, t.ts
+         FROM transcripts t
+         JOIN rooms r ON r.id = t.room_id
+         JOIN room_players rp ON rp.room_id = t.room_id AND rp.user_id = ?
+         ORDER BY t.ts DESC LIMIT 140`,
+      )
+      .all(req.userId) as { handId: string; roomId: string; roomName: string; head: string; entries: string; ts: number }[];
+    const netStmt = db.prepare(
+      "SELECT COALESCE(SUM(delta), 0) as net FROM ledger WHERE user_id = ? AND ref = ? AND kind = 'hand-settlement'",
+    );
+    const voidStmt = db.prepare("SELECT 1 FROM ledger WHERE kind = 'void-hand' AND ref = ? LIMIT 1");
+    const hands: unknown[] = [];
+    for (const row of rows) {
+      if (hands.length >= 30) break;
+      let entries: { type: string; payload: Record<string, unknown> }[];
+      try {
+        entries = JSON.parse(row.entries) as typeof entries;
+      } catch {
+        continue;
+      }
+      const start = entries.find((e) => e.type === 'hand_start');
+      if (!start) continue;
+      const seats = (start.payload.seats as { seat: number; userId: number }[]) ?? [];
+      const mine = seats.find((x) => x.userId === req.userId);
+      if (!mine) continue; // a hand in my room that I sat out
+      const settlement = entries.find((e) => e.type === 'settlement');
+      const board = (settlement?.payload.board as number[] | undefined) ?? [];
+      const reveal = (
+        (settlement?.payload.reveals as { seat: number; cards: number[] }[] | undefined) ?? []
+      ).find((x) => x.seat === mine.seat);
+      const decrypted = entries.find(
+        (e) => e.type === 'hole_cards' && (e.payload.seat as number) === mine.seat,
+      );
+      const folded = entries.some(
+        (e) =>
+          (e.type === 'action' &&
+            (e.payload.seat as number) === mine.seat &&
+            (e.payload.action as { type: string }).type === 'fold') ||
+          (e.type === 'timeout_fold' && (e.payload.seat as number) === mine.seat),
+      );
+      const net = (netStmt.get(req.userId, row.head) as { net: number }).net;
+      const outcome = !settlement
+        ? 'aborted'
+        : reveal
+          ? net >= 0
+            ? 'won at showdown'
+            : 'lost at showdown'
+          : folded
+            ? 'folded'
+            : net > 0
+              ? 'won quietly'
+              : 'played';
+      hands.push({
+        handId: row.handId,
+        roomId: row.roomId,
+        roomName: row.roomName,
+        ts: row.ts,
+        net,
+        outcome,
+        board,
+        myCards: reveal?.cards ?? (decrypted?.payload.cards as number[] | undefined) ?? null,
+        voided: !!voidStmt.get(row.head),
+      });
+    }
+    return { hands };
+  });
 }

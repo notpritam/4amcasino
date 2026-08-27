@@ -43,4 +43,7 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | Leavers stop stalling: a player who leaves before betting starts aborts the deal in ~4s and the redeal skips them; the ready check drops leavers instantly instead of waiting out their deadline | **notpritam** |
 | Profile settle-up: your own profile lists who you owe and who owes you, per room, to conclude the game; both sides mark "settled" and the debt resolves on the platform too | **notpritam** |
 | Add friend + send points from any player's profile: befriend them and move points through any room you share, straight from their page | **notpritam** |
+| Linear-style profile: full-width three-column layout (identity left, money and game middle, history right), settle-up grouped per room and collapsible with the bottom line in the header, URL-backed tabs | **notpritam** |
+| Hand history with your cards: the profile's transaction wall compressed into per-hand rows - outcome, YOUR hole cards, net - expandable to the board and a replay link; raw money moves on their own tab | **notpritam** |
+| Wider screens everywhere: hands, ledger, leaderboard, and replay pages stop hugging a skinny center column | **notpritam** |
 | Everything before 2026-08-24 (mental poker core, ledger and banking, friends and spectating, cyberpunk theme, MCP seat, fairness tour, auto-approve buys, ...) | **notpritam** |

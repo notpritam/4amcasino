@@ -80,7 +80,7 @@ export function ReplayPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-6">
+    <div className="mx-auto max-w-5xl space-y-4 p-6">
       <header className="flex items-center gap-3">
         <Link
           to={`/room/${roomId}/hands`}

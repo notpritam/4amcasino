@@ -129,7 +129,7 @@ export function LedgerPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
+    <div className="mx-auto max-w-6xl space-y-6 p-6">
       <header className="flex items-center gap-3">
         <Link to={`/room/${roomId}`} className="text-sm text-slate-500 hover:text-slate-800">
           ← Back to table
