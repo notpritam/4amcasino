@@ -1542,6 +1542,7 @@ export function TablePage() {
                   )
               }
               bankerId={room.room.bankerId}
+            hostId={room.room.hostId}
               coBankerId={room.room.coBankerId}
               bb={room.room.bb}
               onMyCardsClick={() => {

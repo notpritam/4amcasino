@@ -20,12 +20,44 @@ import { play } from './sounds.ts';
 
 const lookup = cardLookup();
 
-function handKeyFor(handId: string): bigint {
-  const storageKey = `4am/handkey/${handId}`;
-  const existing = sessionStorage.getItem(storageKey);
-  if (existing) return BigInt('0x' + existing);
+const KEY_PREFIX = '4am/handkey/';
+
+/** Read the per-hand key, or null if this browser has never held it.
+ *
+ *  localStorage, not sessionStorage: sessionStorage is per-TAB, so opening the
+ *  same room in a second tab gave that tab no key for the hand already running.
+ *  It then minted a fresh random one, and every share it produced failed against
+ *  the commitment the first tab had already published - which the server can
+ *  only read as a bad proof or as silence. Either way the hand died. Every tab
+ *  in the browser now reads the same key.
+ *
+ *  It deliberately does NOT mint. A key invented mid-hand is worse than no key:
+ *  it produces confidently-signed garbage. Minting happens once, at key_commit. */
+function handKeyFor(handId: string): bigint | null {
+  try {
+    const hex =
+      localStorage.getItem(KEY_PREFIX + handId) ?? sessionStorage.getItem(KEY_PREFIX + handId);
+    return hex ? BigInt('0x' + hex) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Mint the key for a hand we are joining, and keep the store from growing
+ *  without bound. Idempotent, so re-committing after a reconnect reuses it. */
+function createHandKey(handId: string): bigint {
+  const existing = handKeyFor(handId);
+  if (existing !== null) return existing;
   const k = randScalar();
-  sessionStorage.setItem(storageKey, k.toString(16));
+  try {
+    // hands are short; keep a handful so a reconnect mid-hand still finds its
+    // key, and drop the rest rather than accumulating forever
+    const mine = Object.keys(localStorage).filter((key) => key.startsWith(KEY_PREFIX));
+    for (const key of mine.slice(0, Math.max(0, mine.length - 20))) localStorage.removeItem(key);
+    localStorage.setItem(KEY_PREFIX + handId, k.toString(16));
+  } catch {
+    /* storage disabled: the key lives for this page load only */
+  }
   return k;
 }
 
@@ -76,6 +108,7 @@ export function answerPeek(offerId: string, accept: boolean): void {
   }
   if (hand.myCardPoints.length === 0) return;
   const k = handKeyFor(hand.handId);
+  if (k === null) return;
   const shares = hand.myCardPoints.map(({ deckIndex, point }) => {
     const { out, proof } = proveUnmask(k, pointFromHex(point));
     return { deckIndex, out: pointHex(out), proof };
@@ -99,6 +132,7 @@ export function showMyCards(): void {
   const { hand } = useStore.getState();
   if (!hand.handId || hand.myCardPoints.length === 0) return;
   const k = handKeyFor(hand.handId);
+  if (k === null) return;
   const shares = hand.myCardPoints.map(({ deckIndex, point }) => {
     const { out, proof } = proveUnmask(k, pointFromHex(point));
     return { deckIndex, out: pointHex(out), proof };
@@ -153,7 +187,12 @@ function handle(msg: ServerMsg): void {
             },
             deadline: null,
           });
-          sessionStorage.removeItem(`4am/handkey/${h.handId}`);
+          try {
+            localStorage.removeItem(KEY_PREFIX + h.handId);
+            sessionStorage.removeItem(KEY_PREFIX + h.handId);
+          } catch {
+            /* storage disabled */
+          }
         }
       }
       voice.syncPeers(msg.players);
@@ -195,7 +234,7 @@ function handle(msg: ServerMsg): void {
       }
       if (mySeat === null) return; // spectator
       if (fresh) play('shuffle');
-      const k = handKeyFor(msg.handId);
+      const k = createHandKey(msg.handId);
       const commit = pointHex(handKeyCommit(k));
       wsClient.send({
         t: 'key_commit',
@@ -210,6 +249,7 @@ function handle(msg: ServerMsg): void {
       const { hand } = useStore.getState();
       if (msg.seat !== mySeatIn(hand.seats)) return;
       const k = handKeyFor(msg.handId);
+      if (k === null) return;
       const deck = maskAndShuffle(msg.deck.map(pointFromHex), k, randomPerm(52)).map(pointHex);
       wsClient.send({ t: 'shuffle_deck', handId: msg.handId, deck, sig: signed(msg.handId, 'shuffle_deck', { deck }) });
       return;
@@ -236,6 +276,7 @@ function handle(msg: ServerMsg): void {
         return;
       }
       const k = handKeyFor(msg.handId);
+      if (k === null) return;
       const { out, proof } = proveUnmask(k, pointFromHex(msg.point));
       const body = { deckIndex: msg.deckIndex, out: pointHex(out), proof };
       wsClient.send({ t: 'unmask_share', handId: msg.handId, ...body, sig: signed(msg.handId, 'unmask_share', body) });
@@ -246,6 +287,7 @@ function handle(msg: ServerMsg): void {
       const h = useStore.getState().hand;
       if (h.myCardPoints.some((c) => c.deckIndex === msg.deckIndex)) return; // re-delivered on reconnect
       const k = handKeyFor(msg.handId);
+      if (k === null) return;
       const plain = mulPoint(pointFromHex(msg.point), invScalar(k));
       const card = recoverCard(plain, lookup);
       if (card === null) {
@@ -336,7 +378,8 @@ function handle(msg: ServerMsg): void {
         msg.seat === mySeatIn(hand.seats) &&
         foldedByMe.has(msg.handId)
       ) {
-        const key = handKeyFor(msg.handId).toString(16);
+        const key = handKeyFor(msg.handId)?.toString(16);
+        if (key === undefined) return;
         wsClient.send({ t: 'fold_key', handId: msg.handId, key, sig: signed(msg.handId, 'fold_key', { key }) });
       }
       store.patchHand({
@@ -508,6 +551,7 @@ function handle(msg: ServerMsg): void {
       // any moment - would hand it every hole card at the table at once.
       if (!endedHands.has(msg.handId)) return;
       const k = handKeyFor(msg.handId);
+      if (k === null) return;
       const key = k.toString(16);
       wsClient.send({ t: 'reveal_key', handId: msg.handId, key, sig: signed(msg.handId, 'reveal_key', { key }) });
       return;

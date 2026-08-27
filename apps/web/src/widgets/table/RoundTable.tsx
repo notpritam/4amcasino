@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import NumberFlow from '@number-flow/react';
-import { Crown, Coins, MicrophoneSlash, X } from '@phosphor-icons/react';
+import { Crown, Coins, MicrophoneSlash, Play, X } from '@phosphor-icons/react';
 import type { CardId, PlayerAction } from '@4am/shared';
 import { cn, fmt } from '../../shared/lib/cn.ts';
 import { Avatar } from '../../entities/user/Avatar.tsx';
@@ -39,6 +39,7 @@ export function RoundTable({
   onKick,
   bankerId,
   coBankerId,
+  hostId,
   bb,
   onMyCardsClick,
   readyCheck = null,
@@ -57,6 +58,8 @@ export function RoundTable({
   onKick: (userId: number) => void;
   bankerId: number;
   coBankerId: number | null;
+  /** Whoever can deal right now - it moves if the host goes offline. */
+  hostId?: number | null;
   bb: number;
   onMyCardsClick?: () => void;
   /** Pre-deal ready check: green tick on the seats that clicked I'm ready. */
@@ -159,6 +162,7 @@ export function RoundTable({
         const isMe = p.userId === myUserId;
 
         const isBanker = p.userId === bankerId;
+        const isHost = hostId != null && p.userId === hostId;
         const isCoBanker = coBankerId !== null && p.userId === coBankerId;
         return (
           <div key={seat}>
@@ -274,6 +278,14 @@ export function RoundTable({
                     className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white"
                   >
                     <Crown size={9} weight="fill" />
+                  </span>
+                )}
+                {isHost && (
+                  <span
+                    title="Host - deals the hands"
+                    className="absolute -top-1 -left-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-white"
+                  >
+                    <Play size={8} weight="fill" />
                   </span>
                 )}
                 {(isBanker || isCoBanker) && (

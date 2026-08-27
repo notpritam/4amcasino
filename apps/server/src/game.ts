@@ -77,6 +77,10 @@ interface Chain {
 
 /** Rooms with a hand in flight; REST money moves must wait for the settle. */
 import { activeHands } from './liveHands.js';
+
+/** How long a host may be offline before the table hands the role to someone
+ *  still sitting at it. */
+const HOST_HANDOVER_MS = 60_000;
 export { activeHands };
 
 /** The classic house rule: 7-2 offsuit wins collect a bounty from everyone. */
@@ -146,6 +150,7 @@ export class GameRoom {
   // before each auto-deal, and whoever has not clicked by the deadline is
   // left out of that hand (requested by notpritam, docs/FEATURES.md)
   private readyCheck: { deadline: number; timer: NodeJS.Timeout; eligible: Set<number>; ready: Set<number> } | null = null;
+  private hostHandover: NodeJS.Timeout | null = null;
   private lookup = cardLookup();
 
   constructor(
@@ -180,6 +185,7 @@ export class GameRoom {
       this.broadcastRoomState();
       // a folded player walking away must never strand the hand
       this.hand?.onPlayerGone(userId);
+      this.scheduleHostHandover(userId);
       // and the ready check must never wait on someone who already left
       const rc = this.readyCheck;
       if (rc && rc.eligible.has(userId)) {
@@ -196,6 +202,38 @@ export class GameRoom {
     return this.sockets.has(userId);
   }
 
+  /** The host is the only person who can deal, so a host who shuts their laptop
+   *  freezes the table for everyone still sitting at it. After a grace window the
+   *  role passes to someone who is actually here.
+   *
+   *  Host only, deliberately. The BANKER approves buy-ins and moves chips, and a
+   *  money authority must never change hands on a timer - if the banker is gone,
+   *  the table waits for them or names a backup by hand. */
+  private scheduleHostHandover(goneUserId: number): void {
+    const room = getRoom(this.db, this.roomId);
+    if (!room || room.host_id !== goneUserId || this.hostHandover) return;
+    this.hostHandover = setTimeout(() => {
+      this.hostHandover = null;
+      const current = getRoom(this.db, this.roomId);
+      // they came back, or someone already took it: nothing to do
+      if (!current || current.host_id !== goneUserId || this.isConnected(goneUserId)) return;
+      const here = roomPlayers(this.db, this.roomId).filter((p) => this.sockets.has(p.userId));
+      // the banker if they are here - they already hold the room's trust
+      const next = here.find((p) => p.userId === current.banker_id) ?? here[0];
+      if (!next) return;
+      this.db.prepare('UPDATE rooms SET host_id = ? WHERE id = ?').run(next.userId, this.roomId);
+      this.broadcastRoomState();
+      this.broadcast({
+        t: 'chat',
+        from: '4AM',
+        userId: 0,
+        text: `${next.displayName} is the host now - the previous host went offline.`,
+        kind: 'text',
+        ts: Date.now(),
+      });
+    }, HOST_HANDOVER_MS);
+  }
+
   /** Nobody is connected and nothing is in flight, so the hub can drop this room
    *  instead of holding it (and its per-hand maps) for the life of the process. */
   isIdle(): boolean {
@@ -203,6 +241,8 @@ export class GameRoom {
   }
 
   shutdown(): void {
+    if (this.hostHandover) clearTimeout(this.hostHandover);
+    this.hostHandover = null;
     this.hand?.clearTimer();
     this.hand = null;
     activeHands.delete(this.roomId);

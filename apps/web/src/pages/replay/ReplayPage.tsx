@@ -223,6 +223,7 @@ export function ReplayPage() {
           canKick={false}
           onKick={() => {}}
           bankerId={0}
+          hostId={null}
           coBankerId={null}
           bb={replay.bb}
         >
