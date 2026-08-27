@@ -4,7 +4,10 @@ import {
   CaretDown,
   CaretRight,
   CheckCircle,
+  Eye,
+  EyeSlash,
   HandCoins,
+  Trophy,
   UserPlus,
 } from '@phosphor-icons/react';
 import type { CardId } from '@4am/shared';
@@ -90,6 +93,90 @@ interface HandHistoryRow {
 }
 
 const SETTLE_OPEN_KEY = '4am-settle-open';
+
+interface BestHand {
+  amount: number;
+  roomId: string;
+  roomName: string;
+  handId: string;
+  ts: number;
+  board: CardId[];
+  myCards: CardId[] | null;
+  label: string | null;
+  canReplay: boolean;
+}
+
+/** The player's biggest win as a snapshot: their cards, the board, the
+ *  amount, one click to the replay. The owner can hide it from everyone
+ *  (requested by notpritam, docs/FEATURES.md). */
+function BestHandCard({ userId, own }: { userId: number; own: boolean }) {
+  const [data, setData] = useState<{ hidden: boolean; hand: BestHand | null } | null>(null);
+  useEffect(() => {
+    void api.bestHand(userId).then(setData).catch(() => {});
+  }, [userId]);
+  if (!data) return null;
+  const setVisible = (showBestHand: boolean) => {
+    void api.updateProfile({ showBestHand }).then(() => setData({ ...data, hidden: !showBestHand }));
+  };
+  if (data.hidden && !own) return null;
+  if (!data.hand) return null;
+  if (data.hidden && own) {
+    return (
+      <button
+        onClick={() => setVisible(true)}
+        className="flex w-full items-center gap-2 rounded-xl bg-slate-50 px-4 py-3 text-left text-xs text-slate-500 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800"
+      >
+        <EyeSlash size={14} />
+        Your best hand is hidden from your profile. Show it?
+      </button>
+    );
+  }
+  const h = data.hand;
+  return (
+    <Panel className="relative">
+      <div className="mb-2 flex items-center gap-2">
+        <Trophy size={16} weight="fill" className="text-amber-500" />
+        <h2 className="font-display font-semibold">Best hand</h2>
+        <span className="font-display text-lg font-bold text-emerald-600">+{fmt(h.amount)}</span>
+        {own && (
+          <button
+            title="Hide this from your profile"
+            onClick={() => setVisible(false)}
+            className="ml-auto rounded-md p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            <Eye size={15} />
+          </button>
+        )}
+      </div>
+      {h.myCards && (
+        <div className="mb-1.5 flex gap-1">
+          {h.myCards.map((c) => (
+            <PlayingCard key={c} card={c} size="sm" />
+          ))}
+        </div>
+      )}
+      {h.board.length > 0 && (
+        <div className="mb-2 flex gap-1">
+          {h.board.map((c) => (
+            <PlayingCard key={c} card={c} size="xs" />
+          ))}
+        </div>
+      )}
+      <div className="text-xs text-slate-500">
+        {h.label ? `${h.label} · ` : ''}
+        {h.roomName} · {new Date(h.ts).toLocaleDateString()}
+      </div>
+      {h.canReplay && (
+        <Link
+          to={`/room/${h.roomId}/replay/${h.handId}`}
+          className="mt-1.5 inline-block text-xs font-semibold text-indigo-600 dark:text-indigo-400"
+        >
+          Watch the replay →
+        </Link>
+      )}
+    </Panel>
+  );
+}
 
 /** Who you owe and who owes you - grouped per room, each room collapsible
  *  with its bottom line in the header, so twenty debts read like five rooms.
@@ -637,6 +724,7 @@ export function PlayerPage() {
               tone={p.stats.biggestWin > 0 ? 'up' : undefined}
             />
           </div>
+          <BestHandCard userId={p.userId} own={own} />
           {!own && <PlayerActions userId={p.userId} name={p.username} />}
         </div>
 

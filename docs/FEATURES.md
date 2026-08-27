@@ -46,4 +46,6 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | Linear-style profile: full-width three-column layout (identity left, money and game middle, history right), settle-up grouped per room and collapsible with the bottom line in the header, URL-backed tabs | **notpritam** |
 | Hand history with your cards: the profile's transaction wall compressed into per-hand rows - outcome, YOUR hole cards, net - expandable to the board and a replay link; raw money moves on their own tab | **notpritam** |
 | Wider screens everywhere: hands, ledger, leaderboard, and replay pages stop hugging a skinny center column | **notpritam** |
+| Full-screen lobby and pages: lobby goes three-column (actions / game + rooms / friends), the ledger splits report-beside-table, hands and leaderboard become card grids on big monitors | **notpritam** |
+| Best hand showcase: a player's biggest win as a snapshot on their profile - their cards, the board, the amount, one click to the replay - reachable from the leaderboard's "best +N"; the owner can hide it | **notpritam** |
 | Everything before 2026-08-24 (mental poker core, ledger and banking, friends and spectating, cyberpunk theme, MCP seat, fairness tour, auto-approve buys, ...) | **notpritam** |

@@ -117,6 +117,7 @@ function migrate(db: DB): void {
   ensureColumn(db, 'rooms', 'spectate_token', 'TEXT');
   ensureColumn(db, 'rooms', 'allow_spectators', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'rooms', 'tv_replays', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'users', 'show_best_hand', 'INTEGER NOT NULL DEFAULT 1');
   db.exec(`
     CREATE TABLE IF NOT EXISTS settlements (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

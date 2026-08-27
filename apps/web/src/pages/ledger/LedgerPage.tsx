@@ -129,7 +129,7 @@ export function LedgerPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
+    <div className="mx-auto max-w-[1600px] space-y-6 p-4 md:p-6">
       <header className="flex items-center gap-3">
         <Link to={`/room/${roomId}`} className="text-sm text-slate-500 hover:text-slate-800">
           ← Back to table
@@ -257,6 +257,8 @@ export function LedgerPage() {
         </Panel>
       )}
 
+      <div className="grid items-start gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="space-y-5">
       <Panel>
         <h2 className="mb-3 font-display font-semibold">Bought from the bank (to settle up)</h2>
         {totals.size === 0 ? (
@@ -285,7 +287,8 @@ export function LedgerPage() {
         </Button>
       )}
       {revertErr && <p className="text-sm text-rose-600">Could not revert: {revertErr}</p>}
-      <Panel className="overflow-x-auto p-0">
+      </div>
+      <Panel className="min-w-0 overflow-x-auto p-0">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400 dark:border-slate-800">
@@ -357,6 +360,7 @@ export function LedgerPage() {
           </tbody>
         </table>
       </Panel>
+      </div>
     </div>
   );
 }

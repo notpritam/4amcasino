@@ -119,6 +119,7 @@ export const api = {
     req(`/api/rooms/${roomId}/settings`, { tvReplays }, 'PUT'),
   myDebts: () => req('/api/me/debts'),
   handHistory: () => req('/api/me/hand-history'),
+  bestHand: (userId: number) => req(`/api/users/${userId}/best-hand`),
   markSettled: (roomId: string, otherUserId: number) =>
     req('/api/settlements', { roomId, otherUserId }),
   sharedRooms: (userId: number) => req(`/api/users/${userId}/shared-rooms`),

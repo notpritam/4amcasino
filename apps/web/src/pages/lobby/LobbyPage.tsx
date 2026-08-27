@@ -73,17 +73,45 @@ export function LobbyPage() {
     }
   }
 
+  // the lobby uses the whole screen, Linear-style: actions down the left,
+  // your game and rooms in the middle, people down the right
+  // (requested by notpritam, docs/FEATURES.md)
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <div className="mb-8">
+    <div className="mx-auto max-w-[1600px] p-4 md:p-6">
+      <div className="mb-6">
         <h1 className="font-display text-2xl font-bold">Good evening, {prefs.displayName || username}</h1>
         <p className="mt-1 text-sm text-slate-500">Start a table or join one with a code.</p>
       </div>
 
-      <InvitesPanel onJoined={(roomId) => nav(`/room/${roomId}`)} />
+      <div className="grid items-start gap-5 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_360px]">
+      <div className="space-y-4">
+        <Panel>
+          <h2 className="mb-1 font-display font-semibold">Start a table</h2>
+          <p className="mb-4 text-sm text-slate-500">You become host and banker.</p>
+          <Button className="w-full" onClick={() => setCreateOpen(true)}>Create room</Button>
+        </Panel>
+        <Panel>
+          <h2 className="mb-1 font-display font-semibold">Join a table</h2>
+          <p className="mb-4 text-sm text-slate-500">Ask the host for the 6-letter code.</p>
+          <form onSubmit={join} className="flex gap-2">
+            <Input
+              placeholder="ABC123"
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+              maxLength={6}
+              className="font-display uppercase tracking-widest"
+            />
+            <Button type="submit" variant="secondary" disabled={joinCode.length !== 6}>
+              Join
+            </Button>
+          </form>
+        </Panel>
+        {error && <p className="text-sm text-rose-600">{error}</p>}
+      </div>
 
+      <div className="min-w-0 space-y-5">
       {timeline.length >= 2 && myStats && (
-        <Panel className="mb-8">
+        <Panel>
           <div className="mb-4 flex flex-wrap items-baseline gap-x-6 gap-y-2">
             <h2 className="font-display font-semibold">Your game so far</h2>
             <span
@@ -106,38 +134,12 @@ export function LobbyPage() {
         </Panel>
       )}
 
-      <div className="mb-8 grid gap-4 sm:grid-cols-2">
-        <Panel>
-          <h2 className="mb-1 font-display font-semibold">Start a table</h2>
-          <p className="mb-4 text-sm text-slate-500">You become host and banker.</p>
-          <Button onClick={() => setCreateOpen(true)}>Create room</Button>
-        </Panel>
-        <Panel>
-          <h2 className="mb-1 font-display font-semibold">Join a table</h2>
-          <p className="mb-4 text-sm text-slate-500">Ask the host for the 6-letter code.</p>
-          <form onSubmit={join} className="flex gap-2">
-            <Input
-              placeholder="ABC123"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-              maxLength={6}
-              className="font-display uppercase tracking-widest"
-            />
-            <Button type="submit" variant="secondary" disabled={joinCode.length !== 6}>
-              Join
-            </Button>
-          </form>
-        </Panel>
-      </div>
-      {error && <p className="mb-4 text-sm text-rose-600">{error}</p>}
-
-      <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_320px]">
-        <div>
+      <div>
           <h2 className="mb-3 font-display font-semibold">Your rooms</h2>
           {rooms.length === 0 ? (
             <p className="text-sm text-slate-500">No rooms yet. Create one and share the code.</p>
           ) : (
-            <div className="space-y-2">
+            <div className="grid gap-2 xl:grid-cols-2">
               {rooms.map((r) => (
                 <Link
                   key={r.id}
@@ -192,7 +194,12 @@ export function LobbyPage() {
             </>
           )}
         </div>
+      </div>
+
+      <div className="min-w-0 space-y-5 lg:col-span-2 xl:col-span-1">
+        <InvitesPanel onJoined={(roomId) => nav(`/room/${roomId}`)} />
         <FriendsPanel />
+      </div>
       </div>
 
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} title="Create room">

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { DB } from './db.js';
 import { requireUser } from './auth.js';
 import { canBank, getRoom, isMember, roomEvents } from './rooms.js';
+import { describeScore, evaluate7 } from '@4am/shared';
 
 const MAX_AVATAR_BYTES = 300_000;
 const AVATAR_MIMES = ['image/png', 'image/jpeg', 'image/webp'] as const;
@@ -19,6 +20,7 @@ const profileSchema = z.object({
   quickPhrases: z.array(z.string().trim().min(1).max(60)).max(8).optional(),
   privateMode: z.boolean().optional(),
   autoJoinInvites: z.boolean().optional(),
+  showBestHand: z.boolean().optional(),
 });
 
 const avatarSchema = z.object({
@@ -83,6 +85,11 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
     if (parsed.data.autoJoinInvites !== undefined)
       db.prepare('UPDATE users SET auto_join_invites = ? WHERE id = ?').run(
         parsed.data.autoJoinInvites ? 1 : 0,
+        req.userId,
+      );
+    if (parsed.data.showBestHand !== undefined)
+      db.prepare('UPDATE users SET show_best_hand = ? WHERE id = ?').run(
+        parsed.data.showBestHand ? 1 : 0,
         req.userId,
       );
     if (parsed.data.avatar3d !== undefined) {
@@ -481,5 +488,69 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       });
     }
     return { hands };
+  });
+
+  // The crown jewel: the player's biggest win as a quick snapshot - their
+  // cards, the board, the amount - shown on their profile and reachable from
+  // the leaderboard. The owner can hide it (show_best_hand toggle).
+  // Requested by notpritam, docs/FEATURES.md.
+  app.get('/api/users/:id/best-hand', authed, async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const user = db
+      .prepare('SELECT id, show_best_hand as showBestHand FROM users WHERE id = ?')
+      .get(id) as { id: number; showBestHand: number } | undefined;
+    if (!user) return reply.code(404).send({ error: 'no such player' });
+    if (!user.showBestHand && req.userId !== id) return { hidden: true, hand: null };
+    const best = db
+      .prepare(
+        `SELECT l.delta, l.ref, l.room_id as roomId, r.name as roomName
+         FROM ledger l JOIN rooms r ON r.id = l.room_id
+         WHERE l.user_id = ? AND l.kind = 'hand-settlement' AND l.delta > 0 AND r.voided = 0
+           AND NOT EXISTS (SELECT 1 FROM ledger v WHERE v.room_id = l.room_id AND v.kind = 'void-hand' AND v.ref = l.ref)
+         ORDER BY l.delta DESC LIMIT 1`,
+      )
+      .get(id) as { delta: number; ref: string; roomId: string; roomName: string } | undefined;
+    if (!best) return { hidden: !user.showBestHand, hand: null };
+    const t = db
+      .prepare('SELECT hand_id as handId, entries, ts FROM transcripts WHERE head = ?')
+      .get(best.ref) as { handId: string; entries: string; ts: number } | undefined;
+    if (!t) return { hidden: !user.showBestHand, hand: null };
+    let board: number[] = [];
+    let myCards: number[] | null = null;
+    let label: string | null = null;
+    try {
+      const entries = JSON.parse(t.entries) as { type: string; payload: Record<string, unknown> }[];
+      const start = entries.find((e) => e.type === 'hand_start');
+      const seat = (
+        (start?.payload.seats as { seat: number; userId: number }[] | undefined) ?? []
+      ).find((x) => x.userId === id)?.seat;
+      const settlement = entries.find((e) => e.type === 'settlement');
+      board = (settlement?.payload.board as number[] | undefined) ?? [];
+      const reveal = (
+        (settlement?.payload.reveals as { seat: number; cards: number[] }[] | undefined) ?? []
+      ).find((x) => x.seat === seat);
+      const decrypted = entries.find(
+        (e) => e.type === 'hole_cards' && (e.payload.seat as number) === seat,
+      );
+      myCards = reveal?.cards ?? (decrypted?.payload.cards as number[] | undefined) ?? null;
+      if (myCards && board.length === 5)
+        label = describeScore(evaluate7([...(myCards as [number, number]), ...board] as never));
+    } catch {
+      /* an unreadable transcript just means a smaller snapshot */
+    }
+    return {
+      hidden: !user.showBestHand,
+      hand: {
+        amount: best.delta,
+        roomId: best.roomId,
+        roomName: best.roomName,
+        handId: t.handId,
+        ts: t.ts,
+        board,
+        myCards,
+        label,
+        canReplay: isMember(db, best.roomId, req.userId),
+      },
+    };
   });
 }

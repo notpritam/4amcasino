@@ -71,7 +71,7 @@ export function HandsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6">
+    <div className="mx-auto max-w-[1600px] space-y-6 p-4 md:p-6">
       <header className="flex items-center gap-3">
         <Link to={`/room/${roomId}`} className="text-sm text-slate-500 hover:text-slate-800">
           ← Back to table
@@ -111,7 +111,7 @@ export function HandsPage() {
       {hands.length === 0 ? (
         <Panel className="text-sm text-slate-500">No completed hands yet.</Panel>
       ) : (
-        <div className="space-y-2">
+        <div className="grid gap-2 lg:grid-cols-2 2xl:grid-cols-3">
           {hands.map((h) => (
             <button
               key={h.handId}

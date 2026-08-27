@@ -26,6 +26,7 @@ export function LeaderboardTable({ rows, minHands = 0 }: { rows: LeaderboardRow[
           Winnings count in settle-up after {minHands} hand{minHands === 1 ? '' : 's'} played.
         </p>
       )}
+      <div className="grid gap-2.5 lg:grid-cols-2 2xl:grid-cols-3">
       {rows.map((r, i) => (
         <Link
           key={r.userId}
@@ -80,6 +81,7 @@ export function LeaderboardTable({ rows, minHands = 0 }: { rows: LeaderboardRow[
           </span>
         </Link>
       ))}
+      </div>
     </div>
   );
 }
@@ -92,7 +94,7 @@ export function LeaderboardPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
+    <div className="mx-auto max-w-[1500px] space-y-6 p-4 md:p-6">
       <header>
         <h1 className="font-display text-xl font-bold">Leaderboard</h1>
       </header>
