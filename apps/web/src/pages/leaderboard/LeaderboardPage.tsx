@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../shared/api.ts';
+import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
 import { Panel, Spinner } from '../../shared/ui/index.tsx';
 import { Avatar } from '../../entities/user/Avatar.tsx';
@@ -16,6 +17,7 @@ export interface LeaderboardRow {
 }
 
 export function LeaderboardTable({ rows, minHands = 0 }: { rows: LeaderboardRow[]; minHands?: number }) {
+  const myUserId = useStore((s) => s.auth.userId);
   if (rows.length === 0) {
     return <p className="text-sm text-slate-500">No settled hands yet. Deal one and come back.</p>;
   }
@@ -33,11 +35,19 @@ export function LeaderboardTable({ rows, minHands = 0 }: { rows: LeaderboardRow[
           letter-by-letter. The columns now follow the space actually available. */}
       <div className="@container">
       <div className="grid gap-2.5 @2xl:grid-cols-2 @5xl:grid-cols-3">
+      {/* your own row is ringed and tagged, so you can find yourself in a long
+          list without reading every name */}
       {rows.map((r, i) => (
         <Link
           key={r.userId}
           to={`/players/${r.userId}`}
-          className="flex items-center gap-4 rounded-2xl bg-white p-4 ring-1 ring-slate-200/70 transition-shadow hover:shadow-md dark:bg-slate-900 dark:ring-slate-700/70"
+          aria-current={r.userId === myUserId ? 'true' : undefined}
+          className={cn(
+            'flex items-center gap-4 rounded-2xl p-4 transition-shadow hover:shadow-md',
+            r.userId === myUserId
+              ? 'bg-indigo-50 ring-2 ring-indigo-500 dark:bg-indigo-950/50 dark:ring-indigo-400'
+              : 'bg-white ring-1 ring-slate-200/70 dark:bg-slate-900 dark:ring-slate-700/70',
+          )}
         >
           {/* the standing lives ON the avatar, so the name gets the room */}
           <span className="relative shrink-0">
@@ -65,8 +75,15 @@ export function LeaderboardTable({ rows, minHands = 0 }: { rows: LeaderboardRow[
           <span className="min-w-0 flex-1">
             {/* break-all was what let a squeezed column split mid-word into one
                 letter per line; a long name now wraps at words or truncates */}
-            <span className="block truncate font-semibold leading-snug" title={r.displayName ?? r.username}>
-              {r.displayName ?? r.username}
+            <span className="flex items-baseline gap-1.5">
+              <span className="min-w-0 truncate font-semibold leading-snug" title={r.displayName ?? r.username}>
+                {r.displayName ?? r.username}
+              </span>
+              {r.userId === myUserId && (
+                <span className="shrink-0 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[0.6rem] font-bold uppercase tracking-wide text-white">
+                  You
+                </span>
+              )}
             </span>
             <span className="mt-0.5 block text-xs leading-relaxed text-slate-400">
               {r.handsPlayed} hand{r.handsPlayed === 1 ? '' : 's'}
