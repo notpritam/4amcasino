@@ -211,7 +211,8 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
       .prepare(
         `SELECT r.id, r.name, r.sb, r.bb, r.meet_link as meetLink,
                 COALESCE(u.display_name, u.username) as hostName,
-                (SELECT COUNT(*) FROM room_players rp WHERE rp.room_id = r.id) as playerCount
+                (SELECT COUNT(*) FROM room_players rp WHERE rp.room_id = r.id
+                   AND rp.user_id NOT IN (SELECT CAST(value AS INTEGER) FROM meta WHERE key='platform_user_id')) as playerCount
          FROM rooms r JOIN users u ON u.id = r.host_id
          WHERE r.visibility = 'public' AND r.archived = 0 AND r.deleted = 0
          ORDER BY r.created_at DESC LIMIT 30`,
@@ -476,7 +477,8 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     const rows = db
       .prepare(
         `SELECT r.id, r.name, r.join_code as joinCode, r.sb, r.bb, r.archived as archived,
-                (SELECT COUNT(*) FROM room_players rp2 WHERE rp2.room_id = r.id) as playerCount
+                (SELECT COUNT(*) FROM room_players rp2 WHERE rp2.room_id = r.id
+                   AND rp2.user_id NOT IN (SELECT CAST(value AS INTEGER) FROM meta WHERE key='platform_user_id')) as playerCount
          FROM rooms r JOIN room_players rp ON rp.room_id = r.id
          WHERE rp.user_id = ? AND r.deleted = 0 ORDER BY r.created_at DESC`,
       )

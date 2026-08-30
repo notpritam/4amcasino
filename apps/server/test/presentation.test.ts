@@ -214,3 +214,67 @@ describe('presentablePlayers (shared helper backing both REST and the live broad
     expect(presentedIds).not.toContain(house.userId);
   });
 });
+
+describe('playerCount and session roster exclude the platform (final-review fix)', () => {
+  it('/api/rooms/public, /api/my-rooms, and /api/rooms/:id/session all hide the house', async () => {
+    const alice = await user('final_alice');
+    const bob = await user('final_bob');
+    const house = await user('final_house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const room = (
+      await ctx.app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: auth(alice.token),
+        payload: { name: 'Final Fix Test', sb: 10, bb: 20, visibility: 'public' },
+      })
+    ).json() as { id: string; joinCode: string };
+
+    await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/join-public`,
+      headers: auth(bob.token),
+    });
+
+    // platform holds rake for this room, same as a live table would after a hand
+    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1' });
+
+    // the platform's room_players row (its rake stack) must survive untouched -
+    // only the presentation layer should hide it
+    const platformRow = ctx.db
+      .prepare('SELECT * FROM room_players WHERE room_id = ? AND user_id = ?')
+      .get(room.id, house.userId);
+    expect(platformRow).toBeDefined();
+
+    const publicRes = await ctx.app.inject({
+      method: 'GET',
+      url: '/api/rooms/public',
+      headers: auth(alice.token),
+    });
+    const publicRoom = (publicRes.json().rooms as { id: string; playerCount: number }[]).find(
+      (r) => r.id === room.id,
+    );
+    expect(publicRoom?.playerCount).toBe(2);
+
+    const myRoomsRes = await ctx.app.inject({
+      method: 'GET',
+      url: '/api/my-rooms',
+      headers: auth(alice.token),
+    });
+    const myRoom = (myRoomsRes.json().rooms as { id: string; playerCount: number }[]).find(
+      (r) => r.id === room.id,
+    );
+    expect(myRoom?.playerCount).toBe(2);
+
+    const sessionRes = await ctx.app.inject({
+      method: 'GET',
+      url: `/api/rooms/${room.id}/session`,
+      headers: auth(alice.token),
+    });
+    const sessionPlayerIds = (sessionRes.json().players as { userId: number }[]).map((p) => p.userId);
+    expect(sessionPlayerIds).toContain(alice.userId);
+    expect(sessionPlayerIds).toContain(bob.userId);
+    expect(sessionPlayerIds).not.toContain(house.userId);
+  });
+});

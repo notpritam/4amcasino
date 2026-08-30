@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from './db.js';
 import { requireUser } from './auth.js';
-import { isPlatform } from './platform.js';
+import { isPlatform, platformUserId } from './platform.js';
 import { canBank, getRoom, isMember, roomEvents } from './rooms.js';
 import { describeScore, evaluate7 } from '@4am/shared';
 
@@ -458,10 +458,15 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
          ORDER BY net DESC`,
       )
       .all({ roomId: id }) as (Record<string, unknown> & { userId: number; privateMode: number })[];
+    // hide the platform/house account from the roster - its room_players row
+    // (rake stack) is real accounting data and stays in the DB untouched, this
+    // only keeps it out of the session report shown to players
+    const platformId = platformUserId(db);
+    const presentablePlayers = players.filter((p) => p.userId !== platformId);
     // private mode: winnings stay visible to the player themself and the bankers
     const room = getRoom(db, id)!;
     const requesterCanSettle = canBank(room, req.userId);
-    const masked = players.map((p) => {
+    const masked = presentablePlayers.map((p) => {
       const { privateMode, ...rest } = p;
       if (!privateMode || p.userId === req.userId || requesterCanSettle) return { ...rest, hidden: false };
       return { ...rest, net: 0, wins: 0, biggestWin: 0, biggestLoss: 0, bought: 0, hidden: true };
