@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { openDb } from '../src/db.js';
 import { createApp } from '../src/app.js';
+import { mergeAccounts } from '../src/merge.js';
+import { appendLedger, verifyLedger } from '../src/ledger.js';
+import { activeHands } from '../src/liveHands.js';
 
 async function register(app: ReturnType<typeof createApp>['app'], username: string) {
   const res = await app.inject({
@@ -79,6 +82,198 @@ describe('Task 1: schema + disabled-user rejection', () => {
       headers: auth(bob.token),
     });
     expect(res.statusCode).toBe(200);
+    await ctx.app.close();
+  });
+});
+
+function seedRoom(db: ReturnType<typeof openDb>, roomId: string, hostId: number) {
+  db.prepare(
+    `INSERT INTO rooms (id, name, join_code, host_id, banker_id, sb, bb, audit_mode, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'private', ?)`,
+  ).run(roomId, 'T', roomId.toUpperCase().slice(0, 6), hostId, hostId, 1, 2, Date.now());
+}
+
+describe('Task 2: mergeAccounts core', () => {
+  it('merges stacks, ledger, settlements, friends, sessions and disables from', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice'); // from
+    const bob = await register(ctx.app, 'bob'); // into
+    const roomId = 'room01';
+    seedRoom(ctx.db, roomId, bob.userId);
+
+    ctx.db
+      .prepare('INSERT INTO room_players (room_id, user_id, seat, stack) VALUES (?, ?, NULL, ?)')
+      .run(roomId, alice.userId, 300);
+    ctx.db
+      .prepare('INSERT INTO room_players (room_id, user_id, seat, stack) VALUES (?, ?, NULL, ?)')
+      .run(roomId, bob.userId, 500);
+
+    appendLedger(ctx.db, {
+      roomId,
+      userId: alice.userId,
+      delta: 300,
+      kind: 'hand-settlement',
+      ref: 'h1',
+    });
+    appendLedger(ctx.db, {
+      roomId,
+      userId: bob.userId,
+      delta: 500,
+      kind: 'hand-settlement',
+      ref: 'h1',
+    });
+
+    // a debt: alice (from) owes bob (into) 100
+    const [low, high] =
+      alice.userId < bob.userId ? [alice.userId, bob.userId] : [bob.userId, alice.userId];
+    ctx.db
+      .prepare(
+        `INSERT INTO settlements (room_id, low_user, high_user, amount, debtor, created_ts)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(roomId, low, high, 100, alice.userId, Date.now());
+
+    ctx.db
+      .prepare(
+        `INSERT INTO friends (requester_id, target_id, status, created_at) VALUES (?, ?, 'accepted', ?)`,
+      )
+      .run(alice.userId, bob.userId, Date.now());
+
+    mergeAccounts(ctx.db, alice.userId, bob.userId);
+
+    const bobStack = ctx.db
+      .prepare('SELECT stack FROM room_players WHERE room_id = ? AND user_id = ?')
+      .get(roomId, bob.userId) as { stack: number } | undefined;
+    expect(bobStack?.stack).toBe(800);
+
+    const aliceRow = ctx.db
+      .prepare('SELECT 1 FROM room_players WHERE room_id = ? AND user_id = ?')
+      .get(roomId, alice.userId);
+    expect(aliceRow).toBeUndefined();
+
+    const ledgerRows = ctx.db
+      .prepare('SELECT user_id FROM ledger WHERE room_id = ?')
+      .all(roomId) as { user_id: number }[];
+    expect(ledgerRows.length).toBeGreaterThan(0);
+    expect(ledgerRows.every((r) => r.user_id === bob.userId)).toBe(true);
+    expect(verifyLedger(ctx.db, roomId).ok).toBe(true);
+
+    const settlementRows = ctx.db
+      .prepare('SELECT * FROM settlements WHERE room_id = ?')
+      .all(roomId);
+    expect(settlementRows.length).toBe(0);
+
+    const userRow = ctx.db
+      .prepare('SELECT disabled, merged_into FROM users WHERE id = ?')
+      .get(alice.userId) as { disabled: number; merged_into: number | null };
+    expect(userRow.disabled).toBe(1);
+    expect(userRow.merged_into).toBe(bob.userId);
+
+    const sessions = ctx.db.prepare('SELECT * FROM sessions WHERE user_id = ?').all(alice.userId);
+    expect(sessions.length).toBe(0);
+
+    const friends = ctx.db
+      .prepare('SELECT * FROM friends WHERE requester_id = ? OR target_id = ?')
+      .all(alice.userId, alice.userId);
+    expect(friends.length).toBe(0);
+
+    await ctx.app.close();
+  });
+
+  it('re-normalizes a settlement pair without inverting who owes whom', async () => {
+    const ctx = createApp(':memory:');
+    // Registration order controls id order (autoincrement), and this is
+    // chosen deliberately: alice < carol < bob, so that substituting
+    // fromUser=alice with intoUser=bob forces the pair to flip sides
+    // (bob's id sorts *above* carol's, where alice's sorted *below* her) -
+    // this is the one branch (merge.ts step 8's "swap") that a naive
+    // same-side relabel would get wrong, so it's the one worth proving.
+    const alice = await register(ctx.app, 'alice'); // from
+    const carol = await register(ctx.app, 'carol'); // untouched third party
+    const bob = await register(ctx.app, 'bob'); // into
+    const roomId = 'room03';
+    seedRoom(ctx.db, roomId, bob.userId);
+
+    // carol owes alice 250; alice (low_user) has confirmed, carol
+    // (high_user, the debtor) has too. After the merge this becomes
+    // carol/bob, with carol still the debtor and her confirmation intact,
+    // regardless of which side of the pair she now sorts to.
+    expect(alice.userId).toBeLessThan(carol.userId);
+    const [low, high] = [alice.userId, carol.userId];
+    ctx.db
+      .prepare(
+        `INSERT INTO settlements (room_id, low_user, high_user, amount, debtor, confirmed_low, confirmed_high, created_ts)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(roomId, low, high, 250, carol.userId, 0, 1, Date.now());
+
+    mergeAccounts(ctx.db, alice.userId, bob.userId);
+
+    const row = ctx.db
+      .prepare('SELECT * FROM settlements WHERE room_id = ?')
+      .get(roomId) as {
+      low_user: number;
+      high_user: number;
+      debtor: number;
+      confirmed_low: number;
+      confirmed_high: number;
+    };
+    expect(row.debtor).toBe(carol.userId);
+    expect([row.low_user, row.high_user].sort((a, b) => a - b)).toEqual(
+      [bob.userId, carol.userId].sort((a, b) => a - b),
+    );
+    expect(row.low_user).toBeLessThan(row.high_user);
+    // carol's id sorts below bob's, so the pair had to flip sides (the swap
+    // branch) - proving carol landed as low_user here is itself proof that
+    // branch ran, not just the no-op relabel.
+    expect(row.low_user).toBe(carol.userId);
+    // whichever side carol ended up on, her confirmation flag must have
+    // travelled with her, not stayed pinned to a numeric slot
+    const carolConfirmed = row.low_user === carol.userId ? row.confirmed_low : row.confirmed_high;
+    expect(carolConfirmed).toBe(1);
+    // and alice's original (unconfirmed) flag must have travelled onto bob,
+    // who inherited her slot - not been left behind or defaulted to 1
+    const bobConfirmed = row.low_user === bob.userId ? row.confirmed_low : row.confirmed_high;
+    expect(bobConfirmed).toBe(0);
+
+    await ctx.app.close();
+  });
+
+  it('throws and changes nothing if either account is seated in a live hand', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+    const bob = await register(ctx.app, 'bob');
+    const roomId = 'room02';
+    seedRoom(ctx.db, roomId, bob.userId);
+    ctx.db
+      .prepare('INSERT INTO room_players (room_id, user_id, seat, stack) VALUES (?, ?, 1, ?)')
+      .run(roomId, alice.userId, 300);
+    activeHands.add(roomId);
+    try {
+      expect(() => mergeAccounts(ctx.db, alice.userId, bob.userId)).toThrow();
+      const row = ctx.db
+        .prepare('SELECT disabled FROM users WHERE id = ?')
+        .get(alice.userId) as { disabled: number };
+      expect(row.disabled).toBe(0);
+      const stillSeated = ctx.db
+        .prepare('SELECT 1 FROM room_players WHERE room_id = ? AND user_id = ?')
+        .get(roomId, alice.userId);
+      expect(stillSeated).toBeTruthy();
+    } finally {
+      activeHands.delete(roomId);
+    }
+    await ctx.app.close();
+  });
+
+  it('throws for same-user, missing-user, and already-disabled merges', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+    const bob = await register(ctx.app, 'bob');
+    expect(() => mergeAccounts(ctx.db, alice.userId, alice.userId)).toThrow();
+    expect(() => mergeAccounts(ctx.db, alice.userId, 999_999)).toThrow();
+    expect(() => mergeAccounts(ctx.db, 999_999, alice.userId)).toThrow();
+    ctx.db.prepare('UPDATE users SET disabled = 1 WHERE id = ?').run(bob.userId);
+    expect(() => mergeAccounts(ctx.db, alice.userId, bob.userId)).toThrow();
     await ctx.app.close();
   });
 });
