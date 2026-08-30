@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { openDb } from '../src/db.js';
 import { createUser } from '../src/auth.js';
 import { appendLedger, verifyLedger } from '../src/ledger.js';
-import { settleRake } from '../src/rake.js';
+import { settleRake, rewriteRakeToPlatform } from '../src/rake.js';
 import { createApp } from '../src/app.js';
 import { setPlatformUserId } from '../src/platform.js';
 
@@ -152,5 +152,108 @@ describe('platform excluded from peer settle-up', () => {
     expect(aliceLine?.net).toBe(-200);
 
     await ctx.app.close();
+  });
+});
+
+describe('rewriteRakeToPlatform', () => {
+  it('re-attributes a legacy banker-keyed commission row to the platform, moving the chips', () => {
+    const db = openDb(':memory:');
+    const { userId: hostId } = createUser(db, 'host', 'a'.repeat(64), 'b'.repeat(64));
+    const { userId: platformId } = createUser(db, 'house', 'c'.repeat(64), 'd'.repeat(64));
+    seedRoom(db, 'room01', hostId);
+
+    // legacy behaviour: the banker bought in 1000, then a hand's rake (50)
+    // was credited straight to the banker (the pre-platform recipient)
+    db.prepare('INSERT INTO room_players (room_id, user_id, stack) VALUES (?, ?, ?)').run(
+      'room01',
+      hostId,
+      1000,
+    );
+    appendLedger(db, { roomId: 'room01', userId: hostId, delta: 1000, kind: 'purchase', ref: 'buy1' });
+    settleRake(db, { roomId: 'room01', recipientId: hostId, rake: 50, ref: 'h1' });
+    expect(verifyLedger(db, 'room01').ok).toBe(true);
+
+    const report = rewriteRakeToPlatform(db, platformId);
+
+    expect(report.roomsRewritten).toEqual(['room01']);
+    expect(report.roomsSkippedBankerSpent).toEqual([]);
+
+    const commission = db
+      .prepare("SELECT user_id, delta FROM ledger WHERE room_id = ? AND kind = 'commission'")
+      .get('room01') as { user_id: number; delta: number };
+    expect(commission).toMatchObject({ user_id: platformId, delta: 50 });
+
+    const hostStack = (
+      db.prepare('SELECT stack FROM room_players WHERE room_id = ? AND user_id = ?').get('room01', hostId) as {
+        stack: number;
+      }
+    ).stack;
+    expect(hostStack).toBe(1000);
+
+    const platformStack = (
+      db
+        .prepare('SELECT stack FROM room_players WHERE room_id = ? AND user_id = ?')
+        .get('room01', platformId) as { stack: number }
+    ).stack;
+    expect(platformStack).toBe(50);
+
+    expect(verifyLedger(db, 'room01').ok).toBe(true);
+  });
+
+  it('skips a room and reports it when the banker has already spent below the reclaim amount', () => {
+    const db = openDb(':memory:');
+    const { userId: hostId } = createUser(db, 'host', 'a'.repeat(64), 'b'.repeat(64));
+    const { userId: platformId } = createUser(db, 'house', 'c'.repeat(64), 'd'.repeat(64));
+    seedRoom(db, 'room01', hostId);
+
+    settleRake(db, { roomId: 'room01', recipientId: hostId, rake: 50, ref: 'h1' });
+    // the banker has since spent chips elsewhere; stack is now below the 50 reclaim
+    db.prepare('UPDATE room_players SET stack = ? WHERE room_id = ? AND user_id = ?').run(30, 'room01', hostId);
+    expect(verifyLedger(db, 'room01').ok).toBe(true);
+
+    const before = db.prepare('SELECT * FROM ledger WHERE room_id = ? ORDER BY id').all('room01');
+
+    const report = rewriteRakeToPlatform(db, platformId);
+
+    expect(report.roomsRewritten).toEqual([]);
+    expect(report.roomsSkippedBankerSpent).toEqual([
+      { roomId: 'room01', bankerId: hostId, reclaim: 50, bankerStack: 30 },
+    ]);
+
+    const after = db.prepare('SELECT * FROM ledger WHERE room_id = ? ORDER BY id').all('room01');
+    expect(after).toEqual(before);
+    const hostStack = (
+      db.prepare('SELECT stack FROM room_players WHERE room_id = ? AND user_id = ?').get('room01', hostId) as {
+        stack: number;
+      }
+    ).stack;
+    expect(hostStack).toBe(30);
+    expect(verifyLedger(db, 'room01').ok).toBe(true);
+  });
+
+  it('is idempotent: a second run rewrites nothing once commission rows are already platform-keyed', () => {
+    const db = openDb(':memory:');
+    const { userId: hostId } = createUser(db, 'host', 'a'.repeat(64), 'b'.repeat(64));
+    const { userId: platformId } = createUser(db, 'house', 'c'.repeat(64), 'd'.repeat(64));
+    seedRoom(db, 'room01', hostId);
+    db.prepare('INSERT INTO room_players (room_id, user_id, stack) VALUES (?, ?, ?)').run(
+      'room01',
+      hostId,
+      1000,
+    );
+    settleRake(db, { roomId: 'room01', recipientId: hostId, rake: 50, ref: 'h1' });
+
+    const first = rewriteRakeToPlatform(db, platformId);
+    expect(first.roomsRewritten).toEqual(['room01']);
+
+    const afterFirst = db.prepare('SELECT * FROM ledger WHERE room_id = ? ORDER BY id').all('room01');
+
+    const second = rewriteRakeToPlatform(db, platformId);
+    expect(second.roomsRewritten).toEqual([]);
+    expect(second.roomsSkippedBankerSpent).toEqual([]);
+
+    const afterSecond = db.prepare('SELECT * FROM ledger WHERE room_id = ? ORDER BY id').all('room01');
+    expect(afterSecond).toEqual(afterFirst);
+    expect(verifyLedger(db, 'room01').ok).toBe(true);
   });
 });
