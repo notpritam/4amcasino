@@ -4,6 +4,7 @@ import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   ChartBar,
   Club,
+  Gavel,
   GearSix,
   GithubLogo,
   HandCoins,
@@ -211,6 +212,7 @@ export function AppShell({
           loc.pathname === `/players/${auth.userId}`,
         )}
         {railItem('/fair', "How it's fair", <ShieldCheck size={17} />, loc.pathname === '/fair')}
+        {auth.isPlatform && railItem('/admin', 'Admin', <Gavel size={17} />, loc.pathname === '/admin')}
       </nav>
 
       {/* your rooms, like a thread list */}
@@ -403,6 +405,7 @@ export function AppShell({
                 {drawerLink(`/players/${auth.userId}`, 'My stats', <ChartBar size={19} />)}
                 {drawerLink('/settings', 'Settings', <GearSix size={19} />)}
                 {drawerLink('/fair', "How it's fair", <ShieldCheck size={19} />)}
+                {auth.isPlatform && drawerLink('/admin', 'Admin', <Gavel size={19} />)}
               </nav>
 
               {rooms.length > 0 && (

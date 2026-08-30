@@ -49,6 +49,9 @@ const JoinPage = lazy(() =>
 const SettlePage = lazy(() =>
   import('../pages/settle/SettlePage.tsx').then((module) => ({ default: module.SettlePage })),
 );
+const AdminPage = lazy(() =>
+  import('../pages/admin/AdminPage.tsx').then((module) => ({ default: module.AdminPage })),
+);
 const AppShell = lazy(() =>
   import('../widgets/nav/AppShell.tsx').then((module) => ({ default: module.AppShell })),
 );
@@ -199,6 +202,16 @@ export function App() {
               <RequireAuth>
                 <AppShell>
                   <PlayerPage />
+                </AppShell>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <RequireAuth>
+                <AppShell>
+                  <AdminPage />
                 </AppShell>
               </RequireAuth>
             }
