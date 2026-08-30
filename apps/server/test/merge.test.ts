@@ -4,6 +4,7 @@ import { createApp } from '../src/app.js';
 import { mergeAccounts } from '../src/merge.js';
 import { appendLedger, verifyLedger } from '../src/ledger.js';
 import { activeHands } from '../src/liveHands.js';
+import { setPlatformUserId } from '../src/platform.js';
 
 async function register(app: ReturnType<typeof createApp>['app'], username: string) {
   const res = await app.inject({
@@ -274,6 +275,213 @@ describe('Task 2: mergeAccounts core', () => {
     expect(() => mergeAccounts(ctx.db, 999_999, alice.userId)).toThrow();
     ctx.db.prepare('UPDATE users SET disabled = 1 WHERE id = ?').run(bob.userId);
     expect(() => mergeAccounts(ctx.db, alice.userId, bob.userId)).toThrow();
+    await ctx.app.close();
+  });
+});
+
+describe('Task 3: merge request + admin approval', () => {
+  it('non-platform gets 403 on both admin merge routes', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+    const bob = await register(ctx.app, 'bob');
+    setPlatformUserId(ctx.db, bob.userId); // bob is platform, alice is not
+
+    const list = await ctx.app.inject({
+      method: 'GET',
+      url: '/api/admin/merges',
+      headers: auth(alice.token),
+    });
+    expect(list.statusCode).toBe(403);
+
+    const decide = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/admin/merges/1',
+      headers: auth(alice.token),
+      payload: { approve: true },
+    });
+    expect(decide.statusCode).toBe(403);
+    await ctx.app.close();
+  });
+
+  it('files a request, platform lists it with both balances, approves it, and the merge happens', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice'); // from
+    const bob = await register(ctx.app, 'bob'); // into
+    const house = await register(ctx.app, 'house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const roomId = 'room10';
+    seedRoom(ctx.db, roomId, bob.userId);
+    appendLedger(ctx.db, {
+      roomId,
+      userId: alice.userId,
+      delta: 120,
+      kind: 'hand-settlement',
+      ref: 'h1',
+    });
+    appendLedger(ctx.db, {
+      roomId,
+      userId: bob.userId,
+      delta: -45,
+      kind: 'hand-settlement',
+      ref: 'h1',
+    });
+
+    const filed = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/me/merge-request',
+      headers: auth(alice.token),
+      payload: { fromUsername: 'alice', intoUsername: 'bob', note: 'same person' },
+    });
+    expect(filed.statusCode).toBe(200);
+    const { requestId } = filed.json() as { requestId: number };
+    expect(requestId).toBeGreaterThan(0);
+
+    const listed = await ctx.app.inject({
+      method: 'GET',
+      url: '/api/admin/merges',
+      headers: auth(house.token),
+    });
+    expect(listed.statusCode).toBe(200);
+    const requests = listed.json().requests as {
+      id: number;
+      fromUsername: string;
+      intoUsername: string;
+      note: string | null;
+      fromBalance: number;
+      intoBalance: number;
+      fromRooms: number;
+      intoRooms: number;
+    }[];
+    const mine = requests.find((r) => r.id === requestId);
+    expect(mine).toBeDefined();
+    expect(mine?.fromUsername).toBe('alice');
+    expect(mine?.intoUsername).toBe('bob');
+    expect(mine?.note).toBe('same person');
+    expect(mine?.fromBalance).toBe(120);
+    expect(mine?.intoBalance).toBe(-45);
+    expect(mine?.fromRooms).toBeGreaterThan(0);
+    expect(mine?.intoRooms).toBeGreaterThan(0);
+
+    const decided = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/merges/${requestId}`,
+      headers: auth(house.token),
+      payload: { approve: true },
+    });
+    expect(decided.statusCode).toBe(200);
+    expect(decided.json()).toMatchObject({ ok: true, status: 'approved' });
+
+    const aliceRow = ctx.db
+      .prepare('SELECT disabled, merged_into FROM users WHERE id = ?')
+      .get(alice.userId) as { disabled: number; merged_into: number | null };
+    expect(aliceRow.disabled).toBe(1);
+    expect(aliceRow.merged_into).toBe(bob.userId);
+
+    const reqRow = ctx.db
+      .prepare('SELECT status, decided_by FROM account_merge_requests WHERE id = ?')
+      .get(requestId) as { status: string; decided_by: number };
+    expect(reqRow.status).toBe('approved');
+    expect(reqRow.decided_by).toBe(house.userId);
+
+    await ctx.app.close();
+  });
+
+  it('approving a request for a seated account returns 409 and disables nobody', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+    const bob = await register(ctx.app, 'bob');
+    const house = await register(ctx.app, 'house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const roomId = 'room11';
+    seedRoom(ctx.db, roomId, bob.userId);
+    ctx.db
+      .prepare('INSERT INTO room_players (room_id, user_id, seat, stack) VALUES (?, ?, 1, ?)')
+      .run(roomId, alice.userId, 300);
+    activeHands.add(roomId);
+
+    try {
+      const filed = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/me/merge-request',
+        headers: auth(alice.token),
+        payload: { fromUsername: 'alice', intoUsername: 'bob' },
+      });
+      const { requestId } = filed.json() as { requestId: number };
+
+      const decided = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/admin/merges/${requestId}`,
+        headers: auth(house.token),
+        payload: { approve: true },
+      });
+      expect(decided.statusCode).toBe(409);
+
+      const aliceRow = ctx.db
+        .prepare('SELECT disabled FROM users WHERE id = ?')
+        .get(alice.userId) as { disabled: number };
+      expect(aliceRow.disabled).toBe(0);
+      const bobRow = ctx.db.prepare('SELECT disabled FROM users WHERE id = ?').get(bob.userId) as {
+        disabled: number;
+      };
+      expect(bobRow.disabled).toBe(0);
+    } finally {
+      activeHands.delete(roomId);
+    }
+    await ctx.app.close();
+  });
+
+  it('rejecting a request does not merge anyone', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+    const bob = await register(ctx.app, 'bob');
+    const house = await register(ctx.app, 'house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const filed = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/me/merge-request',
+      headers: auth(alice.token),
+      payload: { fromUsername: 'alice', intoUsername: 'bob' },
+    });
+    const { requestId } = filed.json() as { requestId: number };
+
+    const decided = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/merges/${requestId}`,
+      headers: auth(house.token),
+      payload: { approve: false },
+    });
+    expect(decided.statusCode).toBe(200);
+    expect(decided.json()).toMatchObject({ ok: true, status: 'rejected' });
+
+    const aliceRow = ctx.db
+      .prepare('SELECT disabled FROM users WHERE id = ?')
+      .get(alice.userId) as { disabled: number };
+    expect(aliceRow.disabled).toBe(0);
+    await ctx.app.close();
+  });
+
+  it('rejects a merge-request naming the same username twice or an unknown username', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+
+    const sameName = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/me/merge-request',
+      headers: auth(alice.token),
+      payload: { fromUsername: 'alice', intoUsername: 'alice' },
+    });
+    expect(sameName.statusCode).toBe(400);
+
+    const unknown = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/me/merge-request',
+      headers: auth(alice.token),
+      payload: { fromUsername: 'alice', intoUsername: 'ghost' },
+    });
+    expect(unknown.statusCode).toBe(404);
     await ctx.app.close();
   });
 });

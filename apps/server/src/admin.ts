@@ -2,7 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from './db.js';
 import { requirePlatform } from './platform.js';
+import { requireUser } from './auth.js';
 import { roomEvents } from './rooms.js';
+import { mergeAccounts } from './merge.js';
 
 interface PendingLifecycleRow {
   id: number;
@@ -14,6 +16,21 @@ interface PendingLifecycleRow {
   requesterName: string;
   note: string | null;
   createdAt: number;
+}
+
+/** Net hand-settlement balance and distinct room count for one user - the
+ *  manual "does this look right" surface an admin checks before approving a
+ *  merge (task-3 brief §7). Mirrors the aggregation leaderboard/social.ts use. */
+function balanceSummary(db: DB, userId: number): { balance: number; rooms: number } {
+  const { balance } = db
+    .prepare(
+      `SELECT COALESCE(SUM(delta), 0) AS balance FROM ledger WHERE user_id = ? AND kind = 'hand-settlement'`,
+    )
+    .get(userId) as { balance: number };
+  const { rooms } = db
+    .prepare(`SELECT COUNT(DISTINCT room_id) AS rooms FROM ledger WHERE user_id = ?`)
+    .get(userId) as { rooms: number };
+  return { balance, rooms };
 }
 
 /** The Platform account's console for room lifecycle requests: archive,
@@ -84,5 +101,135 @@ export function registerAdminRoutes(app: FastifyInstance, db: DB): void {
 
     roomEvents.emit('changed', lifecycleRequest.roomId);
     return { ok: true, status: approve ? 'approved' : 'rejected' };
+  });
+
+  /** Any authed user can ask that another username be folded into their own
+   *  (or vice versa) - filing the request never merges anything by itself,
+   *  it only queues the ask for a human at the platform account to review. */
+  app.post('/api/me/merge-request', { preHandler: requireUser(db) }, async (req, reply) => {
+    const parsed = z
+      .object({
+        fromUsername: z.string().min(1),
+        intoUsername: z.string().min(1),
+        note: z.string().max(500).optional(),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+
+    const { fromUsername, intoUsername, note } = parsed.data;
+    if (fromUsername === intoUsername) {
+      return reply.code(400).send({ error: 'cannot merge an account into itself' });
+    }
+
+    const from = db.prepare('SELECT id FROM users WHERE username = ?').get(fromUsername) as
+      | { id: number }
+      | undefined;
+    if (!from) return reply.code(404).send({ error: `no such user: ${fromUsername}` });
+    const into = db.prepare('SELECT id FROM users WHERE username = ?').get(intoUsername) as
+      | { id: number }
+      | undefined;
+    if (!into) return reply.code(404).send({ error: `no such user: ${intoUsername}` });
+    if (from.id === into.id) {
+      return reply.code(400).send({ error: 'cannot merge an account into itself' });
+    }
+
+    const info = db
+      .prepare(
+        `INSERT INTO account_merge_requests (from_user, into_user, requested_by, note, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(from.id, into.id, req.userId, note ?? null, Date.now());
+    return { requestId: Number(info.lastInsertRowid) };
+  });
+
+  interface PendingMergeRow {
+    id: number;
+    fromUser: number;
+    fromUsername: string;
+    intoUser: number;
+    intoUsername: string;
+    note: string | null;
+    createdAt: number;
+  }
+
+  /** The manual-check surface: every pending merge request alongside a net
+   *  hand-settlement balance and room count for BOTH sides, so the platform
+   *  operator can eyeball "does folding these two together look right"
+   *  before approving (task-3 brief §7) - mergeAccounts itself trusts nothing
+   *  here, this is purely for the human decision. */
+  app.get('/api/admin/merges', platformOnly, async () => {
+    const rows = db
+      .prepare(
+        `SELECT mr.id AS id, mr.from_user AS fromUser, fu.username AS fromUsername,
+                mr.into_user AS intoUser, iu.username AS intoUsername,
+                mr.note AS note, mr.created_at AS createdAt
+         FROM account_merge_requests mr
+         JOIN users fu ON fu.id = mr.from_user
+         JOIN users iu ON iu.id = mr.into_user
+         WHERE mr.status = 'pending'
+         ORDER BY mr.created_at ASC`,
+      )
+      .all() as PendingMergeRow[];
+
+    const requests = rows.map((r) => {
+      const fromSummary = balanceSummary(db, r.fromUser);
+      const intoSummary = balanceSummary(db, r.intoUser);
+      return {
+        id: r.id,
+        fromUser: r.fromUser,
+        fromUsername: r.fromUsername,
+        intoUser: r.intoUser,
+        intoUsername: r.intoUsername,
+        note: r.note,
+        createdAt: r.createdAt,
+        fromBalance: fromSummary.balance,
+        fromRooms: fromSummary.rooms,
+        intoBalance: intoSummary.balance,
+        intoRooms: intoSummary.rooms,
+      };
+    });
+    return { requests };
+  });
+
+  /** Approve -> actually run mergeAccounts (its own transaction; a failure
+   *  there - e.g. someone sat down mid-review - leaves the request pending
+   *  and disables nobody, reported as 409 rather than silently swallowed.
+   *  Reject -> just records the decision, never touches either account. */
+  app.post('/api/admin/merges/:id', platformOnly, async (req, reply) => {
+    const parsed = z.object({ approve: z.boolean() }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+
+    const { id } = req.params as { id: string };
+    const requestId = Number(id);
+    if (!Number.isInteger(requestId)) return reply.code(400).send({ error: 'invalid input' });
+
+    const mergeRequest = db
+      .prepare(
+        `SELECT id, from_user AS fromUser, into_user AS intoUser, status FROM account_merge_requests WHERE id = ?`,
+      )
+      .get(requestId) as { id: number; fromUser: number; intoUser: number; status: string } | undefined;
+    if (!mergeRequest) return reply.code(404).send({ error: 'no such request' });
+    if (mergeRequest.status !== 'pending')
+      return reply.code(400).send({ error: 'already decided' });
+
+    const approve = parsed.data.approve;
+    if (!approve) {
+      db.prepare(
+        `UPDATE account_merge_requests SET status = 'rejected', decided_at = ?, decided_by = ? WHERE id = ?`,
+      ).run(Date.now(), req.userId, requestId);
+      return { ok: true, status: 'rejected' };
+    }
+
+    try {
+      mergeAccounts(db, mergeRequest.fromUser, mergeRequest.intoUser);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'merge failed';
+      return reply.code(409).send({ error: message });
+    }
+
+    db.prepare(
+      `UPDATE account_merge_requests SET status = 'approved', decided_at = ?, decided_by = ? WHERE id = ?`,
+    ).run(Date.now(), req.userId, requestId);
+    return { ok: true, status: 'approved' };
   });
 }
