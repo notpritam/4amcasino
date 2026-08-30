@@ -99,6 +99,13 @@ export function requireUser(db: DB) {
       await reply.code(401).send({ error: 'unauthorized' });
       return reply;
     }
+    const row = db.prepare('SELECT disabled FROM users WHERE id = ?').get(userId) as
+      | { disabled: number }
+      | undefined;
+    if (row?.disabled) {
+      await reply.code(401).send({ error: 'account merged' });
+      return reply;
+    }
     req.userId = userId;
     touchPresence(db, userId);
   };

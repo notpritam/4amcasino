@@ -267,6 +267,24 @@ function migrate(db: DB): void {
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_settlements_pair ON settlements(room_id, low_user, high_user);
   `);
+
+  // Account merges: a disabled account's identity has been folded into
+  // another (merged_into) and can no longer authenticate - see merge.ts.
+  ensureColumn(db, 'users', 'disabled', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'users', 'merged_into', 'INTEGER');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS account_merge_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_user INTEGER NOT NULL,
+      into_user INTEGER NOT NULL,
+      requested_by INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      note TEXT,
+      created_at INTEGER NOT NULL,
+      decided_at INTEGER,
+      decided_by INTEGER
+    );
+  `);
 }
 
 function ensureColumn(db: DB, table: string, column: string, decl: string): void {
