@@ -95,6 +95,10 @@ export function App() {
     void api
       .me()
       .then((me) => {
+        // A logout can race this in-flight request; without this guard, its
+        // response would land after the token is cleared and re-populate a
+        // logged-out auth object with stale isPlatform/leaderboardRank.
+        if (!useStore.getState().auth.token) return;
         setAuth({ ...useStore.getState().auth, isPlatform: me.isPlatform, leaderboardRank: me.leaderboardRank });
       })
       .catch(() => {});

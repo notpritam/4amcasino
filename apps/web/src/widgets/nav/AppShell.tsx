@@ -1,9 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { memo, useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
+  CaretDown,
+  CaretRight,
   ChartBar,
   Club,
+  DotsThreeVertical,
   Gavel,
   GearSix,
   GithubLogo,
@@ -20,7 +23,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { api } from '../../shared/api.ts';
-import { useStore } from '../../shared/store.ts';
+import { useStore, type AuthState, type Prefs } from '../../shared/store.ts';
 import { cn } from '../../shared/lib/cn.ts';
 import { Avatar } from '../../entities/user/Avatar.tsx';
 
@@ -35,7 +38,7 @@ interface RoomRow {
   playerCount: number;
 }
 
-/** Everything waiting on you - drives the sidebar badge and the nudge banner. */
+/** Everything waiting on you - drives the sidebar badge and the nudge card. */
 interface PendingTasks {
   settlementsAwaitingMe: number;
   openDebts: number;
@@ -45,8 +48,213 @@ interface PendingTasks {
   houseOutstanding: number;
 }
 
-/** The signed-in chrome, BB-style: a persistent icon-led left sidebar - nav
- *  on top, your rooms as a thread list, utilities at the bottom - collapsible
+/** A grouped block of nav rows with a small uppercase label (hidden in the
+ *  collapsed icon rail, where the grouping is expressed as spacing alone). */
+const NavSection = memo(function NavSection({
+  label,
+  collapsed,
+  children,
+}: {
+  label: string;
+  collapsed: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className={collapsed ? 'mt-3 first:mt-0' : 'mt-4 first:mt-0'}>
+      {!collapsed && (
+        <div className="px-2.5 pb-1 text-[0.68rem] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+          {label}
+        </div>
+      )}
+      <div className="space-y-0.5">{children}</div>
+    </div>
+  );
+});
+NavSection.displayName = 'NavSection';
+
+/** One row in the rail: icon + label + an optional red count badge. `nested`
+ *  renders it as a sub-item of an expandable group (indented, no icon, and -
+ *  when active - a filled pill instead of the flat highlight main rows get). */
+const NavRow = memo(function NavRow({
+  to,
+  label,
+  icon,
+  active,
+  badge,
+  collapsed,
+  newTab,
+  nested,
+}: {
+  to: string;
+  label: string;
+  icon?: ReactNode;
+  active: boolean;
+  badge?: number;
+  collapsed: boolean;
+  newTab: boolean;
+  nested?: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      {...(newTab && !active ? { target: '_blank', rel: 'noreferrer' } : {})}
+      title={
+        newTab && !active
+          ? `${label} — opens in a new tab${badge ? ` (${badge} waiting)` : ''}`
+          : badge
+            ? `${label} (${badge} waiting)`
+            : label
+      }
+      className={cn(
+        'flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[0.86rem] font-medium transition-colors',
+        collapsed && 'justify-center px-0',
+        nested && !collapsed && 'pl-4',
+        active
+          ? nested
+            ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+            : 'bg-slate-200/80 text-slate-900 dark:bg-slate-800 dark:text-white'
+          : 'text-slate-600 hover:bg-slate-200/50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200',
+      )}
+    >
+      {icon && <span className="shrink-0">{icon}</span>}
+      {!collapsed && <span className="truncate">{label}</span>}
+      {!!badge && !collapsed && (
+        <span className="ml-auto rounded-full bg-rose-500 px-1.5 py-0.5 text-[0.65rem] font-bold text-white">
+          {badge}
+        </span>
+      )}
+    </Link>
+  );
+});
+NavRow.displayName = 'NavRow';
+
+/** Avatar + online dot + name + handle, with an overflow menu (theme, GitHub,
+ *  sign out) tucked behind a three-dot button. Pinned to the bottom of the
+ *  rail; collapses to just the avatar (itself the menu trigger) in the icon
+ *  rail, where there is no room for the name or a separate overflow button. */
+const SidebarFooter = memo(function SidebarFooter({
+  auth,
+  prefs,
+  collapsed,
+  nextTheme,
+  themeIcon,
+  onToggleTheme,
+  onLogout,
+}: {
+  auth: AuthState;
+  prefs: Prefs;
+  collapsed: boolean;
+  nextTheme: 'light' | 'dark' | 'cyber';
+  themeIcon: ReactNode;
+  onToggleTheme: () => void;
+  onLogout: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const profileHref = `/players/${auth.userId}`;
+  const name = prefs.displayName || auth.username || '?';
+
+  const menu = open && (
+    <>
+      <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+      <div
+        className={cn(
+          'absolute bottom-full z-40 mb-1.5 overflow-hidden rounded-xl bg-white py-1.5 shadow-xl ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700',
+          collapsed ? 'left-1 w-52' : 'inset-x-1',
+        )}
+      >
+        {collapsed && (
+          <Link
+            to={profileHref}
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2.5 px-3.5 py-2 text-[0.86rem] font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            <ChartBar size={17} /> Profile
+          </Link>
+        )}
+        <button
+          onClick={() => {
+            onToggleTheme();
+            setOpen(false);
+          }}
+          className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.86rem] font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+        >
+          <span className="shrink-0">{themeIcon}</span>
+          <span className="capitalize">{nextTheme} mode</span>
+        </button>
+        <a
+          href="https://github.com/notpritam/4amcasino"
+          target="_blank"
+          rel="noreferrer"
+          onClick={() => setOpen(false)}
+          className="flex items-center gap-2.5 px-3.5 py-2 text-[0.86rem] font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+        >
+          <GithubLogo size={17} /> GitHub
+        </a>
+        <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+        <button
+          onClick={onLogout}
+          className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.86rem] font-medium text-rose-600 hover:bg-slate-100 dark:text-rose-400 dark:hover:bg-slate-800"
+        >
+          <SignOut size={17} /> Log out
+        </button>
+      </div>
+    </>
+  );
+
+  if (collapsed) {
+    return (
+      <div className="relative shrink-0 border-t border-slate-200/70 py-2.5 dark:border-slate-800/80">
+        {menu}
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Account menu"
+          title={name}
+          className="mx-auto block rounded-full"
+        >
+          <span className="relative block">
+            <Avatar userId={auth.userId ?? 0} name={name} version={prefs.avatarVersion} size="sm" />
+            <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-slate-100 dark:ring-slate-950" />
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative shrink-0 border-t border-slate-200/70 py-2.5 dark:border-slate-800/80">
+      {menu}
+      <div className="flex items-center gap-1">
+        <Link
+          to={profileHref}
+          title={name}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-slate-200/50 dark:hover:bg-slate-800/60"
+        >
+          <span className="relative shrink-0">
+            <Avatar userId={auth.userId ?? 0} name={name} version={prefs.avatarVersion} size="sm" />
+            <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-slate-100 dark:ring-slate-950" />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-xs font-semibold">{name}</span>
+            <span className="block truncate text-[0.68rem] text-slate-400">@{auth.username}</span>
+          </span>
+        </Link>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Account menu"
+          title="Account menu"
+          className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-200/60 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+        >
+          <DotsThreeVertical size={16} weight="bold" />
+        </button>
+      </div>
+    </div>
+  );
+});
+SidebarFooter.displayName = 'SidebarFooter';
+
+/** The signed-in chrome, BB-style: a persistent icon-led left sidebar - a
+ *  grouped nav on top (Play / Money / Account / Admin), your rooms as an
+ *  expandable thread list, a contextual nudge, and a user footer - collapsible
  *  to an icon rail. Small screens keep the slide-over drawer. Used by every
  *  page except login, the live table (own shell), and the public landing.
  *  (requested by notpritam, docs/FEATURES.md) */
@@ -66,6 +274,7 @@ export function AppShell({
   const [menuOpen, setMenuOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_KEY) === 'rail');
+  const [roomsOpen, setRoomsOpen] = useState(true);
   const [rooms, setRooms] = useState<RoomRow[]>([]);
   const [pending, setPending] = useState<PendingTasks | null>(null);
   const loc = useLocation();
@@ -111,48 +320,6 @@ export function AppShell({
     nav('/login');
   };
 
-  const railItem = (
-    to: string,
-    label: string,
-    icon: ReactNode,
-    active: boolean,
-    badge?: number,
-  ) => (
-    <Link
-      to={to}
-      {...(newTab && !active ? { target: '_blank', rel: 'noreferrer' } : {})}
-      title={
-        newTab && !active
-          ? `${label} — opens in a new tab${badge ? ` (${badge} waiting)` : ''}`
-          : badge
-            ? `${label} (${badge} waiting)`
-            : label
-      }
-      className={cn(
-        'flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[0.86rem] font-medium transition-colors',
-        collapsed && 'justify-center px-0',
-        active
-          ? 'bg-slate-200/80 text-slate-900 dark:bg-slate-800 dark:text-white'
-          : 'text-slate-600 hover:bg-slate-200/50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200',
-      )}
-    >
-      <span className="relative shrink-0">
-        {icon}
-        {/* collapsed to an icon rail there is no room for a count, but the dot
-            still says "something is waiting in here" */}
-        {!!badge && collapsed && (
-          <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-indigo-500 ring-2 ring-slate-100 dark:ring-slate-900" />
-        )}
-      </span>
-      {!collapsed && <span className="truncate">{label}</span>}
-      {!!badge && !collapsed && (
-        <span className="ml-auto rounded-full bg-indigo-100 px-1.5 py-0.5 text-[0.65rem] font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-          {badge}
-        </span>
-      )}
-    </Link>
-  );
-
   const drawerLink = (to: string, label: string, icon: ReactNode) => (
     <Link
       to={to}
@@ -167,6 +334,9 @@ export function AppShell({
     </Link>
   );
 
+  const profileHref = `/players/${auth.userId}`;
+  const waitingSettle = pending ? pending.settlementsAwaitingMe + pending.iOweCount : 0;
+
   const sidebar = (
     <aside
       className={cn(
@@ -174,132 +344,185 @@ export function AppShell({
         collapsed ? 'w-14 px-2' : 'w-60 px-3',
       )}
     >
-      {/* brand + collapse */}
-      <div className={cn('flex h-14 items-center', collapsed ? 'justify-center' : 'justify-between')}>
-        {!collapsed && (
-          <Link to="/lobby" className="flex items-center gap-2 font-display text-lg font-bold">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-sm text-white">
-              ♠
+      {/* brand + subtitle + collapse */}
+      <div
+        className={cn('flex h-14 shrink-0 items-center', collapsed ? 'justify-center' : 'justify-between gap-2')}
+      >
+        <Link
+          to="/lobby"
+          className={cn('flex min-w-0 items-center gap-2.5', collapsed && 'justify-center')}
+          title="4AM Casino"
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-600 font-display text-sm text-white">
+            ♠
+          </span>
+          {!collapsed && (
+            <span className="min-w-0">
+              <span className="block truncate font-display text-[0.95rem] font-bold leading-tight">
+                4AM Casino
+              </span>
+              <span className="block truncate text-[0.65rem] leading-tight text-slate-400 dark:text-slate-500">
+                Private Texas Hold'em
+              </span>
             </span>
-            4AM
-          </Link>
+          )}
+        </Link>
+        {!collapsed && (
+          <button
+            onClick={toggleCollapsed}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+            className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-200/60 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          >
+            <Sidebar size={17} />
+          </button>
         )}
+      </div>
+      {collapsed && (
         <button
           onClick={toggleCollapsed}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200/60 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+          aria-label="Expand sidebar"
+          title="Expand sidebar"
+          className="mx-auto mb-1 shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-200/60 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
         >
           <Sidebar size={17} />
         </button>
-      </div>
+      )}
 
-      {/* primary nav */}
-      <nav className="space-y-0.5">
-        {railItem('/lobby', 'Lobby', <HouseSimple size={17} />, loc.pathname === '/lobby')}
-        {railItem(
-          '/settle',
-          'Settle up',
-          <HandCoins size={17} />,
-          loc.pathname === '/settle',
-          pending ? pending.settlementsAwaitingMe + pending.iOweCount : 0,
-        )}
-        {railItem('/leaderboard', 'Leaderboard', <Trophy size={17} />, loc.pathname === '/leaderboard')}
-        {railItem(
-          `/players/${auth.userId}`,
-          'My stats',
-          <ChartBar size={17} />,
-          loc.pathname === `/players/${auth.userId}`,
-        )}
-        {railItem('/fair', "How it's fair", <ShieldCheck size={17} />, loc.pathname === '/fair')}
-        {auth.isPlatform && railItem('/admin', 'Admin', <Gavel size={17} />, loc.pathname === '/admin')}
-      </nav>
+      {/* grouped nav + rooms, scrollable if the viewport is short */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <NavSection label="Play" collapsed={collapsed}>
+          <NavRow
+            to="/lobby"
+            label="Lobby"
+            icon={<HouseSimple size={17} />}
+            active={loc.pathname === '/lobby'}
+            collapsed={collapsed}
+            newTab={newTab}
+          />
+          <NavRow
+            to="/leaderboard"
+            label="Leaderboard"
+            icon={<Trophy size={17} />}
+            active={loc.pathname === '/leaderboard'}
+            collapsed={collapsed}
+            newTab={newTab}
+          />
+        </NavSection>
 
-      {/* your rooms, like a thread list */}
-      {rooms.length > 0 && (
-        <div className="mt-5 min-h-0 flex-1 overflow-y-auto">
-          {!collapsed && (
-            <div className="px-2.5 pb-1.5 text-[0.68rem] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              Rooms
-            </div>
-          )}
-          <div className="space-y-0.5">
-            {rooms.map((r) =>
-              railItem(
-                `/room/${r.id}`,
-                r.name,
-                <Club size={16} className="text-slate-400" />,
-                loc.pathname.startsWith(`/room/${r.id}`),
-              ),
+        <NavSection label="Money" collapsed={collapsed}>
+          <NavRow
+            to="/settle"
+            label="Settle up"
+            icon={<HandCoins size={17} />}
+            active={loc.pathname === '/settle'}
+            badge={waitingSettle}
+            collapsed={collapsed}
+            newTab={newTab}
+          />
+        </NavSection>
+
+        <NavSection label="Account" collapsed={collapsed}>
+          <NavRow
+            to={profileHref}
+            label="Profile"
+            icon={<ChartBar size={17} />}
+            active={loc.pathname === profileHref}
+            collapsed={collapsed}
+            newTab={newTab}
+          />
+          <NavRow
+            to="/settings"
+            label="Settings"
+            icon={<GearSix size={17} />}
+            active={loc.pathname === '/settings'}
+            collapsed={collapsed}
+            newTab={newTab}
+          />
+          <NavRow
+            to="/fair"
+            label="How it's fair"
+            icon={<ShieldCheck size={17} />}
+            active={loc.pathname === '/fair'}
+            collapsed={collapsed}
+            newTab={newTab}
+          />
+        </NavSection>
+
+        {auth.isPlatform && (
+          <NavSection label="Admin" collapsed={collapsed}>
+            <NavRow
+              to="/admin"
+              label="Admin console"
+              icon={<Gavel size={17} />}
+              active={loc.pathname === '/admin'}
+              collapsed={collapsed}
+              newTab={newTab}
+            />
+          </NavSection>
+        )}
+
+        {rooms.length > 0 && (
+          <div className={collapsed ? 'mt-3' : 'mt-4'}>
+            {collapsed ? (
+              <div className="space-y-0.5">
+                {rooms.map((r) => (
+                  <NavRow
+                    key={r.id}
+                    to={`/room/${r.id}`}
+                    label={r.name}
+                    icon={<Club size={17} />}
+                    active={loc.pathname.startsWith(`/room/${r.id}`)}
+                    collapsed
+                    newTab={newTab}
+                  />
+                ))}
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => setRoomsOpen((v) => !v)}
+                  aria-expanded={roomsOpen}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[0.86rem] font-medium text-slate-600 hover:bg-slate-200/50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
+                >
+                  <Club size={17} className="shrink-0" />
+                  <span className="flex-1 truncate text-left">Your tables</span>
+                  {roomsOpen ? (
+                    <CaretDown size={12} weight="bold" />
+                  ) : (
+                    <CaretRight size={12} weight="bold" />
+                  )}
+                </button>
+                {roomsOpen && (
+                  <div className="mt-0.5 space-y-0.5">
+                    {rooms.map((r) => (
+                      <NavRow
+                        key={r.id}
+                        to={`/room/${r.id}`}
+                        label={r.name}
+                        active={loc.pathname.startsWith(`/room/${r.id}`)}
+                        collapsed={false}
+                        newTab={newTab}
+                        nested
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
-        </div>
-      )}
-      {rooms.length === 0 && <div className="flex-1" />}
-
-      {/* utilities */}
-      <div
-        className={cn(
-          'space-y-0.5 border-t border-slate-200/70 py-2.5 dark:border-slate-800/80',
         )}
-      >
-        {railItem('/settings', 'Settings', <GearSix size={17} />, loc.pathname === '/settings')}
-        <button
-          onClick={toggleTheme}
-          title={`Switch to ${nextTheme} theme`}
-          className={cn(
-            'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[0.86rem] font-medium text-slate-600 hover:bg-slate-200/50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200',
-            collapsed && 'justify-center px-0',
-          )}
-        >
-          <span className="shrink-0">{themeIcon}</span>
-          {!collapsed && <span className="capitalize">{nextTheme} mode</span>}
-        </button>
-        <a
-          href="https://github.com/notpritam/4amcasino"
-          title="GitHub"
-          className={cn(
-            'flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[0.86rem] font-medium text-slate-600 hover:bg-slate-200/50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200',
-            collapsed && 'justify-center px-0',
-          )}
-        >
-          <GithubLogo size={17} className="shrink-0" />
-          {!collapsed && 'GitHub'}
-        </a>
-        <div className={cn('flex items-center gap-2 pt-1.5', collapsed && 'flex-col')}>
-          <Link
-            to={`/players/${auth.userId}`}
-            title={prefs.displayName || auth.username || 'profile'}
-            className={cn(
-              'flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-slate-200/50 dark:hover:bg-slate-800/60',
-              collapsed && 'flex-none px-0',
-            )}
-          >
-            <Avatar
-              userId={auth.userId ?? 0}
-              name={prefs.displayName || auth.username || '?'}
-              version={prefs.avatarVersion}
-              size="sm"
-            />
-            {!collapsed && (
-              <span className="min-w-0">
-                <span className="block truncate text-xs font-semibold">
-                  {prefs.displayName || auth.username}
-                </span>
-                <span className="block truncate text-[0.68rem] text-slate-400">@{auth.username}</span>
-              </span>
-            )}
-          </Link>
-          <button
-            onClick={doLogout}
-            aria-label="Log out"
-            title="Log out"
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200/60 hover:text-rose-600 dark:hover:bg-slate-800"
-          >
-            <SignOut size={16} />
-          </button>
-        </div>
       </div>
+
+      <SidebarFooter
+        auth={auth}
+        prefs={prefs}
+        collapsed={collapsed}
+        nextTheme={nextTheme}
+        themeIcon={themeIcon}
+        onToggleTheme={toggleTheme}
+        onLogout={doLogout}
+      />
     </aside>
   );
 
@@ -449,79 +672,6 @@ export function AppShell({
       <main className={cn('md:transition-[padding]', collapsed ? 'md:pl-14' : 'md:pl-60')}>
         {children}
       </main>
-
-      <PendingNudge pending={pending} />
-    </div>
-  );
-}
-
-const NUDGE_KEY = '4am-nudge-seen';
-
-/** A single, dismissible prompt for the things that actually need a decision.
- *
- *  Deliberately narrow: it fires when someone is waiting on YOU to confirm a
- *  settlement, or when there is a real invite to answer. Owing money is not a
- *  reason to interrupt someone every time they open the app - that lives in the
- *  sidebar badge instead. Once dismissed it stays quiet for the session. */
-function PendingNudge({ pending }: { pending: PendingTasks | null }) {
-  const [dismissed, setDismissed] = useState(() => !!sessionStorage.getItem(NUDGE_KEY));
-  if (!pending || dismissed) return null;
-  const waiting = pending.settlementsAwaitingMe;
-  const invites = pending.invites;
-  const friendRequests = pending.friendRequests;
-  if (waiting + invites + friendRequests === 0) return null;
-
-  const close = () => {
-    setDismissed(true);
-    try {
-      sessionStorage.setItem(NUDGE_KEY, '1');
-    } catch {
-      /* storage disabled: it just reappears next navigation */
-    }
-  };
-
-  return (
-    <div className="fixed bottom-4 right-4 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-      <div className="flex items-start gap-3">
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-indigo-100 dark:bg-indigo-950">
-          <HandCoins size={17} className="text-indigo-600 dark:text-indigo-300" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold">Waiting on you</h3>
-          <ul className="mt-1 space-y-0.5 text-xs text-slate-500">
-            {waiting > 0 && (
-              <li>
-                {waiting} settlement{waiting === 1 ? '' : 's'} the other side already confirmed
-              </li>
-            )}
-            {invites > 0 && (
-              <li>
-                {invites} table invite{invites === 1 ? '' : 's'}
-              </li>
-            )}
-            {friendRequests > 0 && (
-              <li>
-                {friendRequests} friend request{friendRequests === 1 ? '' : 's'}
-              </li>
-            )}
-          </ul>
-          <div className="mt-3 flex gap-2">
-            <Link
-              to={waiting > 0 ? '/settle' : '/lobby'}
-              onClick={close}
-              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
-            >
-              {waiting > 0 ? 'Review settlements' : 'Take a look'}
-            </Link>
-            <button
-              onClick={close}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              Later
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
