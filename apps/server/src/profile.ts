@@ -207,7 +207,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       .prepare(
         `SELECT COALESCE(SUM(l.delta),0) as net, COUNT(*) as handsPlayed, COALESCE(MAX(l.delta),0) as biggestWin
          FROM ledger l JOIN rooms r ON r.id = l.room_id
-         WHERE l.user_id = ? AND l.kind = 'hand-settlement' AND r.voided = 0 AND r.archived = 0
+         WHERE l.user_id = ? AND l.kind = 'hand-settlement' AND r.voided = 0 AND r.archived = 0 AND r.deleted = 0
            AND NOT EXISTS (SELECT 1 FROM ledger v WHERE v.room_id = l.room_id AND v.kind = 'void-hand' AND v.ref = l.ref)`,
       )
       .get(id) as { net: number; handsPlayed: number; biggestWin: number };
@@ -292,7 +292,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
     const rows = db
       .prepare(
         `SELECT l.ts, l.delta FROM ledger l JOIN rooms r ON r.id = l.room_id
-         WHERE l.user_id = ? AND l.kind = 'hand-settlement' AND r.voided = 0 AND r.archived = 0
+         WHERE l.user_id = ? AND l.kind = 'hand-settlement' AND r.voided = 0 AND r.archived = 0 AND r.deleted = 0
            AND NOT EXISTS (SELECT 1 FROM ledger v WHERE v.room_id = l.room_id AND v.kind = 'void-hand' AND v.ref = l.ref)
          ORDER BY l.ts LIMIT 2000`,
       )
@@ -309,7 +309,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
     const rows = db
       .prepare(
         `SELECT t.entries FROM transcripts t JOIN rooms r ON r.id = t.room_id
-         WHERE r.voided = 0 AND r.archived = 0
+         WHERE r.voided = 0 AND r.archived = 0 AND r.deleted = 0
            AND t.room_id IN (SELECT room_id FROM room_players WHERE user_id = ?)
          ORDER BY t.ts DESC LIMIT 500`,
       )
@@ -567,7 +567,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       .prepare(
         `SELECT l.delta, l.ref, l.room_id as roomId, r.name as roomName
          FROM ledger l JOIN rooms r ON r.id = l.room_id
-         WHERE l.user_id = ? AND l.kind = 'hand-settlement' AND l.delta > 0 AND r.voided = 0 AND r.archived = 0
+         WHERE l.user_id = ? AND l.kind = 'hand-settlement' AND l.delta > 0 AND r.voided = 0 AND r.archived = 0 AND r.deleted = 0
            AND NOT EXISTS (SELECT 1 FROM ledger v WHERE v.room_id = l.room_id AND v.kind = 'void-hand' AND v.ref = l.ref)
          ORDER BY l.delta DESC LIMIT 1`,
       )

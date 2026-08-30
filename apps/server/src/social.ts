@@ -750,7 +750,7 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
         `SELECT r.id, r.name, me.stack as myStack FROM rooms r
          JOIN room_players me ON me.room_id = r.id AND me.user_id = ?
          JOIN room_players them ON them.room_id = r.id AND them.user_id = ?
-         WHERE r.voided = 0 ORDER BY r.created_at DESC`,
+         WHERE r.voided = 0 AND r.deleted = 0 ORDER BY r.created_at DESC`,
       )
       .all(req.userId, otherId) as { id: string; name: string; myStack: number }[];
     return { rooms: rooms.map((r) => ({ ...r, handActive: activeHands.has(r.id) })) };

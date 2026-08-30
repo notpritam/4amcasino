@@ -213,8 +213,8 @@ describe('archive and delete become platform-approved requests (Task 3)', () => 
 
     const rows = pendingRows(ctx, room.id, 'archive');
     expect(rows).toHaveLength(1);
-    expect(rows[0].requested_by).toBe(host.userId);
-    expect(rows[0].status).toBe('pending');
+    expect(rows[0]!.requested_by).toBe(host.userId);
+    expect(rows[0]!.status).toBe('pending');
 
     // Calling again with the same action returns the existing request instead
     // of creating a second pending row.
@@ -254,8 +254,8 @@ describe('archive and delete become platform-approved requests (Task 3)', () => 
 
     const rows = pendingRows(ctx, room.id, 'delete');
     expect(rows).toHaveLength(1);
-    expect(rows[0].requested_by).toBe(host.userId);
-    expect(rows[0].status).toBe('pending');
+    expect(rows[0]!.requested_by).toBe(host.userId);
+    expect(rows[0]!.status).toBe('pending');
 
     await ctx.app.close();
   });
@@ -278,6 +278,38 @@ describe('archive and delete become platform-approved requests (Task 3)', () => 
       method: 'POST',
       url: `/api/rooms/${room.id}/delete`,
       headers: auth(stranger.token),
+      payload: {},
+    });
+    expect(deleteRes.statusCode).toBe(403);
+
+    await ctx.app.close();
+  });
+
+  it('rejects archive and delete requests from a room member who is neither host nor banker', async () => {
+    const ctx = createApp(':memory:');
+    const host = await register(ctx.app, 't3_host4');
+    const member = await register(ctx.app, 't3_member');
+    const room = await createRoom(ctx, host.token);
+
+    await ctx.app.inject({
+      method: 'POST',
+      url: '/api/rooms/join',
+      headers: auth(member.token),
+      payload: { joinCode: room.joinCode },
+    });
+
+    const archiveRes = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/archive`,
+      headers: auth(member.token),
+      payload: { archived: true },
+    });
+    expect(archiveRes.statusCode).toBe(403);
+
+    const deleteRes = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/delete`,
+      headers: auth(member.token),
       payload: {},
     });
     expect(deleteRes.statusCode).toBe(403);
