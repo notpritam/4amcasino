@@ -38,6 +38,15 @@ const LEADERBOARD_SQL = `
   GROUP BY u.id ORDER BY net DESC, handsPlayed DESC
 `;
 
+/** 1-based leaderboard placement for `userId` on the global leaderboard, or
+ *  null if they don't appear there (private mode, the platform account, or
+ *  no settled hands). */
+export function leaderboardRankOf(db: DB, userId: number): number | null {
+  const rows = db.prepare(LEADERBOARD_SQL.replace('%ROOM%', '')).all() as { userId: number }[];
+  const i = rows.findIndex((r) => r.userId === userId);
+  return i < 0 ? null : i + 1;
+}
+
 export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
   const authed = { preHandler: requireUser(db) };
 
@@ -269,6 +278,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       joinNumber: row.joinNumber,
       memberCount: total,
       stats,
+      leaderboardRank: leaderboardRankOf(db, id),
       rivals,
       transactions,
     };

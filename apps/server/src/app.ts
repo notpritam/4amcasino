@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { openDb, type DB } from './db.js';
 import { checkLogin, createSession, createUser, requireUser } from './auth.js';
 import { registerRoomRoutes } from './rooms.js';
-import { registerProfileRoutes } from './profile.js';
+import { leaderboardRankOf, registerProfileRoutes } from './profile.js';
 import { registerSocialRoutes } from './social.js';
 import { registerAccountRoutes } from './account.js';
 import { registerAdminRoutes } from './admin.js';
@@ -152,6 +152,7 @@ export function createApp(
       publicKey: row.pubkey,
       joinNumber: row.joinNumber,
       isPlatform: isPlatform(db, row.id),
+      leaderboardRank: leaderboardRankOf(db, row.id),
     };
   });
 
