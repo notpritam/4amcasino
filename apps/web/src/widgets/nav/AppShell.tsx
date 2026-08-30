@@ -31,6 +31,7 @@ const drawerItemCls =
   'flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[0.95rem] font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800';
 
 const SIDEBAR_KEY = '4am-sidebar';
+const NUDGE_KEY = '4am-nudge-seen';
 
 interface RoomRow {
   id: string;
@@ -127,6 +128,91 @@ const NavRow = memo(function NavRow({
   );
 });
 NavRow.displayName = 'NavRow';
+
+/** The dismissible "waiting on you" prompt, adapted for two spots: embedded
+ *  above the sidebar footer on desktop, and floating on small screens where
+ *  the sidebar itself is hidden. Deliberately narrow: it fires when someone is
+ *  waiting on YOU to confirm a settlement, or when there is a real invite or
+ *  friend request to answer. Owing money is not a reason to interrupt someone
+ *  every time they open the app - that lives in the Settle up badge instead. */
+const NudgeCard = memo(function NudgeCard({
+  waiting,
+  invites,
+  friendRequests,
+  onDismiss,
+  variant,
+}: {
+  waiting: number;
+  invites: number;
+  friendRequests: number;
+  onDismiss: () => void;
+  variant: 'sidebar' | 'floating';
+}) {
+  const sidebar = variant === 'sidebar';
+  return (
+    <div
+      className={cn(
+        'rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900',
+        sidebar
+          ? 'p-2.5'
+          : 'fixed bottom-4 right-4 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-2xl p-4 shadow-xl',
+      )}
+    >
+      <div className={cn('flex items-start', sidebar ? 'gap-2' : 'gap-3')}>
+        <span
+          className={cn(
+            'grid shrink-0 place-items-center rounded-lg bg-indigo-100 dark:bg-indigo-950',
+            sidebar ? 'h-6 w-6' : 'h-8 w-8',
+          )}
+        >
+          <HandCoins size={sidebar ? 13 : 17} className="text-indigo-600 dark:text-indigo-300" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className={cn('font-semibold', sidebar ? 'text-xs' : 'text-sm')}>Waiting on you</h3>
+          <ul className={cn('mt-0.5 space-y-0.5 text-slate-500', sidebar ? 'text-[0.65rem]' : 'text-xs')}>
+            {waiting > 0 && (
+              <li>
+                {waiting} settlement{waiting === 1 ? '' : 's'} the other side already confirmed
+              </li>
+            )}
+            {invites > 0 && (
+              <li>
+                {invites} table invite{invites === 1 ? '' : 's'}
+              </li>
+            )}
+            {friendRequests > 0 && (
+              <li>
+                {friendRequests} friend request{friendRequests === 1 ? '' : 's'}
+              </li>
+            )}
+          </ul>
+          <div className={cn('flex gap-1.5', sidebar ? 'mt-2' : 'mt-3 gap-2')}>
+            <Link
+              to={waiting > 0 ? '/settle' : '/lobby'}
+              onClick={onDismiss}
+              className={cn(
+                'rounded-lg bg-indigo-600 font-medium text-white hover:bg-indigo-700',
+                sidebar ? 'px-2 py-1 text-[0.65rem]' : 'px-3 py-1.5 text-xs',
+              )}
+            >
+              {waiting > 0 ? 'Review settlements' : 'Take a look'}
+            </Link>
+            <button
+              onClick={onDismiss}
+              className={cn(
+                'rounded-lg font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800',
+                sidebar ? 'px-2 py-1 text-[0.65rem]' : 'px-3 py-1.5 text-xs',
+              )}
+            >
+              Later
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+NudgeCard.displayName = 'NudgeCard';
 
 /** Avatar + online dot + name + handle, with an overflow menu (theme, GitHub,
  *  sign out) tucked behind a three-dot button. Pinned to the bottom of the
@@ -277,6 +363,7 @@ export function AppShell({
   const [roomsOpen, setRoomsOpen] = useState(true);
   const [rooms, setRooms] = useState<RoomRow[]>([]);
   const [pending, setPending] = useState<PendingTasks | null>(null);
+  const [nudgeDismissed, setNudgeDismissed] = useState(() => !!sessionStorage.getItem(NUDGE_KEY));
   const loc = useLocation();
   const nav = useNavigate();
   const reduce = useReducedMotion();
@@ -320,6 +407,15 @@ export function AppShell({
     nav('/login');
   };
 
+  const dismissNudge = () => {
+    setNudgeDismissed(true);
+    try {
+      sessionStorage.setItem(NUDGE_KEY, '1');
+    } catch {
+      /* storage disabled: it just reappears next navigation */
+    }
+  };
+
   const drawerLink = (to: string, label: string, icon: ReactNode) => (
     <Link
       to={to}
@@ -336,6 +432,10 @@ export function AppShell({
 
   const profileHref = `/players/${auth.userId}`;
   const waitingSettle = pending ? pending.settlementsAwaitingMe + pending.iOweCount : 0;
+  const waiting = pending?.settlementsAwaitingMe ?? 0;
+  const invites = pending?.invites ?? 0;
+  const friendRequests = pending?.friendRequests ?? 0;
+  const nudgeVisible = !nudgeDismissed && waiting + invites + friendRequests > 0;
 
   const sidebar = (
     <aside
@@ -514,6 +614,18 @@ export function AppShell({
         )}
       </div>
 
+      {!collapsed && nudgeVisible && (
+        <div className="shrink-0 pb-2.5">
+          <NudgeCard
+            waiting={waiting}
+            invites={invites}
+            friendRequests={friendRequests}
+            onDismiss={dismissNudge}
+            variant="sidebar"
+          />
+        </div>
+      )}
+
       <SidebarFooter
         auth={auth}
         prefs={prefs}
@@ -672,6 +784,18 @@ export function AppShell({
       <main className={cn('md:transition-[padding]', collapsed ? 'md:pl-14' : 'md:pl-60')}>
         {children}
       </main>
+
+      {nudgeVisible && (
+        <div className="md:hidden">
+          <NudgeCard
+            waiting={waiting}
+            invites={invites}
+            friendRequests={friendRequests}
+            onDismiss={dismissNudge}
+            variant="floating"
+          />
+        </div>
+      )}
     </div>
   );
 }
