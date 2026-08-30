@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { Crown } from '@phosphor-icons/react';
 import { api } from '../../shared/api.ts';
 import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
-import { Badge, Button, Panel, Spinner } from '../../shared/ui/index.tsx';
+import { Badge, Button, Dialog, Panel, Spinner } from '../../shared/ui/index.tsx';
 import { Avatar } from '../../entities/user/Avatar.tsx';
 
 interface SessionPlayer {
@@ -60,7 +60,6 @@ interface Entry {
 }
 
 export function LedgerPage() {
-  const nav = useNavigate();
   const { id: roomId } = useParams<{ id: string }>();
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [verified, setVerified] = useState<{ ok: boolean } | null>(null);
@@ -70,6 +69,12 @@ export function LedgerPage() {
   const [minSettleHands, setMinSettleHands] = useState(0);
   const [voided, setVoided] = useState(false);
   const [revertErr, setRevertErr] = useState<string | null>(null);
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const [archiveRequested, setArchiveRequested] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteRequested, setDeleteRequested] = useState(false);
+  const [requestErr, setRequestErr] = useState<string | null>(null);
   const myUserId = useStore((s) => s.auth.userId);
 
   const load = () => {
@@ -118,6 +123,33 @@ export function LedgerPage() {
     if (e.kind === 'hand-settlement' && e.ref && !firstOfHand.has(e.ref)) firstOfHand.set(e.ref, e.id);
   }
   const amBanker = myUserId !== null && (myUserId === bankerId || myUserId === coBankerId);
+
+  async function requestArchive() {
+    setRequestErr(null);
+    setArchiveBusy(true);
+    try {
+      await api.archiveRoom(roomId!, true);
+      setArchiveRequested(true);
+    } catch (err) {
+      setRequestErr(err instanceof Error ? err.message : 'could not request that');
+    } finally {
+      setArchiveBusy(false);
+    }
+  }
+
+  async function requestDelete() {
+    setRequestErr(null);
+    setDeleteBusy(true);
+    try {
+      await api.deleteRoom(roomId!);
+      setDeleteRequested(true);
+      setDeleteConfirmOpen(false);
+    } catch (err) {
+      setRequestErr(err instanceof Error ? err.message : 'could not request that');
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
 
   async function voidHand(handId: string) {
     setRevertErr(null);
@@ -283,27 +315,36 @@ export function LedgerPage() {
         </div>
       )}
       {amBanker && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" onClick={() => void api.voidRoom(roomId!, !voided).then(load)}>
             {voided ? 'Restore this table (results count again)' : 'Void this table (results stop counting)'}
           </Button>
-          {/* archiving is the tidy-away, not the undo: history survives and so
-              does anything still owed (requested by notpritam) */}
-          <Button
-            variant="secondary"
-            title="Retires the table: it leaves your room list and stops counting towards stats. Nothing is deleted and debts stay owed."
-            onClick={() =>
-              void api
-                .archiveRoom(roomId!, true)
-                .then(() => nav('/lobby'))
-                .catch(() => {})
-            }
-          >
-            Archive this table
-          </Button>
+          {/* archiving and deleting both queue for platform approval now: history
+              survives and so does anything still owed until that happens
+              (requested by notpritam) */}
+          {archiveRequested ? (
+            <Badge tone="indigo">Archive requested, waiting on the platform</Badge>
+          ) : (
+            <Button
+              variant="secondary"
+              title="Retires the table: it leaves your room list and stops counting towards stats. Nothing is deleted and debts stay owed. A platform admin approves this before it takes effect."
+              disabled={archiveBusy}
+              onClick={() => void requestArchive()}
+            >
+              {archiveBusy ? <Spinner label="Requesting…" /> : 'Request archive'}
+            </Button>
+          )}
+          {deleteRequested ? (
+            <Badge tone="rose">Delete requested, waiting on the platform</Badge>
+          ) : (
+            <Button variant="danger" disabled={deleteBusy} onClick={() => setDeleteConfirmOpen(true)}>
+              Request delete
+            </Button>
+          )}
         </div>
       )}
       {revertErr && <p className="text-sm text-rose-600">Could not revert: {revertErr}</p>}
+      {requestErr && <p className="text-sm text-rose-600">{requestErr}</p>}
       </div>
       <Panel className="min-w-0 overflow-x-auto p-0">
         <table className="w-full text-sm">
@@ -378,6 +419,21 @@ export function LedgerPage() {
         </table>
       </Panel>
       </div>
+
+      <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} title="Request delete?">
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          This asks the platform to permanently remove this table, its ledger, and its hand
+          history. A platform admin reviews it before anything happens.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setDeleteConfirmOpen(false)} disabled={deleteBusy}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={() => void requestDelete()} disabled={deleteBusy}>
+            {deleteBusy ? <Spinner label="Requesting…" /> : 'Request delete'}
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }

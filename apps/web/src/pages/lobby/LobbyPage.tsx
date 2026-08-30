@@ -37,6 +37,10 @@ export function LobbyPage() {
   >([]);
   const [strictAudit, setStrictAudit] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Restoring an archived room now queues for platform approval instead of
+   *  taking effect right away, so re-fetching myRooms() would still show it
+   *  archived. Track locally which rooms have a restore request in flight. */
+  const [restorePending, setRestorePending] = useState<Set<string>>(new Set());
   const prefs = useStore((s) => s.prefs);
   const username = useStore((s) => s.auth.username);
   const nav = useNavigate();
@@ -73,6 +77,15 @@ export function LobbyPage() {
       nav(`/room/${room.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'could not join');
+    }
+  }
+
+  async function requestRestore(id: string) {
+    try {
+      await api.archiveRoom(id, false);
+      setRestorePending((prev) => new Set(prev).add(id));
+    } catch {
+      // matches the room list's existing silent-catch pattern
     }
   }
 
@@ -185,19 +198,19 @@ export function LobbyPage() {
                       <Link to={`/room/${r.id}/ledger`} className="min-w-0 flex-1 truncate hover:underline">
                         {r.name}
                       </Link>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void api
-                            .archiveRoom(r.id, false)
-                            .then(() => api.myRooms())
-                            .then((x) => setRooms(x.rooms))
-                            .catch(() => {})
-                        }
-                        className="rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950"
-                      >
-                        Restore
-                      </button>
+                      {restorePending.has(r.id) ? (
+                        <span className="px-2 py-1 text-xs font-medium text-slate-400">
+                          Restore requested
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void requestRestore(r.id)}
+                          className="rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950"
+                        >
+                          Request restore
+                        </button>
+                      )}
                     </div>
                   ))}
               </div>
