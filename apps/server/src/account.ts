@@ -52,8 +52,12 @@ function seatedSomewhere(db: DB, userId: number): boolean {
 }
 
 /** Applies a new credential + identity atomically and cuts every other session
- *  loose: whoever stole the old password does not keep a live token. */
-function rekey(
+ *  loose: whoever stole the old password does not keep a live token.
+ *
+ *  Exported so admin.ts can reuse it for a platform-initiated password reset
+ *  (Task 4) - same atomic swap + session purge, just triggered by an admin
+ *  instead of the user proving their own old password. */
+export function rekey(
   db: DB,
   userId: number,
   newAuthKey: string,

@@ -485,3 +485,174 @@ describe('Task 3: merge request + admin approval', () => {
     await ctx.app.close();
   });
 });
+
+describe('Task 4: admin disable + password reset', () => {
+  it('non-platform gets 403 on both admin user routes', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+    const bob = await register(ctx.app, 'bob');
+    setPlatformUserId(ctx.db, bob.userId); // bob is platform, alice is not
+
+    const disable = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/users/${bob.userId}/disable`,
+      headers: auth(alice.token),
+    });
+    expect(disable.statusCode).toBe(403);
+
+    const reset = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/users/${bob.userId}/password`,
+      headers: auth(alice.token),
+      payload: { newAuthKey: 'c'.repeat(64), newPublicKey: 'd'.repeat(64) },
+    });
+    expect(reset.statusCode).toBe(403);
+    await ctx.app.close();
+  });
+
+  it('platform disables a user: sessions die and the token 401s from then on', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+    const house = await register(ctx.app, 'house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const before = await ctx.app.inject({
+      method: 'GET',
+      url: '/api/me',
+      headers: auth(alice.token),
+    });
+    expect(before.statusCode).toBe(200);
+
+    const disable = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/users/${alice.userId}/disable`,
+      headers: auth(house.token),
+    });
+    expect(disable.statusCode).toBe(200);
+    expect(disable.json()).toMatchObject({ ok: true });
+
+    const row = ctx.db
+      .prepare('SELECT disabled FROM users WHERE id = ?')
+      .get(alice.userId) as { disabled: number };
+    expect(row.disabled).toBe(1);
+
+    const sessions = ctx.db.prepare('SELECT * FROM sessions WHERE user_id = ?').all(alice.userId);
+    expect(sessions.length).toBe(0);
+
+    const after = await ctx.app.inject({
+      method: 'GET',
+      url: '/api/me',
+      headers: auth(alice.token),
+    });
+    expect(after.statusCode).toBe(401);
+    await ctx.app.close();
+  });
+
+  it('the platform account cannot disable itself', async () => {
+    const ctx = createApp(':memory:');
+    const house = await register(ctx.app, 'house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const disable = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/users/${house.userId}/disable`,
+      headers: auth(house.token),
+    });
+    expect(disable.statusCode).toBe(400);
+
+    const row = ctx.db
+      .prepare('SELECT disabled FROM users WHERE id = ?')
+      .get(house.userId) as { disabled: number };
+    expect(row.disabled).toBe(0);
+    await ctx.app.close();
+  });
+
+  it('platform resets a password: old sessions die, and login works with the new key', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+    const house = await register(ctx.app, 'house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const newAuthKey = 'e'.repeat(64);
+    const newPublicKey = 'f'.repeat(64);
+    const reset = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/users/${alice.userId}/password`,
+      headers: auth(house.token),
+      payload: { newAuthKey, newPublicKey },
+    });
+    expect(reset.statusCode).toBe(200);
+    expect(reset.json()).toMatchObject({ ok: true });
+
+    // the old token is dead
+    const stale = await ctx.app.inject({
+      method: 'GET',
+      url: '/api/me',
+      headers: auth(alice.token),
+    });
+    expect(stale.statusCode).toBe(401);
+
+    // the old password no longer works
+    const oldLogin = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/login',
+      payload: { username: 'alice', authKey: 'a'.repeat(64) },
+    });
+    expect(oldLogin.statusCode).toBe(401);
+
+    // but the new one does, and the pubkey it returns is the new one
+    const newLogin = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/login',
+      payload: { username: 'alice', authKey: newAuthKey },
+    });
+    expect(newLogin.statusCode).toBe(200);
+    expect(newLogin.json()).toMatchObject({ userId: alice.userId, publicKey: newPublicKey });
+    await ctx.app.close();
+  });
+
+  it('refuses a password reset while the target is seated', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+    const house = await register(ctx.app, 'house');
+    setPlatformUserId(ctx.db, house.userId);
+    const roomId = 'room20';
+    seedRoom(ctx.db, roomId, alice.userId);
+    ctx.db
+      .prepare('INSERT INTO room_players (room_id, user_id, seat, stack) VALUES (?, ?, 1, ?)')
+      .run(roomId, alice.userId, 300);
+
+    const reset = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/users/${alice.userId}/password`,
+      headers: auth(house.token),
+      payload: { newAuthKey: 'e'.repeat(64), newPublicKey: 'f'.repeat(64) },
+    });
+    expect(reset.statusCode).toBe(409);
+
+    // nothing changed - the original session and password still work
+    const stillWorks = await ctx.app.inject({
+      method: 'GET',
+      url: '/api/me',
+      headers: auth(alice.token),
+    });
+    expect(stillWorks.statusCode).toBe(200);
+    await ctx.app.close();
+  });
+
+  it('rejects a malformed newAuthKey/newPublicKey with 400', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+    const house = await register(ctx.app, 'house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const reset = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/users/${alice.userId}/password`,
+      headers: auth(house.token),
+      payload: { newAuthKey: 'not-hex', newPublicKey: 'f'.repeat(64) },
+    });
+    expect(reset.statusCode).toBe(400);
+    await ctx.app.close();
+  });
+});

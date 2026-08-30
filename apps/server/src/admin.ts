@@ -1,10 +1,23 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from './db.js';
-import { requirePlatform } from './platform.js';
+import { isPlatform, requirePlatform } from './platform.js';
 import { requireUser } from './auth.js';
 import { roomEvents } from './rooms.js';
 import { mergeAccounts } from './merge.js';
+import { rekey } from './account.js';
+
+const authKey = z.string().length(64).regex(/^[0-9a-f]+$/);
+const pubKey = z.string().length(64).regex(/^[0-9a-f]+$/);
+
+/** Same guard as account.ts's seatedSomewhere: re-keying while seated would
+ *  desync a live seat's pubkey mid-deal, whether the change is self-served
+ *  or admin-initiated. */
+function seatedSomewhere(db: DB, userId: number): boolean {
+  return !!db
+    .prepare('SELECT 1 FROM room_players WHERE user_id = ? AND seat IS NOT NULL LIMIT 1')
+    .get(userId);
+}
 
 interface PendingLifecycleRow {
   id: number;
@@ -231,5 +244,53 @@ export function registerAdminRoutes(app: FastifyInstance, db: DB): void {
       `UPDATE account_merge_requests SET status = 'approved', decided_at = ?, decided_by = ? WHERE id = ?`,
     ).run(Date.now(), req.userId, requestId);
     return { ok: true, status: 'approved' };
+  });
+
+  /** Force-disable an account outright, no merge involved (a spam signup, a
+   *  cheater, someone who asked to be removed). Kills every session so the
+   *  disable takes effect on their very next request (see auth.ts's
+   *  requireUser, which rejects disabled users with 401). Refuses to target
+   *  the platform account itself - that would lock the admin console. */
+  app.post('/api/admin/users/:id/disable', platformOnly, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const targetId = Number(id);
+    if (!Number.isInteger(targetId)) return reply.code(400).send({ error: 'invalid input' });
+
+    if (isPlatform(db, targetId)) {
+      return reply.code(400).send({ error: 'cannot disable the platform account' });
+    }
+    const target = db.prepare('SELECT id FROM users WHERE id = ?').get(targetId);
+    if (!target) return reply.code(404).send({ error: 'no such user' });
+
+    db.prepare('UPDATE users SET disabled = 1 WHERE id = ?').run(targetId);
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetId);
+    return { ok: true };
+  });
+
+  /** Reset another user's credentials - the "I lost my recovery code too"
+   *  escape hatch, done by a human at the platform account instead of the
+   *  self-serve /api/recover flow. Reuses account.ts's rekey() so the atomic
+   *  swap + full session purge is identical to every other credential
+   *  rotation in this app; refuses while the target is seated for the same
+   *  reason account.ts does (a live hand's pubkey must not shift mid-deal). */
+  app.post('/api/admin/users/:id/password', platformOnly, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const targetId = Number(id);
+    if (!Number.isInteger(targetId)) return reply.code(400).send({ error: 'invalid input' });
+
+    const parsed = z.object({ newAuthKey: authKey, newPublicKey: pubKey }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+
+    const target = db.prepare('SELECT id FROM users WHERE id = ?').get(targetId);
+    if (!target) return reply.code(404).send({ error: 'no such user' });
+
+    if (seatedSomewhere(db, targetId)) {
+      return reply
+        .code(409)
+        .send({ error: 'that user is seated at a table - they must stand up before a reset' });
+    }
+
+    rekey(db, targetId, parsed.data.newAuthKey, parsed.data.newPublicKey, null);
+    return { ok: true };
   });
 }
