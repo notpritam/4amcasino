@@ -68,7 +68,8 @@ export function registerSettleRoutes(
     const rooms = db
       .prepare(
         `SELECT r.id, r.name FROM rooms r JOIN room_players rp ON rp.room_id = r.id
-         WHERE rp.user_id = ? AND r.voided = 0 ORDER BY r.created_at DESC`,
+         WHERE rp.user_id = ? AND r.voided = 0 AND r.archived = 0 AND r.deleted = 0
+         ORDER BY r.created_at DESC`,
       )
       .all(userId) as { id: string; name: string }[];
     const out: { roomId: string; roomName: string; other: number; amount: number; iOwe: boolean }[] =
@@ -105,7 +106,8 @@ export function registerSettleRoutes(
       .prepare(
         `SELECT l.ref as ref, SUM(l.delta) as rake FROM ledger l
          JOIN rooms r ON r.id = l.room_id
-         WHERE l.kind = 'commission' AND r.voided = 0 AND l.ref IS NOT NULL
+         WHERE l.kind = 'commission' AND r.voided = 0 AND r.archived = 0 AND r.deleted = 0
+           AND l.ref IS NOT NULL
            AND EXISTS (SELECT 1 FROM ledger m WHERE m.ref = l.ref AND m.kind = 'hand-settlement' AND m.user_id = ?)
            AND NOT EXISTS (SELECT 1 FROM ledger v WHERE v.room_id = l.room_id AND v.kind = 'void-hand' AND v.ref = l.ref)
          GROUP BY l.ref`,

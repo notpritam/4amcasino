@@ -32,7 +32,7 @@ const LEADERBOARD_SQL = `
   SELECT u.id as userId, u.username, u.display_name as displayName, u.avatar_version as avatarVersion,
          SUM(l.delta) as net, COUNT(*) as handsPlayed, MAX(l.delta) as biggestWin
   FROM ledger l JOIN users u ON u.id = l.user_id JOIN rooms r ON r.id = l.room_id
-  WHERE l.kind = 'hand-settlement' AND u.private_mode = 0 AND r.voided = 0 AND r.archived = 0
+  WHERE l.kind = 'hand-settlement' AND u.private_mode = 0 AND r.voided = 0 AND r.archived = 0 AND r.deleted = 0
     AND u.id NOT IN (SELECT CAST(value AS INTEGER) FROM meta WHERE key = 'platform_user_id')
     AND NOT EXISTS (SELECT 1 FROM ledger v WHERE v.room_id = l.room_id AND v.kind = 'void-hand' AND v.ref = l.ref) %ROOM%
   GROUP BY u.id ORDER BY net DESC, handsPlayed DESC

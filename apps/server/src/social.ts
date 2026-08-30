@@ -555,7 +555,8 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
     const rooms = db
       .prepare(
         `SELECT r.id, r.name FROM rooms r JOIN room_players rp ON rp.room_id = r.id
-         WHERE rp.user_id = ? AND r.voided = 0 ORDER BY r.created_at DESC`,
+         WHERE rp.user_id = ? AND r.voided = 0 AND r.archived = 0 AND r.deleted = 0
+         ORDER BY r.created_at DESC`,
       )
       .all(req.userId) as { id: string; name: string }[];
     const nameOf = db.prepare(

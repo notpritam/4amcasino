@@ -202,7 +202,8 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
                 COALESCE(u.display_name, u.username) as hostName,
                 (SELECT COUNT(*) FROM room_players rp WHERE rp.room_id = r.id) as playerCount
          FROM rooms r JOIN users u ON u.id = r.host_id
-         WHERE r.visibility = 'public' ORDER BY r.created_at DESC LIMIT 30`,
+         WHERE r.visibility = 'public' AND r.archived = 0 AND r.deleted = 0
+         ORDER BY r.created_at DESC LIMIT 30`,
       )
       .all();
     return { rooms: rows };
@@ -466,7 +467,7 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
         `SELECT r.id, r.name, r.join_code as joinCode, r.sb, r.bb, r.archived as archived,
                 (SELECT COUNT(*) FROM room_players rp2 WHERE rp2.room_id = r.id) as playerCount
          FROM rooms r JOIN room_players rp ON rp.room_id = r.id
-         WHERE rp.user_id = ? ORDER BY r.created_at DESC`,
+         WHERE rp.user_id = ? AND r.deleted = 0 ORDER BY r.created_at DESC`,
       )
       .all(req.userId);
     return { rooms: rows };
