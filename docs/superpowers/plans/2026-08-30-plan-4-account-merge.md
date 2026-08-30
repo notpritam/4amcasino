@@ -69,8 +69,18 @@ In one `db.transaction`:
 **Tests:** non-platform → 403 on admin routes; a full flow: user files a merge request, platform lists it (sees both balances), approves it, and the accounts are merged (assert via Task 2's observable effects); approving a request whose account is seated returns 409 and does not disable anyone.
 - [ ] TDD → `git commit -m "feat(server): merge request + platform approval"`
 
+---
+
+### Task 4: Admin user management — disable + password reset
+**Files:** Modify `apps/server/src/account.ts` (export `rekey`), `apps/server/src/admin.ts` (add two routes). Test: `apps/server/test/merge.test.ts` (or `admin.test.ts`).
+- Export the existing `rekey(db, userId, newAuthKey, newPublicKey, keepToken, extra?)` from account.ts (currently module-private) so admin can reuse it.
+- `POST /api/admin/users/:id/disable` (requirePlatform): `UPDATE users SET disabled=1 WHERE id=?`; `DELETE FROM sessions WHERE user_id=?`. Refuse to disable the platform account itself (`isPlatform` guard → 400). Return `{ ok: true }`.
+- `POST /api/admin/users/:id/password { newAuthKey, newPublicKey }` (requirePlatform): validate both are 64-hex; refuse if the target is seated in a live hand (same check as account.ts uses); call `rekey(db, targetId, newAuthKey, newPublicKey, null)` (null keepToken → drops ALL target sessions). Return `{ ok: true }`. The admin's browser derives `newAuthKey`/`newPublicKey` for the target's username + chosen new password (web, Plan 5); this endpoint just applies them.
+**Tests:** non-platform → 403 on both; platform disables a user → that user's token now 401s (ties to Task 1's disabled rejection) and `disabled=1`; platform resets a user's password → old sessions gone and login works with the new authKey (derive via the same KDF, or assert the stored pubkey changed).
+- [ ] TDD → `git commit -m "feat(server): admin disable + password reset"`
+
 ## Self-Review
-- §3 schema + disabled → Task 1. §7 consolidate-everything → Task 2 (all 13 tables). §7 loose request + manual admin check with balances → Task 3. §8 admin merge routes → Task 3. ✅
+- §3 schema + disabled → Task 1. §7 consolidate-everything → Task 2 (all 13 tables). §7 loose request + manual admin check with balances → Task 3. §8 admin merge routes → Task 3; §8 user disable + password reset → Task 4. ✅
 - `mergeAccounts`, `rechainRoom` (from Plan 2) signatures consistent. `requirePlatform` from Plan 3.
 - Risk: settlement pair re-normalization (step 8) is the subtle part — the test must include a settlement involving `from` to prove direction is preserved.
 
