@@ -7,6 +7,7 @@ import { requireUser } from './auth.js';
 import { appendLedger, verifyLedger } from './ledger.js';
 import { LIMITS } from './limits.js';
 import { activeHands } from './liveHands.js';
+import { platformUserId } from './platform.js';
 
 export interface RoomRow {
   id: string;
@@ -119,6 +120,7 @@ export function roomPlayers(db: DB, roomId: string) {
 }
 
 function roomJson(db: DB, room: RoomRow) {
+  const platformId = platformUserId(db);
   return {
     id: room.id,
     name: room.name,
@@ -139,13 +141,15 @@ function roomJson(db: DB, room: RoomRow) {
     allowSpectators: !!room.allow_spectators,
     autoApproveBuys: !!room.auto_approve_buys,
     tvReplays: !!room.tv_replays,
-    players: roomPlayers(db, room.id).map((p) => ({
-      ...p,
-      privateMode: undefined,
-      privateStats: !!p.privateMode,
-      totalBought: p.privateMode ? 0 : p.totalBought,
-      pendingBuy: p.pendingBuy,
-    })),
+    players: roomPlayers(db, room.id)
+      .filter((p) => p.userId !== platformId)
+      .map((p) => ({
+        ...p,
+        privateMode: undefined,
+        privateStats: !!p.privateMode,
+        totalBought: p.privateMode ? 0 : p.totalBought,
+        pendingBuy: p.pendingBuy,
+      })),
   };
 }
 
