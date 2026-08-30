@@ -35,6 +35,8 @@ import {
 import type { DB } from './db.js';
 import { appendLedger } from './ledger.js';
 import { getRoom, roomPlayers } from './rooms.js';
+import { settleRake } from './rake.js';
+import { platformUserId } from './platform.js';
 
 export interface GameOpts {
   cryptoTimeoutMs: number;
@@ -1868,20 +1870,12 @@ class Hand {
           ref: head,
         });
       }
-      // the raked chips move to the banker on the same ledger, same hand ref,
-      // so every chip stays accounted for and settle-up still balances
+      // the raked chips move to the platform account on the same ledger, same
+      // hand ref, so every chip stays accounted for and settle-up still
+      // balances. Falls back to the banker when the platform isn't seeded yet.
       if (rake > 0 && room) {
-        this.db
-          .prepare('UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?')
-          .run(rake, this.roomId, room.banker_id);
-        appendLedger(this.db, {
-          roomId: this.roomId,
-          userId: room.banker_id,
-          delta: rake,
-          kind: 'commission',
-          ref: head,
-          note: '1% table commission - keeps the lights on',
-        });
+        const recipientId = platformUserId(this.db) ?? room.banker_id;
+        settleRake(this.db, { roomId: this.roomId, recipientId, rake, ref: head });
       }
       this.db
         .prepare('INSERT INTO transcripts (hand_id, room_id, head, entries, ts) VALUES (?, ?, ?, ?, ?)')
