@@ -656,3 +656,172 @@ describe('Task 4: admin disable + password reset', () => {
     await ctx.app.close();
   });
 });
+
+describe('Fix: guard the platform account from being merged away', () => {
+  it('mergeAccounts throws if fromUser is the platform account, and disables nobody', async () => {
+    const ctx = createApp(':memory:');
+    const house = await register(ctx.app, 'house');
+    const alice = await register(ctx.app, 'alice');
+    setPlatformUserId(ctx.db, house.userId);
+
+    expect(() => mergeAccounts(ctx.db, house.userId, alice.userId)).toThrow();
+
+    const houseRow = ctx.db
+      .prepare('SELECT disabled FROM users WHERE id = ?')
+      .get(house.userId) as { disabled: number };
+    expect(houseRow.disabled).toBe(0);
+    await ctx.app.close();
+  });
+
+  it('POST /api/me/merge-request 400s when fromUsername is the platform account, and files nothing', async () => {
+    const ctx = createApp(':memory:');
+    const house = await register(ctx.app, 'house');
+    const alice = await register(ctx.app, 'alice');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const filed = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/me/merge-request',
+      headers: auth(alice.token),
+      payload: { fromUsername: 'house', intoUsername: 'alice' },
+    });
+    expect(filed.statusCode).toBe(400);
+    expect(filed.json().error).toBe('cannot merge the platform account');
+
+    const rows = ctx.db.prepare('SELECT * FROM account_merge_requests').all();
+    expect(rows.length).toBe(0);
+    await ctx.app.close();
+  });
+
+  it('POST /api/admin/merges/:id approve refuses a pending request whose from_user is the platform account', async () => {
+    const ctx = createApp(':memory:');
+    const house = await register(ctx.app, 'house');
+    const alice = await register(ctx.app, 'alice');
+    setPlatformUserId(ctx.db, house.userId);
+
+    // Simulate a request that named the platform account as `from` (e.g.
+    // filed before house became platform, or inserted directly) - the
+    // filing route above already blocks this going forward, but the
+    // approval path must independently refuse it too.
+    const info = ctx.db
+      .prepare(
+        `INSERT INTO account_merge_requests (from_user, into_user, requested_by, created_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(house.userId, alice.userId, alice.userId, Date.now());
+    const requestId = Number(info.lastInsertRowid);
+
+    const decided = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/merges/${requestId}`,
+      headers: auth(house.token),
+      payload: { approve: true },
+    });
+    expect(decided.statusCode).toBe(400);
+
+    const houseRow = ctx.db
+      .prepare('SELECT disabled FROM users WHERE id = ?')
+      .get(house.userId) as { disabled: number };
+    expect(houseRow.disabled).toBe(0);
+
+    const reqRow = ctx.db
+      .prepare('SELECT status FROM account_merge_requests WHERE id = ?')
+      .get(requestId) as { status: string };
+    expect(reqRow.status).toBe('pending');
+    await ctx.app.close();
+  });
+});
+
+describe('Fix: collapse duplicate open settlements created by a merge', () => {
+  it('two independently-open settlements with the same third party collapse into one, flags OR-ed, no double-count', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice'); // from
+    const bob = await register(ctx.app, 'bob'); // into
+    const carol = await register(ctx.app, 'carol'); // shared third party
+    const roomId = 'room30';
+    seedRoom(ctx.db, roomId, bob.userId);
+
+    expect(bob.userId).toBeLessThan(carol.userId);
+
+    // bob's own pre-existing open settlement with carol: bob (low) has
+    // confirmed his side, carol (high) has not confirmed hers yet.
+    ctx.db
+      .prepare(
+        `INSERT INTO settlements (room_id, low_user, high_user, amount, debtor, confirmed_low, confirmed_high, created_ts)
+         VALUES (?, ?, ?, ?, ?, 1, 0, ?)`,
+      )
+      .run(roomId, bob.userId, carol.userId, 25, carol.userId, Date.now());
+
+    // alice's independent open settlement with carol, in the same room -
+    // same shape (low side confirmed, carol has not), so once alice becomes
+    // bob it is an exact duplicate of bob's row above.
+    ctx.db
+      .prepare(
+        `INSERT INTO settlements (room_id, low_user, high_user, amount, debtor, confirmed_low, confirmed_high, created_ts)
+         VALUES (?, ?, ?, ?, ?, 1, 0, ?)`,
+      )
+      .run(roomId, alice.userId, carol.userId, 40, carol.userId, Date.now());
+
+    mergeAccounts(ctx.db, alice.userId, bob.userId);
+
+    const openRows = ctx.db
+      .prepare('SELECT * FROM settlements WHERE room_id = ? AND settled_ts IS NULL')
+      .all(roomId) as {
+      id: number;
+      low_user: number;
+      high_user: number;
+      confirmed_low: number;
+      confirmed_high: number;
+    }[];
+    expect(openRows.length).toBe(1);
+    expect(openRows[0]!.low_user).toBe(bob.userId);
+    expect(openRows[0]!.high_user).toBe(carol.userId);
+    expect(openRows[0]!.confirmed_low).toBe(1);
+    expect(openRows[0]!.confirmed_high).toBe(0);
+
+    const pending = await ctx.app.inject({
+      method: 'GET',
+      url: '/api/me/pending',
+      headers: auth(carol.token),
+    });
+    expect(pending.statusCode).toBe(200);
+    expect(pending.json().settlementsAwaitingMe).toBe(1);
+
+    await ctx.app.close();
+  });
+
+  it('leaves closed/historical settlement rows alone even if they share a pair with the merge', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice'); // from
+    const bob = await register(ctx.app, 'bob'); // into
+    const carol = await register(ctx.app, 'carol');
+    const roomId = 'room31';
+    seedRoom(ctx.db, roomId, bob.userId);
+
+    // a historical, already-settled bob/carol row - must not be touched
+    ctx.db
+      .prepare(
+        `INSERT INTO settlements (room_id, low_user, high_user, amount, debtor, confirmed_low, confirmed_high, created_ts, settled_ts)
+         VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?)`,
+      )
+      .run(roomId, bob.userId, carol.userId, 60, carol.userId, Date.now(), Date.now());
+
+    // alice's still-open settlement with carol, which becomes bob/carol
+    ctx.db
+      .prepare(
+        `INSERT INTO settlements (room_id, low_user, high_user, amount, debtor, confirmed_low, confirmed_high, created_ts)
+         VALUES (?, ?, ?, ?, ?, 0, 1, ?)`,
+      )
+      .run(roomId, alice.userId, carol.userId, 15, alice.userId, Date.now());
+
+    mergeAccounts(ctx.db, alice.userId, bob.userId);
+
+    const rows = ctx.db.prepare('SELECT * FROM settlements WHERE room_id = ?').all(roomId) as {
+      settled_ts: number | null;
+    }[];
+    expect(rows.length).toBe(2);
+    expect(rows.filter((r) => r.settled_ts === null).length).toBe(1);
+    expect(rows.filter((r) => r.settled_ts !== null).length).toBe(1);
+    await ctx.app.close();
+  });
+});

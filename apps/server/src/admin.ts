@@ -138,6 +138,12 @@ export function registerAdminRoutes(app: FastifyInstance, db: DB): void {
       | { id: number }
       | undefined;
     if (!from) return reply.code(404).send({ error: `no such user: ${fromUsername}` });
+    // Filing this request is the front door mergeAccounts guards against too
+    // (merge.ts) - refuse here as well so a request naming the platform
+    // account as `from` never even reaches the pending queue.
+    if (isPlatform(db, from.id)) {
+      return reply.code(400).send({ error: 'cannot merge the platform account' });
+    }
     const into = db.prepare('SELECT id FROM users WHERE username = ?').get(intoUsername) as
       | { id: number }
       | undefined;
@@ -231,6 +237,13 @@ export function registerAdminRoutes(app: FastifyInstance, db: DB): void {
         `UPDATE account_merge_requests SET status = 'rejected', decided_at = ?, decided_by = ? WHERE id = ?`,
       ).run(Date.now(), req.userId, requestId);
       return { ok: true, status: 'rejected' };
+    }
+
+    // Second line of defense: the filing route above already blocks this,
+    // but a request could predate the platform account being (re)assigned -
+    // never let approval reach mergeAccounts with the platform as `from`.
+    if (isPlatform(db, mergeRequest.fromUser)) {
+      return reply.code(400).send({ error: 'cannot merge the platform account' });
     }
 
     try {

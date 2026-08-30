@@ -1,6 +1,7 @@
 import type { DB } from './db.js';
 import { rechainRoom, verifyLedger } from './ledger.js';
 import { activeHands } from './liveHands.js';
+import { isPlatform } from './platform.js';
 
 /** Folds `fromUser`'s entire identity into `intoUser`: every table that
  *  references a user_id is repointed, `fromUser` is left disabled with
@@ -20,6 +21,15 @@ export function mergeAccounts(db: DB, fromUser: number, intoUser: number): void 
     | undefined;
   if (!from) throw new Error(`no such user: ${fromUser}`);
   if (from.disabled) throw new Error(`user ${fromUser} is already disabled`);
+  // The platform account is the only non-disabled account every admin route
+  // trusts (requirePlatform -> requireUser 401s once disabled - see
+  // platform.ts). Merging it away as `from` would run step 10 and disable it,
+  // permanently bricking the admin console with no in-app recovery. Task 4's
+  // /api/admin/users/:id/disable already refuses to target the platform
+  // account for exactly this reason; this closes the same hole here.
+  if (isPlatform(db, fromUser)) {
+    throw new Error('cannot merge the platform account');
+  }
 
   const into = db.prepare('SELECT id, disabled FROM users WHERE id = ?').get(intoUser) as
     | { id: number; disabled: number }
@@ -199,6 +209,55 @@ export function mergeAccounts(db: DB, fromUser: number, intoUser: number): void 
            SET low_user = ?, high_user = ?, debtor = ?, confirmed_low = ?, confirmed_high = ?
            WHERE id = ?`,
         ).run(newHigh, newLow, newDebtor, row.confirmed_high, row.confirmed_low, row.id);
+      }
+    }
+
+    // 8b. Two independently-open settlements with the same third party can
+    // collide into the same (room, low, high) pair after the substitution
+    // above - e.g. `from` had its own open settlement with C, and `into`
+    // already, separately, had one too. The read path assumes at most one
+    // open row per pair (see /api/me/debts's `.get()` and /api/me/pending's
+    // COUNT(*) in settle.ts), so a leftover duplicate is silently shadowed
+    // and shows up as an "awaiting you" nudge the UI can never clear. Only
+    // OPEN rows (settled_ts IS NULL) can collide this way; closed/historical
+    // rows already aggregate correctly by `debtor` (see settledSum in
+    // social.ts) and must be left alone. Scoped to intoUser because step 8
+    // only ever repoints rows onto intoUser - nothing else in this merge can
+    // create a new duplicate pair.
+    interface DupGroup {
+      room_id: string;
+      low_user: number;
+      high_user: number;
+    }
+    const dupGroups = db
+      .prepare(
+        `SELECT room_id, low_user, high_user FROM settlements
+         WHERE settled_ts IS NULL AND (low_user = ? OR high_user = ?)
+         GROUP BY room_id, low_user, high_user
+         HAVING COUNT(*) > 1`,
+      )
+      .all(intoUser, intoUser) as DupGroup[];
+    for (const { room_id, low_user, high_user } of dupGroups) {
+      const dupes = db
+        .prepare(
+          `SELECT id, confirmed_low, confirmed_high FROM settlements
+           WHERE room_id = ? AND low_user = ? AND high_user = ? AND settled_ts IS NULL
+           ORDER BY id ASC`,
+        )
+        .all(room_id, low_user, high_user) as {
+        id: number;
+        confirmed_low: number;
+        confirmed_high: number;
+      }[];
+      const keep = dupes[0];
+      if (!keep) continue;
+      const confirmedLow = dupes.some((d) => d.confirmed_low) ? 1 : 0;
+      const confirmedHigh = dupes.some((d) => d.confirmed_high) ? 1 : 0;
+      db.prepare(
+        'UPDATE settlements SET confirmed_low = ?, confirmed_high = ? WHERE id = ?',
+      ).run(confirmedLow, confirmedHigh, keep.id);
+      for (const dupe of dupes.slice(1)) {
+        db.prepare('DELETE FROM settlements WHERE id = ?').run(dupe.id);
       }
     }
 
