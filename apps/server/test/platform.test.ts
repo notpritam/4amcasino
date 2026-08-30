@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { openDb } from '../src/db.js';
-import { platformUserId, setPlatformUserId, isPlatform } from '../src/platform.js';
+import { platformUserId, setPlatformUserId, isPlatform, ensurePlatformAccount } from '../src/platform.js';
 import { createApp } from '../src/app.js';
 import { appendLedger } from '../src/ledger.js';
+import { createUser } from '../src/auth.js';
+import { derivePlatformCredentials } from '../scripts/platform-crypto.js';
 
 describe('platform state', () => {
   it('is unset until written, then round-trips', () => {
@@ -91,4 +93,48 @@ describe('leaderboard excludes platform', () => {
     expect(ids).not.toContain(house.userId);
     await ctx.app.close();
   });
+});
+
+describe('ensurePlatformAccount', () => {
+  it('creates the account when neither meta nor user exists', () => {
+    const db = openDb(':memory:');
+    const res = ensurePlatformAccount(db, {
+      username: '4amcasino',
+      createCreds: () => ({ authKey: 'a'.repeat(64), publicKey: 'b'.repeat(64) }),
+    });
+    expect(res).toMatchObject({ created: true, adopted: false });
+    expect(platformUserId(db)).toBe(res.userId);
+    const again = ensurePlatformAccount(db, {
+      username: '4amcasino',
+      createCreds: () => { throw new Error('must not create twice'); },
+    });
+    expect(again).toMatchObject({ created: false, adopted: false, userId: res.userId });
+  });
+
+  it('adopts an existing account without calling createCreds', () => {
+    const db = openDb(':memory:');
+    const { userId } = createUser(db, '4amcasino', 'a'.repeat(64), 'b'.repeat(64));
+    const res = ensurePlatformAccount(db, {
+      username: '4amcasino',
+      createCreds: () => { throw new Error('must not derive on adopt'); },
+    });
+    expect(res).toEqual({ userId, created: false, adopted: true });
+    expect(platformUserId(db)).toBe(userId);
+  });
+});
+
+describe('platform credentials are loginable', () => {
+  it('a created platform account logs in with the derived authKey', async () => {
+    const ctx = createApp(':memory:');
+    const creds = derivePlatformCredentials('4amcasino', 'Fun99312@'); // scrypt: ~1-2s
+    ensurePlatformAccount(ctx.db, { username: '4amcasino', createCreds: () => creds });
+    const login = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/login',
+      payload: { username: '4amcasino', authKey: creds.authKey },
+    });
+    expect(login.statusCode).toBe(200);
+    expect(login.json().publicKey).toBe(creds.publicKey);
+    await ctx.app.close();
+  }, 15_000);
 });
