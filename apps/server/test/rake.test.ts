@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { openDb } from '../src/db.js';
 import { createUser } from '../src/auth.js';
-import { verifyLedger } from '../src/ledger.js';
+import { appendLedger, verifyLedger } from '../src/ledger.js';
 import { settleRake } from '../src/rake.js';
+import { createApp } from '../src/app.js';
+import { setPlatformUserId } from '../src/platform.js';
 
 function seedRoom(db: ReturnType<typeof openDb>, roomId: string, hostId: number) {
   db.prepare(
@@ -71,5 +73,84 @@ describe('settleRake', () => {
       .get('room01', platformId) as { stack: number };
     expect(row.stack).toBe(1025);
     expect(verifyLedger(db, 'room01').ok).toBe(true);
+  });
+});
+
+async function register(app: ReturnType<typeof createApp>['app'], username: string) {
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/register',
+    payload: { username, authKey: 'a'.repeat(64), publicKey: 'b'.repeat(64) },
+  });
+  return res.json() as { userId: number; token: string };
+}
+const auth = (t: string) => ({ authorization: `Bearer ${t}` });
+
+describe('platform excluded from peer settle-up', () => {
+  it('lists the other player but not the platform account, with the amount unaffected by the rake', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'p2_alice');
+    const bob = await register(ctx.app, 'p2_bob');
+    const house = await register(ctx.app, 'p2_house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const room = (
+      await ctx.app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: auth(alice.token),
+        payload: { name: 'Settle Test', sb: 10, bb: 20 },
+      })
+    ).json();
+    await ctx.app.inject({
+      method: 'POST',
+      url: '/api/rooms/join',
+      headers: auth(bob.token),
+      payload: { joinCode: room.joinCode },
+    });
+
+    // both buy in 500, approved by the banker (alice)
+    for (const p of [alice, bob]) {
+      const req = (
+        await ctx.app.inject({
+          method: 'POST',
+          url: `/api/rooms/${room.id}/buy`,
+          headers: auth(p.token),
+          payload: { amount: 500 },
+        })
+      ).json();
+      await ctx.app.inject({
+        method: 'POST',
+        url: `/api/rooms/${room.id}/approve`,
+        headers: auth(alice.token),
+        payload: { requestId: req.id, approve: true },
+      });
+    }
+
+    // a hand: alice wins 200, bob loses 250, the 50 rake goes to the platform
+    ctx.db
+      .prepare('UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?')
+      .run(200, room.id, alice.userId);
+    ctx.db
+      .prepare('UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?')
+      .run(-250, room.id, bob.userId);
+    appendLedger(ctx.db, { roomId: room.id, userId: alice.userId, delta: 200, kind: 'hand-settlement', ref: 'h1' });
+    appendLedger(ctx.db, { roomId: room.id, userId: bob.userId, delta: -250, kind: 'hand-settlement', ref: 'h1' });
+    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1' });
+    expect(verifyLedger(ctx.db, room.id).ok).toBe(true);
+
+    const res = await ctx.app.inject({
+      method: 'GET',
+      url: '/api/me/settle',
+      headers: auth(bob.token),
+    });
+    const people = res.json().people as { otherUserId: number; net: number }[];
+    const otherIds = people.map((p) => p.otherUserId);
+    expect(otherIds).toContain(alice.userId);
+    expect(otherIds).not.toContain(house.userId);
+    const aliceLine = people.find((p) => p.otherUserId === alice.userId);
+    expect(aliceLine?.net).toBe(-200);
+
+    await ctx.app.close();
   });
 });

@@ -7,6 +7,7 @@ import { appendLedger } from './ledger.js';
 import { activeHands } from './liveHands.js';
 import { LIMITS } from './limits.js';
 import { decodeProof, registerSettleRoutes } from './settle.js';
+import { platformUserId } from './platform.js';
 import { randomBytes } from 'node:crypto';
 
 /** Friends, presence, room invites, and banker invalidation. */
@@ -498,11 +499,14 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
   // to conclude the game. Both sides mark "settled" and the debt resolves on
   // the platform too. Requested by notpritam, docs/FEATURES.md.
 
-  /** The room's who-owes-whom pairing, greedy largest-first for determinism. */
+  /** The room's who-owes-whom pairing, greedy largest-first for determinism.
+   *  The platform account is never a debtor or creditor here - its rake is
+   *  house dues, settled separately (see houseDues in settle.ts), not a peer debt. */
   const roomDebts = (roomId: string): { from: number; to: number; amount: number }[] => {
+    const platformId = platformUserId(db);
     const nets = roomPlayers(db, roomId)
       .map((p) => ({ userId: p.userId, net: p.stack - p.totalBought }))
-      .filter((n) => n.net !== 0);
+      .filter((n) => n.net !== 0 && n.userId !== platformId);
     const debtors = nets
       .filter((n) => n.net < 0)
       .map((n) => ({ userId: n.userId, amt: -n.net }))
