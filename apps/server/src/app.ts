@@ -11,6 +11,7 @@ import { registerRoomRoutes } from './rooms.js';
 import { registerProfileRoutes } from './profile.js';
 import { registerSocialRoutes } from './social.js';
 import { registerAccountRoutes } from './account.js';
+import { registerAdminRoutes } from './admin.js';
 import { forgive, hitNamed, LIMITS, rateLimit } from './limits.js';
 import { isPlatform } from './platform.js';
 
@@ -158,6 +159,7 @@ export function createApp(
   registerProfileRoutes(app, db);
   registerSocialRoutes(app, db);
   registerAccountRoutes(app, db);
+  registerAdminRoutes(app, db);
 
   // self-host convenience: serve the built web app when it exists
   const webDist = join(dirname(fileURLToPath(import.meta.url)), '../../web/dist');

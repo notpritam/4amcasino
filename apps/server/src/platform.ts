@@ -1,5 +1,6 @@
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { DB } from './db.js';
-import { createUser } from './auth.js';
+import { createUser, requireUser } from './auth.js';
 
 const KEY = 'platform_user_id';
 
@@ -24,6 +25,16 @@ export function setPlatformUserId(db: DB, id: number): void {
 /** True iff userId is the configured Platform account. */
 export function isPlatform(db: DB, userId: number): boolean {
   return platformUserId(db) === userId;
+}
+
+/** requireUser, then require the caller to be the Platform account - 403 otherwise. */
+export function requirePlatform(db: DB) {
+  const base = requireUser(db);
+  return async (req: FastifyRequest, reply: FastifyReply) => {
+    const r = await base(req, reply);
+    if (r) return r;
+    if (!isPlatform(db, req.userId)) return reply.code(403).send({ error: 'platform only' });
+  };
 }
 
 /** Idempotent: use the configured platform id if set; else adopt an existing

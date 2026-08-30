@@ -285,3 +285,223 @@ describe('archive and delete become platform-approved requests (Task 3)', () => 
     await ctx.app.close();
   });
 });
+
+describe('platform admin approves room lifecycle (Task 4)', () => {
+  async function createRoom(ctx: ReturnType<typeof createApp>, token: string) {
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/rooms',
+      headers: auth(token),
+      payload: { name: 'Admin Lifecycle', sb: 10, bb: 20 },
+    });
+    return res.json() as { id: string; joinCode: string };
+  }
+
+  it('rejects a non-platform user on both admin routes with 403', async () => {
+    const ctx = createApp(':memory:');
+    const host = await register(ctx.app, 't4_host');
+    const stranger = await register(ctx.app, 't4_stranger');
+    const room = await createRoom(ctx, host.token);
+
+    const archiveRes = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/archive`,
+      headers: auth(host.token),
+      payload: { archived: true },
+    });
+    const { requestId } = archiveRes.json() as { requestId: number };
+
+    const listRes = await ctx.app.inject({
+      method: 'GET',
+      url: '/api/admin/lifecycle',
+      headers: auth(stranger.token),
+    });
+    expect(listRes.statusCode).toBe(403);
+
+    const decideRes = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/lifecycle/${requestId}`,
+      headers: auth(stranger.token),
+      payload: { approve: true },
+    });
+    expect(decideRes.statusCode).toBe(403);
+
+    await ctx.app.close();
+  });
+
+  it('lists and approves a pending archive request', async () => {
+    const ctx = createApp(':memory:');
+    const host = await register(ctx.app, 't4_host2');
+    const platform = await register(ctx.app, 't4_platform');
+    setPlatformUserId(ctx.db, platform.userId);
+    const room = await createRoom(ctx, host.token);
+
+    const archiveRes = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/archive`,
+      headers: auth(host.token),
+      payload: { archived: true },
+    });
+    const { requestId } = archiveRes.json() as { requestId: number };
+
+    const listRes = await ctx.app.inject({
+      method: 'GET',
+      url: '/api/admin/lifecycle',
+      headers: auth(platform.token),
+    });
+    expect(listRes.statusCode).toBe(200);
+    const listBody = listRes.json() as {
+      requests: { id: number; roomId: string; action: string; status: string }[];
+    };
+    const pending = listBody.requests.find((r) => r.id === requestId);
+    expect(pending).toBeDefined();
+    expect(pending?.roomId).toBe(room.id);
+    expect(pending?.action).toBe('archive');
+    expect(pending?.status).toBe('pending');
+
+    const decideRes = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/lifecycle/${requestId}`,
+      headers: auth(platform.token),
+      payload: { approve: true },
+    });
+    expect(decideRes.statusCode).toBe(200);
+
+    const roomRow = ctx.db.prepare('SELECT archived FROM rooms WHERE id = ?').get(room.id) as {
+      archived: number;
+    };
+    expect(roomRow.archived).toBe(1);
+
+    const requestRow = ctx.db
+      .prepare('SELECT status, decided_by, decided_at FROM room_lifecycle_requests WHERE id = ?')
+      .get(requestId) as { status: string; decided_by: number | null; decided_at: number | null };
+    expect(requestRow.status).toBe('approved');
+    expect(requestRow.decided_by).toBe(platform.userId);
+    expect(requestRow.decided_at).not.toBeNull();
+
+    await ctx.app.close();
+  });
+
+  it('rejecting a request leaves the room unchanged', async () => {
+    const ctx = createApp(':memory:');
+    const host = await register(ctx.app, 't4_host3');
+    const platform = await register(ctx.app, 't4_platform2');
+    setPlatformUserId(ctx.db, platform.userId);
+    const room = await createRoom(ctx, host.token);
+
+    const archiveRes = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/archive`,
+      headers: auth(host.token),
+      payload: { archived: true },
+    });
+    const { requestId } = archiveRes.json() as { requestId: number };
+
+    const decideRes = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/lifecycle/${requestId}`,
+      headers: auth(platform.token),
+      payload: { approve: false },
+    });
+    expect(decideRes.statusCode).toBe(200);
+
+    const roomRow = ctx.db.prepare('SELECT archived FROM rooms WHERE id = ?').get(room.id) as {
+      archived: number;
+    };
+    expect(roomRow.archived).toBe(0);
+
+    const requestRow = ctx.db
+      .prepare('SELECT status FROM room_lifecycle_requests WHERE id = ?')
+      .get(requestId) as { status: string };
+    expect(requestRow.status).toBe('rejected');
+
+    await ctx.app.close();
+  });
+
+  it('approving a delete request sets rooms.deleted=1, and the room then drops from /api/me/settle', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 't4_alice');
+    const bob = await register(ctx.app, 't4_bob');
+    const house = await register(ctx.app, 't4_house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const room = await createRoom(ctx, alice.token);
+    await ctx.app.inject({
+      method: 'POST',
+      url: '/api/rooms/join',
+      headers: auth(bob.token),
+      payload: { joinCode: room.joinCode },
+    });
+    for (const p of [alice, bob]) {
+      const buyRes = (
+        await ctx.app.inject({
+          method: 'POST',
+          url: `/api/rooms/${room.id}/buy`,
+          headers: auth(p.token),
+          payload: { amount: 500 },
+        })
+      ).json() as { id: number };
+      await ctx.app.inject({
+        method: 'POST',
+        url: `/api/rooms/${room.id}/approve`,
+        headers: auth(alice.token),
+        payload: { requestId: buyRes.id, approve: true },
+      });
+    }
+    ctx.db
+      .prepare('UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?')
+      .run(200, room.id, alice.userId);
+    ctx.db
+      .prepare('UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?')
+      .run(-250, room.id, bob.userId);
+    appendLedger(ctx.db, {
+      roomId: room.id,
+      userId: alice.userId,
+      delta: 200,
+      kind: 'hand-settlement',
+      ref: 'h1',
+    });
+    appendLedger(ctx.db, {
+      roomId: room.id,
+      userId: bob.userId,
+      delta: -250,
+      kind: 'hand-settlement',
+      ref: 'h1',
+    });
+    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1' });
+    expect(verifyLedger(ctx.db, room.id).ok).toBe(true);
+
+    async function settleOtherIds(token: string) {
+      const res = await ctx.app.inject({ method: 'GET', url: '/api/me/settle', headers: auth(token) });
+      const body = res.json() as { people: { otherUserId: number }[] };
+      return body.people.map((p) => p.otherUserId);
+    }
+
+    expect(await settleOtherIds(bob.token)).toContain(alice.userId);
+
+    const deleteRes = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/delete`,
+      headers: auth(alice.token),
+      payload: {},
+    });
+    const { requestId } = deleteRes.json() as { requestId: number };
+
+    const decideRes = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/lifecycle/${requestId}`,
+      headers: auth(house.token),
+      payload: { approve: true },
+    });
+    expect(decideRes.statusCode).toBe(200);
+
+    const roomRow = ctx.db.prepare('SELECT deleted FROM rooms WHERE id = ?').get(room.id) as {
+      deleted: number;
+    };
+    expect(roomRow.deleted).toBe(1);
+
+    expect(await settleOtherIds(bob.token)).not.toContain(alice.userId);
+
+    await ctx.app.close();
+  });
+});
