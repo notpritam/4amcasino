@@ -12,6 +12,7 @@ import { registerProfileRoutes } from './profile.js';
 import { registerSocialRoutes } from './social.js';
 import { registerAccountRoutes } from './account.js';
 import { forgive, hitNamed, LIMITS, rateLimit } from './limits.js';
+import { isPlatform } from './platform.js';
 
 const registerSchema = z.object({
   username: z.string().min(2).max(24).regex(/^[a-zA-Z0-9_]+$/),
@@ -149,6 +150,7 @@ export function createApp(
       username: row.username,
       publicKey: row.pubkey,
       joinNumber: row.joinNumber,
+      isPlatform: isPlatform(db, row.id),
     };
   });
 
