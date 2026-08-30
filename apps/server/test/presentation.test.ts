@@ -110,6 +110,28 @@ describe('/api/users/:id/profile exposes leaderboardRank', () => {
   });
 });
 
+describe('/api/users/:id/profile exposes isPlatform', () => {
+  it('is false for a regular user and true for the platform account', async () => {
+    const alice = await user('profPlat_alice');
+    const house = await user('profPlat_house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const aliceRes = await ctx.app.inject({
+      method: 'GET',
+      url: `/api/users/${alice.userId}/profile`,
+      headers: auth(alice.token),
+    });
+    expect(aliceRes.json().isPlatform).toBe(false);
+
+    const houseRes = await ctx.app.inject({
+      method: 'GET',
+      url: `/api/users/${house.userId}/profile`,
+      headers: auth(alice.token),
+    });
+    expect(houseRes.json().isPlatform).toBe(true);
+  });
+});
+
 describe('room rosters hide the platform account', () => {
   it('excludes the platform from players but keeps its room_players row for accounting', async () => {
     const alice = await user('roster_alice');

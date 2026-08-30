@@ -52,6 +52,10 @@ export interface AuthState {
   userId: number | null;
   username: string | null;
   identity: { publicKey: string; secretKey: string } | null;
+  /** Whether this account is the platform (house) account; gates the admin console. */
+  isPlatform?: boolean;
+  /** 1-based leaderboard placement, or null if unranked/hidden. */
+  leaderboardRank?: number | null;
 }
 
 interface HandView {

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from './db.js';
 import { requireUser } from './auth.js';
+import { isPlatform } from './platform.js';
 import { canBank, getRoom, isMember, roomEvents } from './rooms.js';
 import { describeScore, evaluate7 } from '@4am/shared';
 
@@ -209,6 +210,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
         rivals: [],
         transactions: [],
         hidden: true,
+        isPlatform: isPlatform(db, id),
       };
     }
 
@@ -279,6 +281,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       memberCount: total,
       stats,
       leaderboardRank: leaderboardRankOf(db, id),
+      isPlatform: isPlatform(db, id),
       rivals,
       transactions,
     };

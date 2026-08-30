@@ -83,9 +83,13 @@ export const api = {
   respondInvite: (inviteId: number, accept: boolean) => req(`/api/invites/${inviteId}/respond`, { accept }),
   voidRoom: (roomId: string, voided: boolean) => req(`/api/rooms/${roomId}/void`, { voided }),
   // retire a finished table: it leaves the room list and stops counting towards
-  // stats, but nothing is deleted and debts stay owed (requested by notpritam)
+  // stats, but nothing is deleted and debts stay owed (requested by notpritam).
+  // Both archive and delete are now requests: they queue for platform approval
+  // instead of taking effect immediately.
   archiveRoom: (roomId: string, archived: boolean) =>
-    req(`/api/rooms/${roomId}/archive`, { archived }),
+    req(`/api/rooms/${roomId}/archive`, { archived }) as Promise<{ pending: true; requestId: number }>,
+  deleteRoom: (roomId: string, note?: string) =>
+    req(`/api/rooms/${roomId}/delete`, note ? { note } : {}) as Promise<{ pending: true; requestId: number }>,
   publicRooms: () => req('/api/rooms/public'),
   joinPublic: (roomId: string) => req(`/api/rooms/${roomId}/join-public`, {}),
   spectateSettings: (roomId: string, allow?: boolean) =>
@@ -164,4 +168,16 @@ export const api = {
   sharedRooms: (userId: number) => req(`/api/users/${userId}/shared-rooms`),
   roomSettings: (roomId: string, actionSecs: number) =>
     req(`/api/rooms/${roomId}/settings`, { actionSecs }, 'PUT'),
+  // ask the platform account to fold a duplicate account into another one
+  mergeRequest: (fromUsername: string, intoUsername: string, note?: string) =>
+    req('/api/me/merge-request', { fromUsername, intoUsername, ...(note ? { note } : {}) }),
+  // platform-only console: room lifecycle requests, account merges, and user admin
+  adminLifecycle: () => req('/api/admin/lifecycle'),
+  adminDecideLifecycle: (id: number, approve: boolean) =>
+    req(`/api/admin/lifecycle/${id}`, { approve }),
+  adminMerges: () => req('/api/admin/merges'),
+  adminDecideMerge: (id: number, approve: boolean) => req(`/api/admin/merges/${id}`, { approve }),
+  adminDisableUser: (id: number) => req(`/api/admin/users/${id}/disable`, {}),
+  adminSetUserPassword: (id: number, newAuthKey: string, newPublicKey: string) =>
+    req(`/api/admin/users/${id}/password`, { newAuthKey, newPublicKey }),
 };
