@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
+import { type FormEvent, type ReactNode, memo, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../shared/api.ts';
 import { deriveAuthKey, deriveIdentity } from '../../shared/crypto.ts';
@@ -117,6 +117,13 @@ function MergeSection() {
   const [err, setErr] = useState<string | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<MergeRequestRow | null>(null);
 
+  const [directFrom, setDirectFrom] = useState('');
+  const [directInto, setDirectInto] = useState('');
+  const [directNote, setDirectNote] = useState('');
+  const [directConfirm, setDirectConfirm] = useState(false);
+  const [directBusy, setDirectBusy] = useState(false);
+  const [directMsg, setDirectMsg] = useState<{ kind: 'ok' | 'bad'; text: string } | null>(null);
+
   function load() {
     void api
       .adminMerges()
@@ -136,6 +143,36 @@ function MergeSection() {
       setErr(e instanceof Error ? e.message : 'could not decide that request');
     } finally {
       setBusyId(null);
+    }
+  }
+
+  function openDirectConfirm(e: FormEvent) {
+    e.preventDefault();
+    setDirectMsg(null);
+    if (!directFrom.trim() || !directInto.trim()) {
+      setDirectMsg({ kind: 'bad', text: 'enter both usernames' });
+      return;
+    }
+    setDirectConfirm(true);
+  }
+
+  async function mergeNow() {
+    setDirectBusy(true);
+    setDirectMsg(null);
+    try {
+      const from = directFrom.trim();
+      const into = directInto.trim();
+      await api.adminMergeNow(from, into, directNote.trim() || undefined);
+      setDirectMsg({ kind: 'ok', text: `Merged @${from} into @${into}.` });
+      setDirectFrom('');
+      setDirectInto('');
+      setDirectNote('');
+      setDirectConfirm(false);
+      load();
+    } catch (e) {
+      setDirectMsg({ kind: 'bad', text: e instanceof Error ? e.message : 'could not merge those accounts' });
+    } finally {
+      setDirectBusy(false);
     }
   }
 
@@ -187,6 +224,44 @@ function MergeSection() {
       )}
       {err && <Note kind="bad">{err}</Note>}
 
+      <form
+        onSubmit={openDirectConfirm}
+        className="mt-5 border-t border-slate-200/70 pt-4 dark:border-slate-700/70"
+      >
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Merge accounts directly</h3>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Skips the request queue and folds one account into another immediately. Approving cannot be undone.
+        </p>
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <Input
+            placeholder="From username"
+            value={directFrom}
+            onChange={(e) => setDirectFrom(e.target.value)}
+            disabled={directBusy}
+          />
+          <Input
+            placeholder="Into username"
+            value={directInto}
+            onChange={(e) => setDirectInto(e.target.value)}
+            disabled={directBusy}
+          />
+        </div>
+        <div className="mt-2">
+          <Input
+            placeholder="Note (optional)"
+            value={directNote}
+            onChange={(e) => setDirectNote(e.target.value)}
+            disabled={directBusy}
+          />
+        </div>
+        <div className="mt-2">
+          <Button type="submit" variant="secondary" disabled={directBusy}>
+            {directBusy ? <Spinner label="Merging…" /> : 'Merge now'}
+          </Button>
+        </div>
+        {directMsg && <Note kind={directMsg.kind}>{directMsg.text}</Note>}
+      </form>
+
       <Dialog open={confirmTarget !== null} onClose={() => setConfirmTarget(null)} title="Approve this merge?">
         {confirmTarget && (
           <div>
@@ -204,6 +279,21 @@ function MergeSection() {
             </div>
           </div>
         )}
+      </Dialog>
+
+      <Dialog open={directConfirm} onClose={() => setDirectConfirm(false)} title="Merge these accounts now?">
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          Everything @{directFrom} owns moves to @{directInto}, and @{directFrom} is retired. This takes effect immediately and cannot
+          be undone.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setDirectConfirm(false)} disabled={directBusy}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={() => void mergeNow()} disabled={directBusy}>
+            {directBusy ? <Spinner label="Merging…" /> : 'Merge accounts'}
+          </Button>
+        </div>
       </Dialog>
     </Panel>
   );
@@ -377,6 +467,132 @@ function UserAdminSection() {
   );
 }
 
+interface AdminRoomRow {
+  id: string;
+  name: string;
+  archived: number; // sqlite INTEGER 0/1 round-trips as a number over JSON
+  hostName: string;
+  playerCount: number;
+}
+
+const RoomsSection = memo(function RoomsSection() {
+  const [query, setQuery] = useState('');
+  const [rooms, setRooms] = useState<AdminRoomRow[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AdminRoomRow | null>(null);
+
+  function load(q?: string) {
+    void api
+      .adminRooms(q)
+      .then((r) => setRooms(r.rooms ?? []))
+      .catch(() => setRooms([]));
+  }
+  useEffect(() => load(), []);
+
+  function onSearch(e: FormEvent) {
+    e.preventDefault();
+    load(query.trim() || undefined);
+  }
+
+  async function toggleArchive(room: AdminRoomRow) {
+    setErr(null);
+    setBusyId(room.id);
+    try {
+      await api.adminArchiveRoom(room.id, !room.archived);
+      load(query.trim() || undefined);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'could not update that room');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function doDelete() {
+    if (!deleteTarget) return;
+    setErr(null);
+    setBusyId(deleteTarget.id);
+    try {
+      await api.adminDeleteRoom(deleteTarget.id);
+      setDeleteTarget(null);
+      load(query.trim() || undefined);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'could not delete that room');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <Panel>
+      <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">Rooms</h2>
+      <p className="mt-1 text-sm text-slate-500">Archive or delete any table directly. Delete cannot be undone.</p>
+
+      <form onSubmit={onSearch} className="mt-4 flex max-w-sm gap-2">
+        <Input placeholder="Search by name" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <Button type="submit" variant="secondary">
+          Search
+        </Button>
+      </form>
+
+      {rooms === null ? (
+        <div className="mt-4">
+          <Spinner label="Loading rooms…" />
+        </div>
+      ) : rooms.length === 0 ? (
+        <p className="mt-4 text-sm text-slate-400">No rooms found.</p>
+      ) : (
+        <ul className="mt-4 space-y-2">
+          {rooms.map((r) => (
+            <li
+              key={r.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-sm ring-1 ring-slate-200/70 dark:bg-slate-900/60 dark:ring-slate-700/70"
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-slate-100">
+                  {r.name}
+                  {!!r.archived && <Badge tone="amber">Archived</Badge>}
+                </div>
+                <div className="text-xs text-slate-400">
+                  Hosted by {r.hostName} &middot; {r.playerCount} player{r.playerCount === 1 ? '' : 's'}
+                </div>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button variant="secondary" disabled={busyId === r.id} onClick={() => void toggleArchive(r)}>
+                  {busyId === r.id ? <Spinner label="Working…" /> : r.archived ? 'Unarchive' : 'Archive'}
+                </Button>
+                <Button variant="danger" disabled={busyId === r.id} onClick={() => setDeleteTarget(r)}>
+                  Delete
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {err && <Note kind="bad">{err}</Note>}
+
+      <Dialog open={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="Delete this room?">
+        {deleteTarget && (
+          <div>
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              "{deleteTarget.name}" will be removed from every list. This cannot be undone.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={busyId === deleteTarget.id}>
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={() => void doDelete()} disabled={busyId === deleteTarget.id}>
+                {busyId === deleteTarget.id ? <Spinner label="Deleting…" /> : 'Delete room'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+    </Panel>
+  );
+});
+RoomsSection.displayName = 'RoomsSection';
+
 export function AdminPage() {
   const nav = useNavigate();
   const [checked, setChecked] = useState(false);
@@ -407,6 +623,7 @@ export function AdminPage() {
       </header>
       <LifecycleSection />
       <MergeSection />
+      <RoomsSection />
       <UserAdminSection />
     </div>
   );

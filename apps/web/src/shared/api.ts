@@ -180,4 +180,12 @@ export const api = {
   adminDisableUser: (id: number) => req(`/api/admin/users/${id}/disable`, {}),
   adminSetUserPassword: (id: number, newAuthKey: string, newPublicKey: string) =>
     req(`/api/admin/users/${id}/password`, { newAuthKey, newPublicKey }),
+  // admin-initiated: bypass the request queue entirely (merge/archive/delete
+  // take effect immediately, unlike the self-serve/approval flows above)
+  adminMergeNow: (fromUsername: string, intoUsername: string, note?: string) =>
+    req('/api/admin/merge', { fromUsername, intoUsername, ...(note ? { note } : {}) }),
+  adminRooms: (q?: string) => req(`/api/admin/rooms${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  adminArchiveRoom: (id: string, archived: boolean) =>
+    req(`/api/admin/rooms/${id}/archive`, { archived }),
+  adminDeleteRoom: (id: string) => req(`/api/admin/rooms/${id}/delete`, {}),
 };
