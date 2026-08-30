@@ -166,3 +166,122 @@ describe('exclude archived/deleted rooms from money and listings (Task 2)', () =
     await ctx.app.close();
   });
 });
+
+describe('archive and delete become platform-approved requests (Task 3)', () => {
+  async function createRoom(ctx: ReturnType<typeof createApp>, token: string) {
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/rooms',
+      headers: auth(token),
+      payload: { name: 'Lifecycle Requests', sb: 10, bb: 20 },
+    });
+    return res.json() as { id: string; joinCode: string };
+  }
+
+  function pendingRows(
+    ctx: ReturnType<typeof createApp>,
+    roomId: string,
+    action: string,
+  ): { id: number; requested_by: number; status: string }[] {
+    return ctx.db
+      .prepare(
+        `SELECT id, requested_by, status FROM room_lifecycle_requests WHERE room_id = ? AND action = ?`,
+      )
+      .all(roomId, action) as { id: number; requested_by: number; status: string }[];
+  }
+
+  it('archive no longer mutates rooms.archived and is idempotent on a duplicate pending request', async () => {
+    const ctx = createApp(':memory:');
+    const host = await register(ctx.app, 't3_host');
+    const room = await createRoom(ctx, host.token);
+
+    const first = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/archive`,
+      headers: auth(host.token),
+      payload: { archived: true },
+    });
+    expect(first.statusCode).toBe(200);
+    const firstBody = first.json() as { pending: boolean; requestId: number };
+    expect(firstBody.pending).toBe(true);
+    expect(typeof firstBody.requestId).toBe('number');
+
+    const roomRow = ctx.db.prepare('SELECT archived FROM rooms WHERE id = ?').get(room.id) as {
+      archived: number;
+    };
+    expect(roomRow.archived).toBe(0);
+
+    const rows = pendingRows(ctx, room.id, 'archive');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].requested_by).toBe(host.userId);
+    expect(rows[0].status).toBe('pending');
+
+    // Calling again with the same action returns the existing request instead
+    // of creating a second pending row.
+    const second = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/archive`,
+      headers: auth(host.token),
+      payload: { archived: true },
+    });
+    const secondBody = second.json() as { pending: boolean; requestId: number };
+    expect(secondBody.requestId).toBe(firstBody.requestId);
+    expect(pendingRows(ctx, room.id, 'archive')).toHaveLength(1);
+
+    await ctx.app.close();
+  });
+
+  it('delete creates a pending delete request', async () => {
+    const ctx = createApp(':memory:');
+    const host = await register(ctx.app, 't3_host2');
+    const room = await createRoom(ctx, host.token);
+
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/delete`,
+      headers: auth(host.token),
+      payload: { note: 'duplicate table' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { pending: boolean; requestId: number };
+    expect(body.pending).toBe(true);
+    expect(typeof body.requestId).toBe('number');
+
+    const roomRow = ctx.db.prepare('SELECT deleted FROM rooms WHERE id = ?').get(room.id) as {
+      deleted: number;
+    };
+    expect(roomRow.deleted).toBe(0);
+
+    const rows = pendingRows(ctx, room.id, 'delete');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].requested_by).toBe(host.userId);
+    expect(rows[0].status).toBe('pending');
+
+    await ctx.app.close();
+  });
+
+  it('rejects archive and delete requests from a non-member', async () => {
+    const ctx = createApp(':memory:');
+    const host = await register(ctx.app, 't3_host3');
+    const stranger = await register(ctx.app, 't3_stranger');
+    const room = await createRoom(ctx, host.token);
+
+    const archiveRes = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/archive`,
+      headers: auth(stranger.token),
+      payload: { archived: true },
+    });
+    expect(archiveRes.statusCode).toBe(403);
+
+    const deleteRes = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/delete`,
+      headers: auth(stranger.token),
+      payload: {},
+    });
+    expect(deleteRes.statusCode).toBe(403);
+
+    await ctx.app.close();
+  });
+});

@@ -388,7 +388,33 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
 
   // ---------- banker invalidation ----------
 
-  /** Retire a finished table.
+  /** Find (or create) the pending lifecycle request for a room+action pair.
+   *
+   *  Requesting the same action twice must not pile up duplicate pending rows
+   *  waiting on the platform admin - it should just hand back the request
+   *  that is already in flight. */
+  function requestLifecycleAction(
+    roomId: string,
+    action: string,
+    requestedBy: number,
+    note: string | null,
+  ): number {
+    const existing = db
+      .prepare(
+        `SELECT id FROM room_lifecycle_requests WHERE room_id = ? AND action = ? AND status = 'pending'`,
+      )
+      .get(roomId, action) as { id: number } | undefined;
+    if (existing) return existing.id;
+    const result = db
+      .prepare(
+        `INSERT INTO room_lifecycle_requests (room_id, action, requested_by, status, note, created_at)
+         VALUES (?, ?, ?, 'pending', ?, ?)`,
+      )
+      .run(roomId, action, requestedBy, note, Date.now());
+    return Number(result.lastInsertRowid);
+  }
+
+  /** Request that a finished table be retired.
    *
    *  Archiving is deliberately NOT a delete. The ledger, every hand transcript
    *  and the whole history stay exactly where they are and stay readable - the
@@ -401,8 +427,10 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
    *  first, or settle up after - either way the number does not move because a
    *  table was tidied away.
    *
-   *  Host or banker, reversible, and refused mid-hand so nothing is retired out
-   *  from under a live deal. */
+   *  The host or banker can only ask for this now - a platform admin has to
+   *  approve it before `rooms.archived` actually changes (see admin.ts). Still
+   *  refused mid-hand so nothing gets queued for retirement out from under a
+   *  live deal. */
   app.post('/api/rooms/:id/archive', authed, async (req, reply) => {
     const parsed = z.object({ archived: z.boolean() }).safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
@@ -413,13 +441,30 @@ export function registerSocialRoutes(app: FastifyInstance, db: DB): void {
       return reply.code(403).send({ error: 'only the host or the banker can archive a table' });
     if (parsed.data.archived && activeHands.has(id))
       return reply.code(400).send({ error: 'a hand is in progress - wait for it to finish' });
-    db.prepare('UPDATE rooms SET archived = ?, archived_at = ? WHERE id = ?').run(
-      parsed.data.archived ? 1 : 0,
-      parsed.data.archived ? Date.now() : null,
-      id,
-    );
-    roomEvents.emit('changed', id);
-    return { ok: true, archived: parsed.data.archived };
+    const action = parsed.data.archived ? 'archive' : 'unarchive';
+    const requestId = requestLifecycleAction(id, action, req.userId, null);
+    return { pending: true, requestId };
+  });
+
+  /** Request that a table be permanently retired.
+   *
+   *  Like archiving, this never touches a row - it only queues a request for
+   *  a platform admin to approve. Once approved, `rooms.deleted` is set and
+   *  the room disappears from money and listing queries, but the ledger and
+   *  history stay exactly where they are (see the Task 2 exclusions and
+   *  admin.ts). Host or banker only, refused mid-hand. */
+  app.post('/api/rooms/:id/delete', authed, async (req, reply) => {
+    const parsed = z.object({ note: z.string().optional() }).safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+    const { id } = req.params as { id: string };
+    const room = getRoom(db, id);
+    if (!room) return reply.code(404).send({ error: 'no such room' });
+    if (room.host_id !== req.userId && !canBank(room, req.userId))
+      return reply.code(403).send({ error: 'only the host or the banker can delete a table' });
+    if (activeHands.has(id))
+      return reply.code(400).send({ error: 'a hand is in progress - wait for it to finish' });
+    const requestId = requestLifecycleAction(id, 'delete', req.userId, parsed.data.note ?? null);
+    return { pending: true, requestId };
   });
 
   // void a whole table: its results stop counting anywhere outside the room
