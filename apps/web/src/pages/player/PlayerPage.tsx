@@ -54,7 +54,8 @@ interface PlayerProfile {
   isPlatform: boolean;
   /** 1-based position on the global leaderboard, or null out of range. */
   leaderboardRank: number | null;
-  stats: { net: number; handsPlayed: number; biggestWin: number };
+  /** Null when viewing a private profile you don't own: winnings are hidden. */
+  stats: { net: number; handsPlayed: number; biggestWin: number } | null;
   rivals: {
     userId: number;
     username: string;
@@ -866,7 +867,7 @@ export function PlayerPage() {
   const own = myUserId === p.userId;
   // global leaderboard position: #1, #2, #3... (absent for private mode or
   // for the platform's own house account, which doesn't compete for rank)
-  const rank = p.isPlatform ? null : p.leaderboardRank;
+  const rank = p.isPlatform ? null : (p.leaderboardRank ?? null);
 
   // the whole screen works for a living: identity on the left, the money and
   // the game in the middle, history down the right - no more single skinny
@@ -938,7 +939,7 @@ export function PlayerPage() {
               </div>
             </div>
           </Panel>
-          {!p.isPlatform && (
+          {!p.isPlatform && p.stats && (
             <div className="space-y-2">
               <StatRow
                 label="Net points"

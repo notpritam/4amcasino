@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { useStore } from '../shared/store.ts';
 import { applyTheme, loadPrefs } from '../shared/prefs.ts';
 import { peekPendingJoin } from '../shared/pendingJoin.ts';
+import { api } from '../shared/api.ts';
 import { LandingPage } from '../pages/landing/LandingPage.tsx';
 
 const LoginPage = lazy(() =>
@@ -77,6 +78,8 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
 
 export function App() {
   const token = useStore((s) => s.auth.token);
+  const isPlatform = useStore((s) => s.auth.isPlatform);
+  const setAuth = useStore((s) => s.setAuth);
   const theme = useStore((s) => s.prefs.theme);
   useEffect(() => {
     applyTheme(theme); // applies on load and every toggle
@@ -84,6 +87,18 @@ export function App() {
   useEffect(() => {
     if (token) void loadPrefs(); // refresh prefs from the server
   }, [token]);
+  useEffect(() => {
+    // The login response never carries platform status or leaderboard
+    // placement, so a real admin's nav link wouldn't show up without this -
+    // fetch once per session (fresh login or a page refresh) and merge it in.
+    if (!token || isPlatform !== undefined) return;
+    void api
+      .me()
+      .then((me) => {
+        setAuth({ ...useStore.getState().auth, isPlatform: me.isPlatform, leaderboardRank: me.leaderboardRank });
+      })
+      .catch(() => {});
+  }, [token, isPlatform, setAuth]);
 
   return (
     <BrowserRouter>

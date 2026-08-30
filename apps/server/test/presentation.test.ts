@@ -132,6 +132,28 @@ describe('/api/users/:id/profile exposes isPlatform', () => {
   });
 });
 
+describe('/api/users/:id/profile hidden branch', () => {
+  it('returns leaderboardRank: null (not undefined) for a private profile viewed by someone else', async () => {
+    const alice = await user('privRank_alice');
+    const bob = await user('privRank_bob');
+    seedRoom(ctx.db, 'roomF', alice.userId);
+    appendLedger(ctx.db, { roomId: 'roomF', userId: alice.userId, delta: 100, kind: 'hand-settlement', ref: 'h1' });
+    appendLedger(ctx.db, { roomId: 'roomF', userId: bob.userId, delta: -100, kind: 'hand-settlement', ref: 'h1' });
+    ctx.db.prepare('UPDATE users SET private_mode = 1 WHERE id = ?').run(alice.userId);
+
+    const res = await ctx.app.inject({
+      method: 'GET',
+      url: `/api/users/${alice.userId}/profile`,
+      headers: auth(bob.token),
+    });
+    const body = res.json();
+    expect(body.hidden).toBe(true);
+    expect(body.stats).toBeNull();
+    expect('leaderboardRank' in body).toBe(true);
+    expect(body.leaderboardRank).toBeNull();
+  });
+});
+
 describe('room rosters hide the platform account', () => {
   it('excludes the platform from players but keeps its room_players row for accounting', async () => {
     const alice = await user('roster_alice');

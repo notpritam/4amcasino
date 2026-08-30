@@ -207,6 +207,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
         joinNumber: row.joinNumber,
         memberCount: total,
         stats: null,
+        leaderboardRank: null,
         rivals: [],
         transactions: [],
         hidden: true,
