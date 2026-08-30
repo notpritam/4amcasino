@@ -1,11 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from './db.js';
-import { isPlatform, requirePlatform } from './platform.js';
+import { isPlatform, platformUserId, requirePlatform } from './platform.js';
 import { requireUser } from './auth.js';
 import { roomEvents } from './rooms.js';
 import { mergeAccounts } from './merge.js';
 import { rekey } from './account.js';
+import { activeHands } from './liveHands.js';
 
 const authKey = z.string().length(64).regex(/^[0-9a-f]+$/);
 const pubKey = z.string().length(64).regex(/^[0-9a-f]+$/);
@@ -257,6 +258,133 @@ export function registerAdminRoutes(app: FastifyInstance, db: DB): void {
       `UPDATE account_merge_requests SET status = 'approved', decided_at = ?, decided_by = ? WHERE id = ?`,
     ).run(Date.now(), req.userId, requestId);
     return { ok: true, status: 'approved' };
+  });
+
+  /** Skip the request queue entirely: merge two accounts right now. Guarded
+   *  the same way the approval path above is - mergeAccounts's own checks,
+   *  plus the platform-as-`from` guard duplicated here - but still records
+   *  an (already-decided) row in account_merge_requests so a direct merge
+   *  leaves the same audit trail an approved request would. */
+  app.post('/api/admin/merge', platformOnly, async (req, reply) => {
+    const parsed = z
+      .object({
+        fromUsername: z.string().min(1),
+        intoUsername: z.string().min(1),
+        note: z.string().max(500).optional(),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+
+    const { fromUsername, intoUsername, note } = parsed.data;
+    if (fromUsername === intoUsername) {
+      return reply.code(400).send({ error: 'cannot merge an account into itself' });
+    }
+
+    const from = db.prepare('SELECT id FROM users WHERE username = ?').get(fromUsername) as
+      | { id: number }
+      | undefined;
+    if (!from) return reply.code(404).send({ error: `no such user: ${fromUsername}` });
+    const into = db.prepare('SELECT id FROM users WHERE username = ?').get(intoUsername) as
+      | { id: number }
+      | undefined;
+    if (!into) return reply.code(404).send({ error: `no such user: ${intoUsername}` });
+    if (from.id === into.id) {
+      return reply.code(400).send({ error: 'cannot merge an account into itself' });
+    }
+    if (isPlatform(db, from.id)) {
+      return reply.code(400).send({ error: 'cannot merge the platform account' });
+    }
+
+    try {
+      mergeAccounts(db, from.id, into.id);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'merge failed';
+      return reply.code(409).send({ error: message });
+    }
+
+    const platformId = platformUserId(db)!;
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO account_merge_requests
+         (from_user, into_user, requested_by, note, status, created_at, decided_at, decided_by)
+       VALUES (?, ?, ?, ?, 'approved', ?, ?, ?)`,
+    ).run(from.id, into.id, platformId, note ?? null, now, now, platformId);
+
+    return { ok: true };
+  });
+
+  interface AdminRoomRow {
+    id: string;
+    name: string;
+    archived: number;
+    hostName: string;
+    playerCount: number;
+  }
+
+  /** Every non-deleted room, newest first, for the platform's own room
+   *  management - this mutates rooms directly rather than queuing a request.
+   *  Player counts exclude the platform account itself, same as the
+   *  public/my-rooms listings in rooms.ts, so an idle house seat never
+   *  inflates a headcount. */
+  app.get('/api/admin/rooms', platformOnly, async (req) => {
+    const { q } = req.query as { q?: string };
+    const like = q && q.trim() ? `%${q.trim()}%` : '%';
+    const rows = db
+      .prepare(
+        `SELECT r.id AS id, r.name AS name, r.archived AS archived,
+                COALESCE(u.display_name, u.username) AS hostName,
+                (SELECT COUNT(*) FROM room_players rp WHERE rp.room_id = r.id
+                   AND rp.user_id NOT IN (SELECT CAST(value AS INTEGER) FROM meta WHERE key='platform_user_id')) AS playerCount
+         FROM rooms r
+         JOIN users u ON u.id = r.host_id
+         WHERE r.deleted = 0 AND r.name LIKE ?
+         ORDER BY r.created_at DESC
+         LIMIT 50`,
+      )
+      .all(like) as AdminRoomRow[];
+    return { rooms: rows };
+  });
+
+  /** Archive/unarchive a room directly - same mid-hand guard the self-serve
+   *  request in social.ts uses (only refuse when turning archiving *on*;
+   *  restoring a room is always safe). */
+  app.post('/api/admin/rooms/:id/archive', platformOnly, async (req, reply) => {
+    const parsed = z.object({ archived: z.boolean() }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+
+    const { id } = req.params as { id: string };
+    const room = db.prepare('SELECT id FROM rooms WHERE id = ?').get(id);
+    if (!room) return reply.code(404).send({ error: 'no such room' });
+
+    const { archived } = parsed.data;
+    if (archived && activeHands.has(id)) {
+      return reply.code(400).send({ error: 'a hand is in progress - wait for it to finish' });
+    }
+
+    if (archived) {
+      db.prepare('UPDATE rooms SET archived = 1, archived_at = ? WHERE id = ?').run(Date.now(), id);
+    } else {
+      db.prepare('UPDATE rooms SET archived = 0, archived_at = NULL WHERE id = ?').run(id);
+    }
+    roomEvents.emit('changed', id);
+    return { ok: true, archived };
+  });
+
+  /** Delete a room directly - always refuses mid-hand, same as the
+   *  self-serve request in social.ts (delete has no "undo" toggle, so unlike
+   *  archive there's no safe direction to allow while a hand is live). */
+  app.post('/api/admin/rooms/:id/delete', platformOnly, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const room = db.prepare('SELECT id FROM rooms WHERE id = ?').get(id);
+    if (!room) return reply.code(404).send({ error: 'no such room' });
+
+    if (activeHands.has(id)) {
+      return reply.code(400).send({ error: 'a hand is in progress - wait for it to finish' });
+    }
+
+    db.prepare('UPDATE rooms SET deleted = 1, deleted_at = ? WHERE id = ?').run(Date.now(), id);
+    roomEvents.emit('changed', id);
+    return { ok: true };
   });
 
   /** Force-disable an account outright, no merge involved (a spam signup, a

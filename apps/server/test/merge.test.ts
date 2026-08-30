@@ -825,3 +825,280 @@ describe('Fix: collapse duplicate open settlements created by a merge', () => {
     await ctx.app.close();
   });
 });
+
+describe('Plan 8: admin-initiated merge + room archive/delete', () => {
+  it('non-platform gets 403 on all four admin-initiated routes', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+    const bob = await register(ctx.app, 'bob');
+    setPlatformUserId(ctx.db, bob.userId); // bob is platform, alice is not
+    const roomId = 'room40';
+    seedRoom(ctx.db, roomId, alice.userId);
+
+    const merge = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/admin/merge',
+      headers: auth(alice.token),
+      payload: { fromUsername: 'alice', intoUsername: 'bob' },
+    });
+    expect(merge.statusCode).toBe(403);
+
+    const list = await ctx.app.inject({
+      method: 'GET',
+      url: '/api/admin/rooms',
+      headers: auth(alice.token),
+    });
+    expect(list.statusCode).toBe(403);
+
+    const archive = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/rooms/${roomId}/archive`,
+      headers: auth(alice.token),
+      payload: { archived: true },
+    });
+    expect(archive.statusCode).toBe(403);
+
+    const del = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/rooms/${roomId}/delete`,
+      headers: auth(alice.token),
+    });
+    expect(del.statusCode).toBe(403);
+
+    await ctx.app.close();
+  });
+
+  it('admin merge folds one account into the other and leaves an approved audit row', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice'); // from
+    const bob = await register(ctx.app, 'bob'); // into
+    const house = await register(ctx.app, 'house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/admin/merge',
+      headers: auth(house.token),
+      payload: { fromUsername: 'alice', intoUsername: 'bob', note: 'same person' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true });
+
+    const aliceRow = ctx.db
+      .prepare('SELECT disabled, merged_into FROM users WHERE id = ?')
+      .get(alice.userId) as { disabled: number; merged_into: number | null };
+    expect(aliceRow.disabled).toBe(1);
+    expect(aliceRow.merged_into).toBe(bob.userId);
+
+    const reqRow = ctx.db
+      .prepare(
+        'SELECT status, note, requested_by, decided_by, created_at, decided_at FROM account_merge_requests WHERE from_user = ? AND into_user = ?',
+      )
+      .get(alice.userId, bob.userId) as {
+      status: string;
+      note: string | null;
+      requested_by: number;
+      decided_by: number;
+      created_at: number;
+      decided_at: number | null;
+    };
+    expect(reqRow.status).toBe('approved');
+    expect(reqRow.note).toBe('same person');
+    expect(reqRow.requested_by).toBe(house.userId);
+    expect(reqRow.decided_by).toBe(house.userId);
+    expect(reqRow.decided_at).not.toBeNull();
+
+    await ctx.app.close();
+  });
+
+  it('admin merge refuses the platform account as `from` with 400', async () => {
+    const ctx = createApp(':memory:');
+    const bob = await register(ctx.app, 'bob');
+    const house = await register(ctx.app, 'house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/admin/merge',
+      headers: auth(house.token),
+      payload: { fromUsername: 'house', intoUsername: 'bob' },
+    });
+    expect(res.statusCode).toBe(400);
+
+    const houseRow = ctx.db
+      .prepare('SELECT disabled FROM users WHERE id = ?')
+      .get(house.userId) as { disabled: number };
+    expect(houseRow.disabled).toBe(0);
+
+    await ctx.app.close();
+  });
+
+  it('admin merge returns 409 and disables nobody when the target account is seated', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+    const bob = await register(ctx.app, 'bob');
+    const house = await register(ctx.app, 'house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const roomId = 'room41';
+    seedRoom(ctx.db, roomId, bob.userId);
+    ctx.db
+      .prepare('INSERT INTO room_players (room_id, user_id, seat, stack) VALUES (?, ?, 1, ?)')
+      .run(roomId, alice.userId, 300);
+    activeHands.add(roomId);
+
+    try {
+      const res = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/admin/merge',
+        headers: auth(house.token),
+        payload: { fromUsername: 'alice', intoUsername: 'bob' },
+      });
+      expect(res.statusCode).toBe(409);
+
+      const aliceRow = ctx.db
+        .prepare('SELECT disabled FROM users WHERE id = ?')
+        .get(alice.userId) as { disabled: number };
+      expect(aliceRow.disabled).toBe(0);
+    } finally {
+      activeHands.delete(roomId);
+    }
+    await ctx.app.close();
+  });
+
+  it('GET /api/admin/rooms excludes the platform from playerCount and hides deleted rooms', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+    const bob = await register(ctx.app, 'bob');
+    const house = await register(ctx.app, 'house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const visible = 'room42';
+    seedRoom(ctx.db, visible, alice.userId);
+    ctx.db
+      .prepare('INSERT INTO room_players (room_id, user_id, seat, stack) VALUES (?, ?, NULL, ?)')
+      .run(visible, alice.userId, 100);
+    ctx.db
+      .prepare('INSERT INTO room_players (room_id, user_id, seat, stack) VALUES (?, ?, NULL, ?)')
+      .run(visible, bob.userId, 100);
+    // the platform is seated too (e.g. as the house bank) - must not count
+    ctx.db
+      .prepare('INSERT INTO room_players (room_id, user_id, seat, stack) VALUES (?, ?, NULL, ?)')
+      .run(visible, house.userId, 100);
+
+    const gone = 'room43';
+    seedRoom(ctx.db, gone, alice.userId);
+    ctx.db.prepare('UPDATE rooms SET deleted = 1 WHERE id = ?').run(gone);
+
+    const res = await ctx.app.inject({
+      method: 'GET',
+      url: '/api/admin/rooms',
+      headers: auth(house.token),
+    });
+    expect(res.statusCode).toBe(200);
+    const rooms = res.json().rooms as {
+      id: string;
+      name: string;
+      archived: number;
+      hostName: string;
+      playerCount: number;
+    }[];
+    const visibleRow = rooms.find((r) => r.id === visible);
+    expect(visibleRow).toBeDefined();
+    expect(visibleRow?.playerCount).toBe(2);
+    expect(rooms.find((r) => r.id === gone)).toBeUndefined();
+
+    await ctx.app.close();
+  });
+
+  it('admin archive sets archived=1 and refuses mid-hand; unarchive clears it', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+    const house = await register(ctx.app, 'house');
+    setPlatformUserId(ctx.db, house.userId);
+    const roomId = 'room44';
+    seedRoom(ctx.db, roomId, alice.userId);
+
+    activeHands.add(roomId);
+    try {
+      const blocked = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/admin/rooms/${roomId}/archive`,
+        headers: auth(house.token),
+        payload: { archived: true },
+      });
+      expect(blocked.statusCode).toBe(400);
+    } finally {
+      activeHands.delete(roomId);
+    }
+
+    const archived = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/rooms/${roomId}/archive`,
+      headers: auth(house.token),
+      payload: { archived: true },
+    });
+    expect(archived.statusCode).toBe(200);
+    expect(archived.json()).toMatchObject({ ok: true, archived: true });
+    expect(
+      (ctx.db.prepare('SELECT archived FROM rooms WHERE id = ?').get(roomId) as { archived: number })
+        .archived,
+    ).toBe(1);
+
+    const unarchived = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/rooms/${roomId}/archive`,
+      headers: auth(house.token),
+      payload: { archived: false },
+    });
+    expect(unarchived.statusCode).toBe(200);
+    expect(
+      (ctx.db.prepare('SELECT archived FROM rooms WHERE id = ?').get(roomId) as { archived: number })
+        .archived,
+    ).toBe(0);
+
+    await ctx.app.close();
+  });
+
+  it('admin delete sets deleted=1 and refuses mid-hand; 404 for an unknown room', async () => {
+    const ctx = createApp(':memory:');
+    const alice = await register(ctx.app, 'alice');
+    const house = await register(ctx.app, 'house');
+    setPlatformUserId(ctx.db, house.userId);
+    const roomId = 'room45';
+    seedRoom(ctx.db, roomId, alice.userId);
+
+    activeHands.add(roomId);
+    try {
+      const blocked = await ctx.app.inject({
+        method: 'POST',
+        url: `/api/admin/rooms/${roomId}/delete`,
+        headers: auth(house.token),
+      });
+      expect(blocked.statusCode).toBe(400);
+    } finally {
+      activeHands.delete(roomId);
+    }
+
+    const missing = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/admin/rooms/ghost-room/delete',
+      headers: auth(house.token),
+    });
+    expect(missing.statusCode).toBe(404);
+
+    const deleted = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/admin/rooms/${roomId}/delete`,
+      headers: auth(house.token),
+    });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json()).toMatchObject({ ok: true });
+    expect(
+      (ctx.db.prepare('SELECT deleted FROM rooms WHERE id = ?').get(roomId) as { deleted: number })
+        .deleted,
+    ).toBe(1);
+
+    await ctx.app.close();
+  });
+});
