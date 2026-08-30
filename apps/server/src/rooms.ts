@@ -119,8 +119,17 @@ export function roomPlayers(db: DB, roomId: string) {
   }[];
 }
 
-function roomJson(db: DB, room: RoomRow) {
+/** `roomPlayers` minus the platform/house account. The platform's `room_players` row
+ *  (its rake stack) is real accounting data and must stay in the DB - this only
+ *  filters it out of arrays shown to clients. Shared by the REST room payload
+ *  (`roomJson`) and the live table's websocket broadcast so neither can drift and
+ *  leak the house as a "player". */
+export function presentablePlayers(db: DB, roomId: string) {
   const platformId = platformUserId(db);
+  return roomPlayers(db, roomId).filter((p) => p.userId !== platformId);
+}
+
+function roomJson(db: DB, room: RoomRow) {
   return {
     id: room.id,
     name: room.name,
@@ -141,15 +150,13 @@ function roomJson(db: DB, room: RoomRow) {
     allowSpectators: !!room.allow_spectators,
     autoApproveBuys: !!room.auto_approve_buys,
     tvReplays: !!room.tv_replays,
-    players: roomPlayers(db, room.id)
-      .filter((p) => p.userId !== platformId)
-      .map((p) => ({
-        ...p,
-        privateMode: undefined,
-        privateStats: !!p.privateMode,
-        totalBought: p.privateMode ? 0 : p.totalBought,
-        pendingBuy: p.pendingBuy,
-      })),
+    players: presentablePlayers(db, room.id).map((p) => ({
+      ...p,
+      privateMode: undefined,
+      privateStats: !!p.privateMode,
+      totalBought: p.privateMode ? 0 : p.totalBought,
+      pendingBuy: p.pendingBuy,
+    })),
   };
 }
 

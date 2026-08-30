@@ -34,7 +34,7 @@ import {
 } from '@4am/shared';
 import type { DB } from './db.js';
 import { appendLedger } from './ledger.js';
-import { getRoom, roomPlayers } from './rooms.js';
+import { getRoom, presentablePlayers, roomPlayers } from './rooms.js';
 import { settleRake } from './rake.js';
 import { platformUserId } from './platform.js';
 
@@ -219,7 +219,8 @@ export class GameRoom {
       const current = getRoom(this.db, this.roomId);
       // they came back, or someone already took it: nothing to do
       if (!current || current.host_id !== goneUserId || this.isConnected(goneUserId)) return;
-      const here = roomPlayers(this.db, this.roomId).filter((p) => this.sockets.has(p.userId));
+      // presentablePlayers so the house can never be handed host duties
+      const here = presentablePlayers(this.db, this.roomId).filter((p) => this.sockets.has(p.userId));
       // the banker if they are here - they already hold the room's trust
       const next = here.find((p) => p.userId === current.banker_id) ?? here[0];
       if (!next) return;
@@ -350,7 +351,7 @@ export class GameRoom {
     if (!this.db.open) return; // server shutting down
     const room = getRoom(this.db, this.roomId);
     if (!room) return;
-    const players = roomPlayers(this.db, this.roomId).map((p) => ({
+    const players = presentablePlayers(this.db, this.roomId).map((p) => ({
       userId: p.userId,
       username: p.username,
       displayName: p.displayName,

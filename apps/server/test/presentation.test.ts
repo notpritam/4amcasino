@@ -4,6 +4,7 @@ import { appendLedger } from '../src/ledger.js';
 import { leaderboardRankOf } from '../src/profile.js';
 import { setPlatformUserId } from '../src/platform.js';
 import { settleRake } from '../src/rake.js';
+import { presentablePlayers, roomPlayers } from '../src/rooms.js';
 
 let ctx: ReturnType<typeof createApp>;
 beforeEach(() => {
@@ -140,5 +141,32 @@ describe('room rosters hide the platform account', () => {
       .prepare('SELECT * FROM room_players WHERE room_id = ? AND user_id = ?')
       .get(room.id, house.userId);
     expect(roomPlayerRow).toBeDefined();
+  });
+});
+
+describe('presentablePlayers (shared helper backing both REST and the live broadcast)', () => {
+  it('excludes the platform while raw roomPlayers still includes it, for the same room', async () => {
+    const alice = await user('shared_alice');
+    const house = await user('shared_house');
+    setPlatformUserId(ctx.db, house.userId);
+
+    const room = (
+      await ctx.app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: auth(alice.token),
+        payload: { name: 'Shared Helper Test', sb: 10, bb: 20 },
+      })
+    ).json() as { id: string };
+
+    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1' });
+
+    const raw = roomPlayers(ctx.db, room.id);
+    expect(raw.map((p) => p.userId)).toContain(house.userId);
+
+    const presented = presentablePlayers(ctx.db, room.id);
+    const presentedIds = presented.map((p) => p.userId);
+    expect(presentedIds).toContain(alice.userId);
+    expect(presentedIds).not.toContain(house.userId);
   });
 });
