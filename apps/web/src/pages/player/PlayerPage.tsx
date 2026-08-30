@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
+  Bank,
   CaretDown,
   CaretRight,
   CheckCircle,
@@ -48,6 +49,11 @@ interface PlayerProfile {
   /** Where they sit in the signup queue: 1 is the very first account. */
   joinNumber: number | null;
   memberCount: number;
+  /** The platform's own account: the table's bank, not a player to rank
+   *  against. Its profile trades win/loss framing for house framing. */
+  isPlatform: boolean;
+  /** 1-based position on the global leaderboard, or null out of range. */
+  leaderboardRank: number | null;
   stats: { net: number; handsPlayed: number; biggestWin: number };
   rivals: {
     userId: number;
@@ -843,19 +849,10 @@ export function PlayerPage() {
   const myUserId = useStore((s) => s.auth.userId);
   const [p, setP] = useState<PlayerProfile | null>(null);
   const [style, setStyle] = useState<PlayStyle | null>(null);
-  const [rank, setRank] = useState<number | null>(null);
 
   useEffect(() => {
     api.userProfile(Number(id)).then(setP);
     api.playStyle(Number(id)).then(setStyle).catch(() => {});
-    // global leaderboard position: #1, #2, #3... (absent for private mode)
-    api
-      .leaderboard()
-      .then((r) => {
-        const i = (r.rows as { userId: number }[]).findIndex((x) => x.userId === Number(id));
-        setRank(i >= 0 ? i + 1 : null);
-      })
-      .catch(() => {});
   }, [id]);
 
   if (!p) {
@@ -867,6 +864,9 @@ export function PlayerPage() {
   }
 
   const own = myUserId === p.userId;
+  // global leaderboard position: #1, #2, #3... (absent for private mode or
+  // for the platform's own house account, which doesn't compete for rank)
+  const rank = p.isPlatform ? null : p.leaderboardRank;
 
   // the whole screen works for a living: identity on the left, the money and
   // the game in the middle, history down the right - no more single skinny
@@ -899,7 +899,15 @@ export function PlayerPage() {
                 )}
               </div>
               <div className="min-w-0">
-                <h1 className="truncate font-display text-2xl font-bold">{p.displayName}</h1>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <h1 className="truncate font-display text-2xl font-bold">{p.displayName}</h1>
+                  {p.isPlatform && (
+                    <Badge tone="indigo" className="gap-1">
+                      <Bank size={12} weight="fill" />
+                      House
+                    </Badge>
+                  )}
+                </div>
                 <div className="text-sm text-slate-400">@{p.username}</div>
                 {rank !== null && (
                   <div className="mt-1 text-xs font-semibold text-indigo-500 dark:text-indigo-300">
@@ -930,101 +938,119 @@ export function PlayerPage() {
               </div>
             </div>
           </Panel>
-          <div className="space-y-2">
-            <StatRow
-              label="Net points"
-              value={`${p.stats.net > 0 ? '+' : ''}${fmt(p.stats.net)}`}
-              tone={p.stats.net > 0 ? 'up' : p.stats.net < 0 ? 'down' : undefined}
-            />
-            <StatRow label="Hands played" value={fmt(p.stats.handsPlayed)} />
-            <StatRow
-              label="Biggest win"
-              value={p.stats.biggestWin > 0 ? `+${fmt(p.stats.biggestWin)}` : '0'}
-              tone={p.stats.biggestWin > 0 ? 'up' : undefined}
-            />
-          </div>
-          <BestHandCard userId={p.userId} own={own} />
+          {!p.isPlatform && (
+            <div className="space-y-2">
+              <StatRow
+                label="Net points"
+                value={`${p.stats.net > 0 ? '+' : ''}${fmt(p.stats.net)}`}
+                tone={p.stats.net > 0 ? 'up' : p.stats.net < 0 ? 'down' : undefined}
+              />
+              <StatRow label="Hands played" value={fmt(p.stats.handsPlayed)} />
+              <StatRow
+                label="Biggest win"
+                value={p.stats.biggestWin > 0 ? `+${fmt(p.stats.biggestWin)}` : '0'}
+                tone={p.stats.biggestWin > 0 ? 'up' : undefined}
+              />
+            </div>
+          )}
+          {!p.isPlatform && <BestHandCard userId={p.userId} own={own} />}
           {!own && <PlayerActions userId={p.userId} name={p.username} />}
         </div>
 
         {/* middle: the money and the game */}
         <div className="min-w-0 space-y-5">
-          {own && <SettleUpPanel />}
-          {style && style.hands > 0 && (
+          {own && !p.isPlatform && <SettleUpPanel />}
+          {p.isPlatform ? (
             <Panel>
-              <div className="mb-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                <h2 className="font-display font-semibold">Play style</h2>
-                <Badge
-                  tone={
-                    style.archetype === 'The shark'
-                      ? 'emerald'
-                      : style.archetype === 'The calling station'
-                        ? 'amber'
-                        : 'indigo'
-                  }
-                >
-                  {style.archetype}
-                </Badge>
-                <span className="text-xs text-slate-400">
-                  from {fmt(style.hands)} public hand transcripts
-                </span>
+              <div className="mb-2 flex items-center gap-2">
+                <Bank size={18} weight="fill" className="text-indigo-500 dark:text-indigo-300" />
+                <h2 className="font-display font-semibold">The table's bank</h2>
               </div>
-              <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,1fr)_220px]">
-                <StyleRadar style={style} />
-                <div className="space-y-1.5 text-sm text-slate-600 dark:text-slate-300">
-                  <p>
-                    Plays <b>{style.vpipPct}%</b> of hands, raises first in <b>{style.pfrPct}%</b>.
-                  </p>
-                  <p>
-                    Aggression factor <b>{style.aggressionFactor}</b> (bets and raises per call).
-                  </p>
-                  <p>
-                    Reaches showdown in <b>{style.showdownPct}%</b> of hands and wins{' '}
-                    <b>{style.winPct}%</b>.
-                  </p>
-                  <p>
-                    <b>{style.quietWinPct}%</b> of wins never showed a card.
-                  </p>
-                </div>
-              </div>
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                This account holds the pot, pays out buy-ins, and settles debts across every room.
+                It isn't a player chasing the leaderboard, so its balance is the house's, not a
+                rival's.
+              </p>
             </Panel>
-          )}
-          <Panel>
-            <h2 className="mb-3 font-display font-semibold">Rivals</h2>
-            {p.rivals.length === 0 ? (
-              <p className="text-sm text-slate-500">No shared hands yet.</p>
-            ) : (
-              <div className="space-y-2">
-                {p.rivals.map((r, i) => (
-                  <Link
-                    key={r.userId}
-                    to={`/players/${r.userId}`}
-                    className="flex items-center gap-3 rounded-lg p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/60"
-                  >
-                    {i === 0 && <Badge tone="amber">top rival</Badge>}
-                    <Avatar userId={r.userId} name={r.displayName} version={r.avatarVersion} size="sm" />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{r.displayName}</span>
-                    <span className="text-xs text-slate-400">
-                      {r.handsTogether} hand{r.handsTogether === 1 ? '' : 's'} together
-                    </span>
-                    <span
-                      className={cn(
-                        'font-display text-sm font-bold',
-                        r.netVs > 0
-                          ? 'text-emerald-600'
-                          : r.netVs < 0
-                            ? 'text-rose-600'
-                            : 'text-slate-400',
-                      )}
+          ) : (
+            <>
+              {style && style.hands > 0 && (
+                <Panel>
+                  <div className="mb-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                    <h2 className="font-display font-semibold">Play style</h2>
+                    <Badge
+                      tone={
+                        style.archetype === 'The shark'
+                          ? 'emerald'
+                          : style.archetype === 'The calling station'
+                            ? 'amber'
+                            : 'indigo'
+                      }
                     >
-                      {r.netVs > 0 ? '+' : ''}
-                      {fmt(r.netVs)} vs them
+                      {style.archetype}
+                    </Badge>
+                    <span className="text-xs text-slate-400">
+                      from {fmt(style.hands)} public hand transcripts
                     </span>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </Panel>
+                  </div>
+                  <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,1fr)_220px]">
+                    <StyleRadar style={style} />
+                    <div className="space-y-1.5 text-sm text-slate-600 dark:text-slate-300">
+                      <p>
+                        Plays <b>{style.vpipPct}%</b> of hands, raises first in <b>{style.pfrPct}%</b>.
+                      </p>
+                      <p>
+                        Aggression factor <b>{style.aggressionFactor}</b> (bets and raises per call).
+                      </p>
+                      <p>
+                        Reaches showdown in <b>{style.showdownPct}%</b> of hands and wins{' '}
+                        <b>{style.winPct}%</b>.
+                      </p>
+                      <p>
+                        <b>{style.quietWinPct}%</b> of wins never showed a card.
+                      </p>
+                    </div>
+                  </div>
+                </Panel>
+              )}
+              <Panel>
+                <h2 className="mb-3 font-display font-semibold">Rivals</h2>
+                {p.rivals.length === 0 ? (
+                  <p className="text-sm text-slate-500">No shared hands yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {p.rivals.map((r, i) => (
+                      <Link
+                        key={r.userId}
+                        to={`/players/${r.userId}`}
+                        className="flex items-center gap-3 rounded-lg p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                      >
+                        {i === 0 && <Badge tone="amber">top rival</Badge>}
+                        <Avatar userId={r.userId} name={r.displayName} version={r.avatarVersion} size="sm" />
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium">{r.displayName}</span>
+                        <span className="text-xs text-slate-400">
+                          {r.handsTogether} hand{r.handsTogether === 1 ? '' : 's'} together
+                        </span>
+                        <span
+                          className={cn(
+                            'font-display text-sm font-bold',
+                            r.netVs > 0
+                              ? 'text-emerald-600'
+                              : r.netVs < 0
+                                ? 'text-rose-600'
+                                : 'text-slate-400',
+                          )}
+                        >
+                          {r.netVs > 0 ? '+' : ''}
+                          {fmt(r.netVs)} vs them
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+            </>
+          )}
         </div>
 
         {/* right rail: history */}
