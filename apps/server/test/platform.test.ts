@@ -138,3 +138,16 @@ describe('platform credentials are loginable', () => {
     await ctx.app.close();
   }, 15_000);
 });
+
+// Neutral, non-secret credentials used only to pin the KDF output - not the
+// real platform password.
+describe('KDF golden vector (must match apps/web/src/shared/crypto.ts)', () => {
+  it('derives fixed authKey/publicKey for a known input', () => {
+    const { authKey, publicKey } = derivePlatformCredentials('goldenuser', 'golden-vector-pw-1');
+    // Pinned scrypt output for PARAMS={N:2**15,r:8,p:1,dkLen:32} and the
+    // '4am/auth/<username>' / '4am/id/<username>' salts. If this breaks, the
+    // web KDF (apps/web/src/shared/crypto.ts) and this copy have diverged.
+    expect(authKey).toBe('4b0e90b4b38b8591972c47506a02d061eca855e8af51b4d7a41168d47e62e811');
+    expect(publicKey).toBe('d736f1c1d399d1395905471702bca2ad6c5dea63570d8e51d20bbfc9db496e21');
+  }, 15_000);
+});

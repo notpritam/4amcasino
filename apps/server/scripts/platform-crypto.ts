@@ -1,3 +1,5 @@
+// Mirrors apps/web/src/shared/crypto.ts. The golden-vector test in
+// apps/server/test/platform.test.ts guards against the two copies drifting.
 import { scrypt } from '@noble/hashes/scrypt';
 import { bytesToHex } from '@noble/hashes/utils';
 import { identityFromSeed } from '@4am/mental-poker';
