@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { verifyLedger } from '../src/ledger.js';
+import { appendLedger, rechainRoom, verifyLedger } from '../src/ledger.js';
 import { isSevenDeuce } from '../src/game.js';
 import { cardFromName } from '@4am/shared';
+import { openDb } from '../src/db.js';
+import { createUser } from '../src/auth.js';
 
 let ctx: ReturnType<typeof createApp>;
 beforeEach(() => {
@@ -529,5 +531,49 @@ describe('private mode', () => {
       headers: auth(host.token),
     });
     expect(inbox.json().requests).toHaveLength(1);
+  });
+});
+
+describe('rechainRoom', () => {
+  function seedRoomAndChain(roomId: string) {
+    const db = openDb(':memory:');
+    const { userId: hostId } = createUser(db, 'host', 'a'.repeat(64), 'b'.repeat(64));
+    const { userId: aliceId } = createUser(db, 'alice', 'c'.repeat(64), 'd'.repeat(64));
+    db.prepare(
+      `INSERT INTO rooms (id, name, join_code, host_id, banker_id, sb, bb, audit_mode, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'private', ?)`,
+    ).run(roomId, 'T', roomId.toUpperCase().slice(0, 6), hostId, hostId, 1, 2, Date.now());
+    appendLedger(db, { roomId, userId: hostId, delta: 500, kind: 'purchase', ref: 'r1' });
+    appendLedger(db, { roomId, userId: aliceId, delta: 300, kind: 'purchase', ref: 'r2' });
+    appendLedger(db, { roomId, userId: aliceId, delta: -100, kind: 'hand-settlement', ref: 'h1' });
+    return { db, hostId, aliceId };
+  }
+
+  it('recomputes a valid chain from a broken one, preserving the mutated field', () => {
+    const { db, aliceId } = seedRoomAndChain('room01');
+    expect(verifyLedger(db, 'room01').ok).toBe(true);
+
+    // tamper with the middle row's user_id directly (bypassing appendLedger,
+    // as an admin fixing an attribution error would) - this breaks the chain
+    // from that row forward
+    db.prepare('UPDATE ledger SET user_id = ? WHERE id = 2').run(aliceId + 999);
+    expect(verifyLedger(db, 'room01').ok).toBe(false);
+
+    rechainRoom(db, 'room01');
+
+    expect(verifyLedger(db, 'room01').ok).toBe(true);
+    const row = db.prepare('SELECT user_id FROM ledger WHERE id = 2').get() as { user_id: number };
+    expect(row.user_id).toBe(aliceId + 999);
+  });
+
+  it('leaves an already-valid chain\'s field values untouched', () => {
+    const { db } = seedRoomAndChain('room01');
+    const before = db.prepare('SELECT * FROM ledger WHERE room_id = ? ORDER BY id').all('room01');
+
+    rechainRoom(db, 'room01');
+
+    expect(verifyLedger(db, 'room01').ok).toBe(true);
+    const after = db.prepare('SELECT * FROM ledger WHERE room_id = ? ORDER BY id').all('room01');
+    expect(after).toEqual(before);
   });
 });

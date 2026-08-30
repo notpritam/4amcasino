@@ -82,6 +82,26 @@ export function verifyLedger(db: DB, roomId: string): { ok: boolean; badId?: num
   return { ok: true };
 }
 
+/** Recomputes prev_hash/entry_hash for every row of a room, in id order from
+ *  'genesis', using the rows' current field values. Used after a deliberate,
+ *  audited rewrite of ledger history (e.g. re-attributing rake to the
+ *  platform account) so the hash chain reflects the new-but-true history
+ *  instead of being permanently broken. */
+export function rechainRoom(db: DB, roomId: string): void {
+  const rows = db.prepare('SELECT * FROM ledger WHERE room_id = ? ORDER BY id ASC').all(roomId) as LedgerRow[];
+  let prev = 'genesis';
+  const upd = db.prepare('UPDATE ledger SET prev_hash = ?, entry_hash = ? WHERE id = ?');
+  const tx = db.transaction(() => {
+    for (const row of rows) {
+      const { id, prev_hash, entry_hash, ...fields } = row;
+      const eh = hashFields(prev, fields);
+      upd.run(prev, eh, id);
+      prev = eh;
+    }
+  });
+  tx();
+}
+
 export function stackOf(db: DB, roomId: string, userId: number): number {
   const row = db
     .prepare('SELECT stack FROM room_players WHERE room_id = ? AND user_id = ?')
