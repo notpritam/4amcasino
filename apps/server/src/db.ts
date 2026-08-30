@@ -122,6 +122,11 @@ function migrate(db: DB): void {
   // players stays owed. See the comment on /api/rooms/:id/archive.
   ensureColumn(db, 'rooms', 'archived', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'rooms', 'archived_at', 'INTEGER');
+  // Deletion, like archiving, is soft: rows are never dropped. Archive/unarchive
+  // and delete both go through room_lifecycle_requests below and only take
+  // effect once a platform admin approves them.
+  ensureColumn(db, 'rooms', 'deleted', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'rooms', 'deleted_at', 'INTEGER');
   ensureColumn(db, 'rooms', 'meet_link', 'TEXT');
   ensureColumn(db, 'rooms', 'visibility', "TEXT NOT NULL DEFAULT 'private'");
   ensureColumn(db, 'rooms', 'spectate_token', 'TEXT');
@@ -229,6 +234,22 @@ function migrate(db: DB): void {
       confirmed INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_house_payments_user ON house_payments(user_id);
+  `);
+  db.exec(`
+    -- Archive/unarchive/delete are requested by a host or banker but only take
+    -- effect once a platform admin approves them (see requirePlatform).
+    CREATE TABLE IF NOT EXISTS room_lifecycle_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      room_id TEXT NOT NULL,
+      action TEXT NOT NULL,            -- 'archive' | 'unarchive' | 'delete'
+      requested_by INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'approved' | 'rejected'
+      note TEXT,
+      created_at INTEGER NOT NULL,
+      decided_at INTEGER,
+      decided_by INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_lifecycle_status ON room_lifecycle_requests(status);
   `);
   // The schema had no indexes at all, so every ledger and transcript read was a
   // full table scan - which is what turns "this table has played a lot of hands"
