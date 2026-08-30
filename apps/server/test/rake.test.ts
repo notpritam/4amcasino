@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { existsSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { openDb } from '../src/db.js';
 import { createUser } from '../src/auth.js';
 import { appendLedger, verifyLedger } from '../src/ledger.js';
-import { settleRake, rewriteRakeToPlatform } from '../src/rake.js';
+import { settleRake, rewriteRakeToPlatform, backupDatabaseConsistent } from '../src/rake.js';
 import { createApp } from '../src/app.js';
 import { setPlatformUserId } from '../src/platform.js';
 
@@ -255,5 +258,53 @@ describe('rewriteRakeToPlatform', () => {
     const afterSecond = db.prepare('SELECT * FROM ledger WHERE room_id = ? ORDER BY id').all('room01');
     expect(afterSecond).toEqual(afterFirst);
     expect(verifyLedger(db, 'room01').ok).toBe(true);
+  });
+});
+
+describe('backupDatabaseConsistent', () => {
+  it('checkpoints the WAL before copying, so the backup includes rows not yet flushed to the main db file', () => {
+    const stamp = `${process.pid}-${Date.now()}`;
+    const srcPath = join(tmpdir(), `plan2-wal-src-${stamp}.db`);
+    const backupPath = join(tmpdir(), `plan2-wal-backup-${stamp}.db`);
+    const cleanup = () => {
+      for (const p of [
+        srcPath,
+        `${srcPath}-wal`,
+        `${srcPath}-shm`,
+        backupPath,
+        `${backupPath}-wal`,
+        `${backupPath}-shm`,
+      ]) {
+        if (existsSync(p)) unlinkSync(p);
+      }
+    };
+
+    let src: ReturnType<typeof openDb> | undefined;
+    try {
+      // Keep the source connection open (mirroring a live server) so these
+      // committed writes sit in the -wal file, not yet folded into the main
+      // .db file - the exact condition a naive copyFileSync would miss.
+      src = openDb(srcPath);
+      const { userId: hostId } = createUser(src, 'wal_host', 'a'.repeat(64), 'b'.repeat(64));
+      seedRoom(src, 'walroom', hostId);
+      appendLedger(src, { roomId: 'walroom', userId: hostId, delta: 500, kind: 'purchase', ref: 'buy1' });
+      appendLedger(src, { roomId: 'walroom', userId: hostId, delta: 100, kind: 'purchase', ref: 'buy2' });
+
+      backupDatabaseConsistent(srcPath, backupPath);
+
+      const backupDb = openDb(backupPath);
+      const rows = backupDb
+        .prepare('SELECT user_id, delta, kind FROM ledger WHERE room_id = ? ORDER BY id')
+        .all('walroom');
+      expect(rows).toEqual([
+        { user_id: hostId, delta: 500, kind: 'purchase' },
+        { user_id: hostId, delta: 100, kind: 'purchase' },
+      ]);
+      expect(verifyLedger(backupDb, 'walroom').ok).toBe(true);
+      backupDb.close();
+    } finally {
+      src?.close();
+      cleanup();
+    }
   });
 });

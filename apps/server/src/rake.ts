@@ -1,5 +1,28 @@
+import Database from 'better-sqlite3';
+import { copyFileSync } from 'node:fs';
 import type { DB } from './db.js';
 import { appendLedger, rechainRoom, verifyLedger } from './ledger.js';
+
+/** Copies `dbPath` to `backupPath` in a way that is safe to do while the
+ *  server has the db open in WAL mode: a plain `copyFileSync` of just the
+ *  main `.db` file can silently miss the most recently committed
+ *  transactions if they're still sitting in an un-checkpointed `-wal` file -
+ *  the worst failure mode for an irreversible money migration's backup. A
+ *  `wal_checkpoint(TRUNCATE)` folds every committed transaction back into
+ *  the main file (and empties the WAL) before the copy runs, so the copy is
+ *  a complete, consistent snapshot. Opens its own short-lived connection so
+ *  it doesn't disturb the caller's. */
+export function backupDatabaseConsistent(dbPath: string, backupPath: string): void {
+  // fileMustExist: a missing source should fail fast like copyFileSync did,
+  // not silently create a fresh empty db at dbPath.
+  const src = new Database(dbPath, { fileMustExist: true });
+  try {
+    src.pragma('wal_checkpoint(TRUNCATE)');
+  } finally {
+    src.close();
+  }
+  copyFileSync(dbPath, backupPath);
+}
 
 /** Credits raked chips to `recipientId` on the room ledger (same hand ref), ensuring
  *  the recipient is a room member first so the stack has somewhere to land. */
