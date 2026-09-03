@@ -794,7 +794,7 @@ export function TablePage() {
               </motion.span>
               {(hand.result?.commission ?? 0) > 0 && (
                 <motion.span variants={revealItem} className="text-xs text-slate-500">
-                  1% table commission · {fmt(hand.result!.commission!)} to the banker
+                  1% table commission · {fmt(hand.result!.commission!)} to the house
                 </motion.span>
               )}
               {!hand.showdown &&
@@ -946,7 +946,7 @@ export function TablePage() {
             </span>
             {(hand.result?.commission ?? 0) > 0 && (
               <span className="text-[0.65rem] text-white/50">
-                1% commission · {fmt(hand.result!.commission!)} to the banker
+                1% commission · {fmt(hand.result!.commission!)} to the house
               </span>
             )}
             {!hand.showdown && hand.result?.deltas

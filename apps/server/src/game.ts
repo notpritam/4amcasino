@@ -1708,8 +1708,9 @@ class Hand {
     const board = this.currentBoard();
     const pots = computePots(st.seats);
     // the house always gets its cut: a mandatory 1% commission comes off every
-    // pot before any award, floored per pot, and lands with the banker at
-    // finalize - the donation that keeps the table running
+    // pot before any award, floored per pot, and lands with the platform
+    // account at finalize (falling back to the banker only if the platform
+    // account is unseeded) - the donation that keeps the table running
     // (requested by notpritam, docs/FEATURES.md)
     let rake = 0;
     for (const p of pots) {

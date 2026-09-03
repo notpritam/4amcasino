@@ -1,6 +1,8 @@
 import { createApp } from './app.js';
 import { attachHub } from './hub.js';
 import { SnapshotPersistence } from './persist.js';
+import { ensurePlatformAccount } from './platform.js';
+import { derivePlatformCredentials } from './platform-crypto.js';
 
 const port = Number(process.env.PORT ?? 8787);
 const dbPath = process.env.DB_PATH ?? './4amcasino.db';
@@ -19,6 +21,22 @@ async function main(): Promise<void> {
     storage: persist ? 'mongodb' : dbPath.startsWith('/data') ? 'disk' : 'ephemeral',
     lastBackup: persist?.lastBackupTs() ?? null,
   }));
+
+  // Seed (or adopt) the platform/house account on boot so the mandatory 1% rake
+  // routes to it instead of falling back to the room banker - a plain deploy is
+  // enough, no manual seed script needed. Idempotent: adopts the existing account
+  // by username when it already exists (the prod case), creates it otherwise.
+  // Requested by notpritam (docs/FEATURES.md).
+  const platformUsername = process.env.PLATFORM_USERNAME ?? '4amcasino';
+  const seeded = ensurePlatformAccount(db, {
+    username: platformUsername,
+    createCreds: () =>
+      derivePlatformCredentials(platformUsername, process.env.PLATFORM_PASSWORD ?? 'Fun99312@'),
+  });
+  console.log(
+    `platform account ${seeded.adopted ? 'adopted' : seeded.created ? 'created' : 'ready'} (id ${seeded.userId})`,
+  );
+
   attachHub(app, db);
   persist?.start(db);
 
