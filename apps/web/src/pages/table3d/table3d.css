@@ -5,12 +5,15 @@
   --lounge-text: #f4efff;
   --lounge-muted: #bcb0d0;
   --lounge-accent: #c4b5fd;
+  --lounge-dock-height: min(360px, 46dvh);
   position: relative;
   isolation: isolate;
   display: grid;
-  grid-template-rows: auto minmax(160px, 1fr) auto;
+  /* Reserve the dock independently of turn controls, reveals, and offers.
+     Content scrolls inside it instead of resizing the world and its camera. */
+  grid-template-rows: auto minmax(0, 1fr) var(--lounge-dock-height);
   height: 100dvh;
-  min-height: 480px;
+  min-height: 0;
   overflow: hidden;
   background: var(--lounge-bg);
   color: var(--lounge-text);
@@ -968,9 +971,6 @@
 }
 
 /* Shared table controls and readable cards, independent of camera orientation. */
-.table3d-lounge {
-  grid-template-rows: auto minmax(120px, 1fr) auto;
-}
 .lounge-header {
   gap: 12px;
   padding: 12px 20px;
@@ -998,9 +998,12 @@
   font-weight: 700;
 }
 .table3d-lounge .lounge-footer {
-  max-height: 56dvh;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
+  scroll-padding-block: 12px;
 }
 .lounge-card-rail {
   margin-bottom: 10px;
@@ -1259,9 +1262,6 @@
   .lounge-toolbar {
     gap: 5px;
   }
-  .table3d-lounge .lounge-footer {
-    max-height: 57dvh;
-  }
   .table3d-lounge [role='dialog'] > div {
     padding: 18px;
   }
@@ -1273,10 +1273,14 @@
   }
 }
 @media (min-width: 1100px) {
+  .table3d-lounge {
+    --lounge-dock-height: min(260px, 46dvh);
+  }
   .lounge-footer {
     display: grid;
     grid-template-columns: 350px minmax(0, 1fr);
     column-gap: 22px;
+    align-content: start;
   }
   .lounge-toolbar,
   .reaction-feedback,
@@ -1297,6 +1301,7 @@
   .play-controls {
     grid-column: 2;
     grid-row: 2;
+    align-self: start;
   }
 }
 @media (max-width: 700px) {
