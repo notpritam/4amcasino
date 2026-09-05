@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
 import {
@@ -133,25 +133,55 @@ function DesktopIconButton({
   );
 }
 
-export function TablePage() {
+/** Both visual tables use one room lifecycle and the same dialogs/actions. */
+export interface TablePresentation {
+  menuOpen: boolean;
+  setMenuOpen: (open: boolean) => void;
+  utilities: ReactNode;
+  chatOpen: boolean;
+  setChatOpen: (open: boolean) => void;
+  unreadChat: number;
+  voiceControl: ReactNode;
+  fullscreenControl: ReactNode;
+  seatPicker: ReactNode;
+  peekPanel: ReactNode;
+  runTwice: ReactNode;
+  status: string | null;
+  amSpectator: boolean;
+  players: SeatView[];
+  canManagePlayers: boolean;
+  standUp: (userId: number) => void;
+  showResult: () => void;
+  showLargeCards: () => void;
+}
+
+export function TablePage({
+  renderTable,
+}: {
+  renderTable?: (table: TablePresentation) => ReactNode;
+} = {}) {
   const { id: roomId } = useParams<{ id: string }>();
-  const room = useStore((s) => s.room);
+  const storedRoom = useStore((s) => s.room);
+  const room = storedRoom?.room.id === roomId ? storedRoom : null;
   const hand = useStore((s) => s.hand);
   const auth = useStore((s) => s.auth);
   const voiceState = useStore((s) => s.voice);
   const chat = useStore((s) => s.chat);
   const errors = useStore((s) => s.errors);
   const dismissError = useStore((s) => s.dismissError);
-  const resetHand = useStore((s) => s.resetHand);
   const [resultDismissed, setResultDismissed] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [brokeDismissed, setBrokeDismissed] = useState(false);
   const [joinSlow, setJoinSlow] = useState(false);
   const wsConnected = useStore((s) => s.wsConnected);
-  const [chatOpen, setChatOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(!renderTable);
   const [isFullscreen, setIsFullscreen] = useState(false);
   // your hole cards as a big draggable panel; hide/show is remembered
-  const [bigCards, setBigCards] = useState(() => localStorage.getItem('4am-big-cards') !== 'off');
+  const [bigCards, setBigCards] = useState(() =>
+    renderTable
+      ? localStorage.getItem('4am-big-cards') === 'on'
+      : localStorage.getItem('4am-big-cards') !== 'off',
+  );
   useEffect(() => {
     const sync = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', sync);
@@ -208,7 +238,7 @@ export function TablePage() {
   }, [chatOpen, chat.length]);
 
   useEffect(() => {
-    if (!chatOpen) return;
+    if (!chatOpen || renderTable) return;
     const desktopMedia = window.matchMedia('(min-width: 768px)');
     const closeAtBreakpoint = () => setChatOpen(false);
     desktopMedia.addEventListener('change', closeAtBreakpoint);
@@ -245,7 +275,7 @@ export function TablePage() {
   }, [chatOpen]);
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen || renderTable) return;
     const desktopMedia = window.matchMedia('(min-width: 768px)');
     const closeAtBreakpoint = () => setMenuOpen(false);
     desktopMedia.addEventListener('change', closeAtBreakpoint);
@@ -300,13 +330,15 @@ export function TablePage() {
       };
 
   useEffect(() => {
+    let alive = true;
+    setJoinError(null);
     bindGameClient();
     wsClient.joinRoom(roomId!);
-    // validate membership over REST too: surfaces 401/403/404 instead of hanging
-    api
-      .getRoom(roomId!)
-      .catch((e) => setJoinError(e instanceof Error ? e.message : 'could not load room'));
+    api.getRoom(roomId!).catch((e) => {
+      if (alive) setJoinError(e instanceof Error ? e.message : 'Could not load room');
+    });
     return () => {
+      alive = false;
       voice.leave();
       wsClient.leaveRoom();
       useStore.getState().setRoom(null);
@@ -564,7 +596,7 @@ export function TablePage() {
   const hasPeekContent =
     hand.peekOffers.length > 0 ||
     peekReveals.length > 0 ||
-    (showResult && peekEligible.length > 0 && mySeat !== null);
+    (!!hand.result && peekEligible.length > 0 && mySeat !== null);
 
   const peekBody = (dark: boolean) => (
     <div className="space-y-2.5">
@@ -597,7 +629,7 @@ export function TablePage() {
           <span className={dark ? 'text-white/50' : 'text-slate-400'}>only you can see this</span>
         </div>
       ))}
-      {showResult && peekEligible.length > 0 && mySeat !== null && (
+      {hand.result && peekEligible.length > 0 && mySeat !== null && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className={dark ? 'text-white/60' : 'text-slate-500'}>Pay to peek at</span>
           {peekEligible.map((v) => (
@@ -658,7 +690,10 @@ export function TablePage() {
     const rt = hand.showdown.runTwice;
     if (rt) {
       const winnersOf = (aw: { seat: number; amount: number }[]) =>
-        aw.filter((a) => a.amount > 0).map((a) => nameOf(a.seat)).join(' & ');
+        aw
+          .filter((a) => a.amount > 0)
+          .map((a) => nameOf(a.seat))
+          .join(' & ');
       const w1 = winnersOf(rt.awards[0]);
       const w2 = winnersOf(rt.awards[1]);
       return {
@@ -713,7 +748,6 @@ export function TablePage() {
         <button
           onClick={() => {
             setResultDismissed(true);
-            resetHand();
           }}
           aria-label="Dismiss result"
           className="absolute right-3 top-3 rounded-md p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -842,7 +876,12 @@ export function TablePage() {
         disabled={askedToJoin}
         onClick={() => {
           setAskedToJoin(true);
-          void api.askJoin(roomId!).catch(() => {});
+          void api.askJoin(roomId!).catch((err) => {
+            setAskedToJoin(false);
+            useStore
+              .getState()
+              .pushError(err instanceof Error ? err.message : 'Could not ask to join. Try again.');
+          });
         }}
       >
         {askedToJoin ? 'Asked. Waiting for the host to let you in.' : 'Ask to join the game'}
@@ -851,7 +890,7 @@ export function TablePage() {
   );
 
   const seatPicker = (
-    <Panel>
+    <Panel className="shared-seat-picker">
       <div className="mb-3 text-sm font-medium text-slate-600 dark:text-slate-300">Pick a seat</div>
       <div className="flex flex-wrap gap-2">
         {Array.from({ length: 9 }, (_, i) => (
@@ -873,7 +912,6 @@ export function TablePage() {
       <button
         onClick={() => {
           setResultDismissed(true);
-          resetHand();
         }}
         aria-label="Dismiss result"
         className="absolute right-2 top-2 rounded-md p-1 text-white/50 active:bg-white/10"
@@ -949,20 +987,21 @@ export function TablePage() {
                 1% commission · {fmt(hand.result!.commission!)} to the house
               </span>
             )}
-            {!hand.showdown && hand.result?.deltas
-              .filter((d) => d.delta !== 0)
-              .map((d) => (
-                <span
-                  key={d.seat}
-                  className={cn(
-                    'font-display text-xs font-bold',
-                    d.delta > 0 ? 'text-emerald-300' : 'text-rose-300',
-                  )}
-                >
-                  {seatViews.find((x) => x.seat === d.seat)?.displayName} {d.delta > 0 ? '+' : ''}
-                  {fmt(d.delta)}
-                </span>
-              ))}
+            {!hand.showdown &&
+              hand.result?.deltas
+                .filter((d) => d.delta !== 0)
+                .map((d) => (
+                  <span
+                    key={d.seat}
+                    className={cn(
+                      'font-display text-xs font-bold',
+                      d.delta > 0 ? 'text-emerald-300' : 'text-rose-300',
+                    )}
+                  >
+                    {seatViews.find((x) => x.seat === d.seat)?.displayName} {d.delta > 0 ? '+' : ''}
+                    {fmt(d.delta)}
+                  </span>
+                ))}
             {shareData && (
               <button
                 onClick={() => setShareOpen(true)}
@@ -1007,6 +1046,12 @@ export function TablePage() {
   const utilityItemClass =
     'flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-white';
 
+  const reportError = (error: unknown) =>
+    useStore
+      .getState()
+      .pushError(
+        error instanceof Error ? error.message : 'That change did not go through. Try again.',
+      );
   const closeUtilityMenu = () => setMenuOpen(false);
   const utilityAction = (action: TableUtilityAction) => {
     switch (action) {
@@ -1094,7 +1139,7 @@ export function TablePage() {
             role="menuitem"
             className={utilityItemClass}
             onClick={() => {
-              setSitOut(!meSittingOut);
+              if (wsConnected) setSitOut(!meSittingOut);
               closeUtilityMenu();
             }}
           >
@@ -1110,7 +1155,9 @@ export function TablePage() {
               aria-label="Turn timer"
               value={room.room.actionSecs ?? 45}
               disabled={handLive}
-              onChange={(event) => void api.roomSettings(roomId!, +event.target.value)}
+              onChange={(event) =>
+                void api.roomSettings(roomId!, +event.target.value).catch(reportError)
+              }
               className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 dark:border-slate-700 dark:bg-slate-800"
               title={handLive ? 'Applies from the next hand' : undefined}
             >
@@ -1140,6 +1187,281 @@ export function TablePage() {
         );
     }
   };
+
+  const runTwice = hand.ritOffer && (
+    <div className="z-20 flex flex-col items-center gap-2 rounded-2xl bg-fuchsia-600/95 px-5 py-3 text-white shadow-[0_18px_50px_rgba(192,38,211,0.35)]">
+      <span className="font-display text-lg font-bold">
+        🔁 Run it twice? · {Math.max(0, Math.ceil((hand.ritOffer.deadlineTs - now) / 1000))}s
+      </span>
+      {mySeat !== null && hand.ritOffer.voters.includes(mySeat) && !hand.ritOffer.voted ? (
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            className="border-0 bg-white! text-fuchsia-700! hover:bg-fuchsia-50!"
+            onClick={() => ritVote(true)}
+          >
+            Twice 🔁
+          </Button>
+          <Button
+            variant="secondary"
+            className="border-0 bg-white/20! text-white! hover:bg-white/30!"
+            onClick={() => ritVote(false)}
+          >
+            Once
+          </Button>
+        </div>
+      ) : (
+        <span className="text-xs text-fuchsia-100">
+          Everyone is all-in - the rest of the board deals twice if all agree.
+        </span>
+      )}
+    </div>
+  );
+  const sharedDialogs = (
+    <>
+      <BrokeBuyInDialog
+        roomId={roomId!}
+        open={amBroke && !brokeDismissed}
+        onClose={() => setBrokeDismissed(true)}
+      />
+      <ShareHandDialog open={shareOpen} onClose={() => setShareOpen(false)} data={shareData} />
+      <Dialog
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        title="Invite friends to this table"
+      >
+        <div className="space-y-5">
+          {room.room.joinCode !== '' && (
+            <ShareRoom joinCode={room.room.joinCode} roomName={room.room.name} />
+          )}
+          <div className="border-t border-slate-200/70 pt-4 dark:border-slate-700/70">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Or invite a friend directly
+            </p>
+            <InviteFriendsDialogBody
+              roomId={roomId!}
+              memberIds={room.players.map((p) => p.userId)}
+            />
+          </div>
+        </div>
+      </Dialog>
+      <Dialog open={watchOpen} onClose={() => setWatchOpen(false)} title="Watch-only share link">
+        <div className="space-y-4">
+          <label className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={watchInfo?.allow ?? false}
+              onChange={(e) =>
+                void api
+                  .spectateSettings(roomId!, e.target.checked)
+                  .then(setWatchInfo)
+                  .catch(reportError)
+              }
+              className="mt-0.5"
+            />
+            <span>
+              Let anyone with the link watch this table. Viewers see the public game only: no hole
+              cards, no join code, no chips of their own.
+            </span>
+          </label>
+          {watchInfo && (
+            <div className="flex items-center gap-2">
+              <code className="min-w-0 flex-1 truncate rounded-lg bg-slate-100 px-3 py-2 text-xs dark:bg-slate-800">
+                {`${location.origin}/watch/${watchInfo.token}`}
+              </code>
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  void navigator.clipboard.writeText(`${location.origin}/watch/${watchInfo.token}`)
+                }
+              >
+                Copy
+              </Button>
+            </div>
+          )}
+          {joinReqs.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Watchers asking to play
+              </p>
+              {joinReqs.map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center gap-3 rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800/60"
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                    {r.displayName}
+                  </span>
+                  <Button
+                    variant="success"
+                    onClick={() =>
+                      void api
+                        .admit(roomId!, r.userId, true)
+                        .then(() => setJoinReqs((q) => q.filter((x) => x.id !== r.id)))
+                        .catch(reportError)
+                    }
+                  >
+                    Let them in
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() =>
+                      void api
+                        .admit(roomId!, r.userId, false)
+                        .then(() => setJoinReqs((q) => q.filter((x) => x.id !== r.id)))
+                        .catch(reportError)
+                    }
+                  >
+                    No
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Dialog>
+      <Dialog
+        open={standingsOpen}
+        onClose={() => setStandingsOpen(false)}
+        title="Room standings"
+        size="lg"
+      >
+        {standings === null ? (
+          <Spinner label="Counting the chips…" />
+        ) : standings.length === 0 ? (
+          <p className="text-sm text-slate-500">No completed hands yet. Deal one and check back.</p>
+        ) : (
+          <LeaderboardTable rows={standings} minHands={room.room.minSettleHands} />
+        )}
+      </Dialog>
+
+      {/* connection state */}
+      {room && !wsConnected && (
+        <div className="fixed left-1/2 top-3 z-50 -translate-x-1/2 rounded-full bg-amber-500 px-4 py-1.5 text-xs font-semibold text-white shadow-lg">
+          Connection lost. Reconnecting…
+        </div>
+      )}
+
+      {/* error toasts */}
+      {errors.length > 0 && (
+        <div className="fixed bottom-4 left-4 z-50 rounded-xl bg-slate-900 px-4 py-2.5 text-sm text-white shadow-lg dark:bg-slate-100 dark:text-slate-900">
+          {errors[0]}
+        </div>
+      )}
+    </>
+  );
+
+  if (renderTable) {
+    const standUp = (userId: number) => {
+      if (!isBankerHere || !wsConnected || userId === auth.userId) return;
+      void api
+        .standUp(roomId!, userId)
+        .catch((err) =>
+          useStore
+            .getState()
+            .pushError(err instanceof Error ? err.message : 'Could not stand them up'),
+        );
+    };
+    return (
+      <div className="table3d-experience">
+        {renderTable({
+          menuOpen,
+          setMenuOpen,
+          chatOpen,
+          setChatOpen,
+          unreadChat,
+          utilities: (
+            <div role="menu" aria-label="Table controls">
+              {utilityGroups.map((group) => (
+                <section
+                  key={group.id}
+                  className="table-utility-group"
+                  aria-label={utilityGroupLabels[group.id]}
+                >
+                  <h3>{utilityGroupLabels[group.id]}</h3>
+                  {group.actions.map((action) => (
+                    <div key={action} role="none">
+                      {utilityAction(action)}
+                    </div>
+                  ))}
+                </section>
+              ))}
+            </div>
+          ),
+          voiceControl: (
+            <DesktopIconButton
+              label={
+                voiceState.joined
+                  ? voiceState.muted
+                    ? 'Unmute voice'
+                    : 'Mute voice'
+                  : 'Join voice'
+              }
+              onClick={() => (voiceState.joined ? voice.toggleMute() : void voice.join())}
+              active={voiceState.joined && !voiceState.muted}
+            >
+              {voiceState.joined && voiceState.muted ? (
+                <MicrophoneSlash size={19} />
+              ) : (
+                <Microphone size={19} />
+              )}
+            </DesktopIconButton>
+          ),
+          fullscreenControl: (
+            <DesktopIconButton
+              label={isFullscreen ? 'Exit full screen' : 'Full screen'}
+              onClick={() => {
+                const change = document.fullscreenElement
+                  ? document.exitFullscreen()
+                  : document.documentElement.requestFullscreen();
+                void change.catch(() =>
+                  useStore.getState().pushError('Full screen is unavailable in this browser.'),
+                );
+              }}
+              active={isFullscreen}
+            >
+              {isFullscreen ? <CornersIn size={19} /> : <CornersOut size={19} />}
+            </DesktopIconButton>
+          ),
+          seatPicker: mySeat === null ? (amSpectator ? spectatorPanel : seatPicker) : null,
+          peekPanel,
+          runTwice,
+          status: mobileStatus,
+          amSpectator,
+          players: seatViews,
+          canManagePlayers: !!isBankerHere,
+          standUp,
+          showResult: () => setResultDismissed(false),
+          showLargeCards: () => {
+            setBigCards(true);
+            localStorage.setItem('4am-big-cards', 'on');
+          },
+        })}
+        {sharedDialogs}
+        <Dialog open={chatOpen} onClose={() => setChatOpen(false)} title="Table chat">
+          <fieldset disabled={!wsConnected} className="h-[min(60dvh,36rem)] min-h-0">
+            <ChatPanel chrome={false} />
+          </fieldset>
+        </Dialog>
+        {showResult && (
+          <div className="pointer-events-none fixed inset-x-0 top-3 z-50 flex justify-center px-3">
+            <div className="pointer-events-auto max-h-[86dvh] w-full max-w-3xl overflow-y-auto rounded-2xl shadow-2xl">
+              {resultBanner}
+            </div>
+          </div>
+        )}
+        {bigCards && hand.myCards.length > 0 && !notInHand && (
+          <FloatingCards
+            cards={hand.myCards}
+            onClose={() => {
+              setBigCards(false);
+              localStorage.setItem('4am-big-cards', 'off');
+            }}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="table-app-bg min-h-screen">
@@ -1334,7 +1656,9 @@ export function TablePage() {
                   <select
                     value={room.room.actionSecs ?? 45}
                     disabled={handLive}
-                    onChange={(e) => void api.roomSettings(roomId!, +e.target.value)}
+                    onChange={(e) =>
+                      void api.roomSettings(roomId!, +e.target.value).catch(reportError)
+                    }
                     className="rounded-lg border border-white/20 bg-slate-800 px-2.5 py-1.5 text-white"
                   >
                     {[15, 30, 45, 60, 90, 120].map((t) => (
@@ -1523,400 +1847,251 @@ export function TablePage() {
         </header>
 
         <div className="flex flex-1 items-start gap-4">
-        <main className="flex min-w-0 flex-1 flex-col gap-4">
-          <section
-            aria-label="Poker board"
-            className={cn(
-              'relative flex min-h-[clamp(32rem,64vh,54rem)] flex-col gap-3 overflow-hidden rounded-[2rem] bg-slate-200/50 px-2 pb-2 pt-4 ring-1 ring-slate-200 dark:bg-slate-900/60 dark:ring-slate-800 sm:px-4 lg:px-6',
-              notInHand && 'opacity-60 saturate-50',
-            )}
-          >
-            {thunderKey > 0 && <div key={thunderKey} className="thunder-flash" aria-hidden="true" />}
-            {floats.map((reaction) => (
-              <span
-                key={reaction.id}
-                className="animate-float pointer-events-none absolute top-1/3 z-10 text-5xl"
-                style={{ left: `${reaction.left}%` }}
-              >
-                {reaction.emoji}
-              </span>
-            ))}
-            <RoundTable
-              seats={seatViews}
-              mySeat={mySeat}
-              myUserId={auth.userId}
-              myCards={hand.myCards}
-              committedBySeat={Object.fromEntries(
-                (hand.betting?.seats ?? []).map((s) => [s.seat, s.committed]),
+          <main className="flex min-w-0 flex-1 flex-col gap-4">
+            <section
+              aria-label="Poker board"
+              className={cn(
+                'relative flex min-h-[clamp(32rem,64vh,54rem)] flex-col gap-3 overflow-hidden rounded-[2rem] bg-slate-200/50 px-2 pb-2 pt-4 ring-1 ring-slate-200 dark:bg-slate-900/60 dark:ring-slate-800 sm:px-4 lg:px-6',
+                notInHand && 'opacity-60 saturate-50',
               )}
-              urgent={urgent}
-              handLive={handLive}
-              canSit={mySeat === null && !amSpectator}
-              onSit={sit}
-              canKick={isBankerHere}
-              onKick={(userId) =>
-                void api
-                  .standUp(roomId!, userId)
-                  .catch((err) =>
-                    useStore
-                      .getState()
-                      .pushError(err instanceof Error ? err.message : 'could not stand them up'),
-                  )
-              }
-              bankerId={room.room.bankerId}
-            hostId={room.room.hostId}
-              coBankerId={room.room.coBankerId}
-              bb={room.room.bb}
-              onMyCardsClick={() => {
-                localStorage.setItem('4am-big-cards', 'on');
-                setBigCards(true);
-              }}
-              readyCheck={!handLive ? hand.readyCheck : null}
             >
-            <div className="relative">
-              <motion.div
-                key={pot}
-                initial={pot > 0 ? { scale: 1.14 } : false}
-                animate={{ scale: 1 }}
-                transition={{ type: 'spring', stiffness: 320, damping: 18 }}
-                className="absolute inset-0 rounded-xl bg-indigo-600 shadow-[0_12px_30px_rgba(79,70,229,0.22)]"
-                aria-hidden="true"
-              />
-              <div className="relative px-5 py-2.5 font-display text-lg font-semibold text-white">
-                POT <NumberFlow value={pot} />
-              </div>
-            </div>
-            {pot > 0 && (
-              <ChipStack amount={pot} bb={room.room.bb} size="lg" className="justify-center" />
-            )}
-            {showResult ? (
-              // The banner itself is rendered as a top overlay, outside the
-              // table: in here it shared a stacking context with the absolutely
-              // positioned seat pods, so the headline drew underneath them and
-              // its cards collided with everyone's. Nothing goes in the middle
-              // of the felt at showdown now.
-              null
-            ) : (
-              <>
-            {hand.ritOffer && (
-              <div className="z-20 flex flex-col items-center gap-2 rounded-2xl bg-fuchsia-600/95 px-5 py-3 text-white shadow-[0_18px_50px_rgba(192,38,211,0.35)]">
-                <span className="font-display text-lg font-bold">
-                  🔁 Run it twice? ·{' '}
-                  {Math.max(0, Math.ceil((hand.ritOffer.deadlineTs - now) / 1000))}s
-                </span>
-                {mySeat !== null && hand.ritOffer.voters.includes(mySeat) && !hand.ritOffer.voted ? (
-                  <div className="flex gap-2">
-                    <Button
-                      variant="secondary"
-                      className="border-0 bg-white! text-fuchsia-700! hover:bg-fuchsia-50!"
-                      onClick={() => ritVote(true)}
-                    >
-                      Twice 🔁
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      className="border-0 bg-white/20! text-white! hover:bg-white/30!"
-                      onClick={() => ritVote(false)}
-                    >
-                      Once
-                    </Button>
-                  </div>
-                ) : (
-                  <span className="text-xs text-fuchsia-100">
-                    Everyone is all-in - the rest of the board deals twice if all agree.
-                  </span>
-                )}
-              </div>
-            )}
-            <div className="flex flex-col items-center gap-2">
-              <div className="flex items-center justify-center gap-2.5 lg:gap-3">
-                {hand.board2.length > 0 && (
-                  <span className="rounded-full bg-fuchsia-500/15 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-fuchsia-500">
-                    Run 1
-                  </span>
-                )}
-                {[0, 1, 2, 3, 4].map((index) =>
-                  hand.board[index] !== undefined ? (
-                    <PlayingCard
-                      key={`${index}-${hand.board[index]}`}
-                      card={hand.board[index]}
-                      size="table"
-                      deal
-                      // the three flop cards land together, so cascade them; the
-                      // turn and river arrive alone and flip immediately
-                      dealDelay={hand.board.length === 3 ? index * 0.16 : 0}
-                    />
-                  ) : (
-                    <div
-                      key={index}
-                      className="h-36 w-24 rounded-2xl border-2 border-dashed border-slate-300/80 dark:border-slate-700"
-                      aria-label={`Empty community card ${index + 1}`}
-                    />
-                  ),
-                )}
-              </div>
-              {/* the second runout grows underneath as its twin cards land */}
-              {hand.board2.length > 0 && (
-                <div className="flex items-center justify-center gap-2">
-                  <span className="rounded-full bg-fuchsia-500/15 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-fuchsia-500">
-                    Run 2
-                  </span>
-                  {[0, 1, 2, 3, 4].map((index) =>
-                    hand.board2[index] !== undefined ? (
-                      <PlayingCard
-                        key={`r2-${index}-${hand.board2[index]}`}
-                        card={hand.board2[index]}
-                        size="lg"
-                        deal
-                      />
-                    ) : (
-                      <div
-                        key={`r2-${index}`}
-                        className="h-20 w-14 rounded-lg border-2 border-dashed border-fuchsia-400/30 md:h-32 md:w-[5.6rem] md:rounded-2xl"
-                        aria-label={`Empty run 2 card ${index + 1}`}
-                      />
-                    ),
-                  )}
-                </div>
+              {thunderKey > 0 && (
+                <div key={thunderKey} className="thunder-flash" aria-hidden="true" />
               )}
-            </div>
-            {!handLive && !showResult && (
-              <div className="text-center">
-                <p className="text-sm text-slate-500">
-                  {mySeat === null
-                    ? 'Pick a seat.'
-                    : opponents.length === 0
-                      ? 'Invite a friend to deal.'
-                      : 'Ready.'}
-                </p>
-                {mySeat !== null && isHost && opponents.length > 0 && (
-                  <Button className="mt-5 h-11 rounded-xl px-5" onClick={startHand}>
-                    <Play size={17} weight="fill" /> Deal hand
-                  </Button>
-                )}
-              </div>
-            )}
-            {notInHand && (
-              <p className="rounded-xl bg-white/90 px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm dark:bg-slate-800/90 dark:text-slate-300">
-                You're in the next hand.
-              </p>
-            )}
-            {!handLive && opponents.length === 0 && !amSpectator && (
-              <button
-                type="button"
-                onClick={() => setInviteOpen(true)}
-                className="flex items-center gap-2 rounded-full bg-white/80 px-4 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70 hover:text-slate-900 dark:bg-slate-900/80 dark:text-slate-300 dark:ring-slate-700/70 dark:hover:text-slate-100"
-              >
-                <UserPlus size={15} /> Invite friends · code{' '}
-                <span className="font-display text-indigo-600 dark:text-indigo-300">
-                  {room.room.joinCode}
+              {floats.map((reaction) => (
+                <span
+                  key={reaction.id}
+                  className="animate-float pointer-events-none absolute top-1/3 z-10 text-5xl"
+                  style={{ left: `${reaction.left}%` }}
+                >
+                  {reaction.emoji}
                 </span>
-              </button>
+              ))}
+              <RoundTable
+                seats={seatViews}
+                mySeat={mySeat}
+                myUserId={auth.userId}
+                myCards={hand.myCards}
+                committedBySeat={Object.fromEntries(
+                  (hand.betting?.seats ?? []).map((s) => [s.seat, s.committed]),
+                )}
+                urgent={urgent}
+                handLive={handLive}
+                canSit={mySeat === null && !amSpectator}
+                onSit={sit}
+                canKick={isBankerHere}
+                onKick={(userId) =>
+                  void api
+                    .standUp(roomId!, userId)
+                    .catch((err) =>
+                      useStore
+                        .getState()
+                        .pushError(err instanceof Error ? err.message : 'could not stand them up'),
+                    )
+                }
+                bankerId={room.room.bankerId}
+                hostId={room.room.hostId}
+                coBankerId={room.room.coBankerId}
+                bb={room.room.bb}
+                onMyCardsClick={() => {
+                  localStorage.setItem('4am-big-cards', 'on');
+                  setBigCards(true);
+                }}
+                readyCheck={!handLive ? hand.readyCheck : null}
+              >
+                <div className="relative">
+                  <motion.div
+                    key={pot}
+                    initial={pot > 0 ? { scale: 1.14 } : false}
+                    animate={{ scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 320, damping: 18 }}
+                    className="absolute inset-0 rounded-xl bg-indigo-600 shadow-[0_12px_30px_rgba(79,70,229,0.22)]"
+                    aria-hidden="true"
+                  />
+                  <div className="relative px-5 py-2.5 font-display text-lg font-semibold text-white">
+                    POT <NumberFlow value={pot} />
+                  </div>
+                </div>
+                {pot > 0 && (
+                  <ChipStack amount={pot} bb={room.room.bb} size="lg" className="justify-center" />
+                )}
+                {showResult ? // table: in here it shared a stacking context with the absolutely // The banner itself is rendered as a top overlay, outside the
+                // positioned seat pods, so the headline drew underneath them and
+                // its cards collided with everyone's. Nothing goes in the middle
+                // of the felt at showdown now.
+                null : (
+                  <>
+                    {runTwice}
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="flex items-center justify-center gap-2.5 lg:gap-3">
+                        {hand.board2.length > 0 && (
+                          <span className="rounded-full bg-fuchsia-500/15 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-fuchsia-500">
+                            Run 1
+                          </span>
+                        )}
+                        {[0, 1, 2, 3, 4].map((index) =>
+                          hand.board[index] !== undefined ? (
+                            <PlayingCard
+                              key={`${index}-${hand.board[index]}`}
+                              card={hand.board[index]}
+                              size="table"
+                              deal
+                              // the three flop cards land together, so cascade them; the
+                              // turn and river arrive alone and flip immediately
+                              dealDelay={hand.board.length === 3 ? index * 0.16 : 0}
+                            />
+                          ) : (
+                            <div
+                              key={index}
+                              className="h-36 w-24 rounded-2xl border-2 border-dashed border-slate-300/80 dark:border-slate-700"
+                              aria-label={`Empty community card ${index + 1}`}
+                            />
+                          ),
+                        )}
+                      </div>
+                      {/* the second runout grows underneath as its twin cards land */}
+                      {hand.board2.length > 0 && (
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="rounded-full bg-fuchsia-500/15 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-fuchsia-500">
+                            Run 2
+                          </span>
+                          {[0, 1, 2, 3, 4].map((index) =>
+                            hand.board2[index] !== undefined ? (
+                              <PlayingCard
+                                key={`r2-${index}-${hand.board2[index]}`}
+                                card={hand.board2[index]}
+                                size="lg"
+                                deal
+                              />
+                            ) : (
+                              <div
+                                key={`r2-${index}`}
+                                className="h-20 w-14 rounded-lg border-2 border-dashed border-fuchsia-400/30 md:h-32 md:w-[5.6rem] md:rounded-2xl"
+                                aria-label={`Empty run 2 card ${index + 1}`}
+                              />
+                            ),
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {!handLive && !showResult && (
+                      <div className="text-center">
+                        <p className="text-sm text-slate-500">
+                          {mySeat === null
+                            ? 'Pick a seat.'
+                            : opponents.length === 0
+                              ? 'Invite a friend to deal.'
+                              : 'Ready.'}
+                        </p>
+                        {mySeat !== null && isHost && opponents.length > 0 && (
+                          <Button className="mt-5 h-11 rounded-xl px-5" onClick={startHand}>
+                            <Play size={17} weight="fill" /> Deal hand
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                    {notInHand && (
+                      <p className="rounded-xl bg-white/90 px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm dark:bg-slate-800/90 dark:text-slate-300">
+                        You're in the next hand.
+                      </p>
+                    )}
+                    {!handLive && opponents.length === 0 && !amSpectator && (
+                      <button
+                        type="button"
+                        onClick={() => setInviteOpen(true)}
+                        className="flex items-center gap-2 rounded-full bg-white/80 px-4 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70 hover:text-slate-900 dark:bg-slate-900/80 dark:text-slate-300 dark:ring-slate-700/70 dark:hover:text-slate-100"
+                      >
+                        <UserPlus size={15} /> Invite friends · code{' '}
+                        <span className="font-display text-indigo-600 dark:text-indigo-300">
+                          {room.room.joinCode}
+                        </span>
+                      </button>
+                    )}
+                  </>
+                )}
+              </RoundTable>
+            </section>
+
+            {/* the control strip sits under the table so the oval keeps its space */}
+            {amSpectator && spectatorPanel}
+            <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} hideIdleStart />
+
+            <LastHandStrip roomId={roomId!} />
+
+            {peekPanel}
+
+            {bigCards && handLive && hand.myCards.length > 0 && !notInHand && (
+              <FloatingCards
+                cards={hand.myCards}
+                onClose={() => {
+                  localStorage.setItem('4am-big-cards', 'off');
+                  setBigCards(false);
+                }}
+              />
             )}
-              </>
-            )}
-            </RoundTable>
-          </section>
+          </main>
 
-          {/* the control strip sits under the table so the oval keeps its space */}
-          {amSpectator && spectatorPanel}
-          <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} hideIdleStart />
-
-          <LastHandStrip roomId={roomId!} />
-
-          {peekPanel}
-
-          {bigCards && handLive && hand.myCards.length > 0 && !notInHand && (
-            <FloatingCards
-              cards={hand.myCards}
-              onClose={() => {
-                localStorage.setItem('4am-big-cards', 'off');
-                setBigCards(false);
-              }}
-            />
-          )}
-        </main>
-
-        {/* chat rides beside the table as a real column, never an overlay */}
-        {chatOpen && (
-          <aside
-            aria-label="Table chat"
-            className="sticky top-4 hidden max-h-[calc(100dvh-2rem)] min-h-[30rem] w-80 shrink-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/70 md:flex dark:bg-slate-900 dark:ring-slate-700/70"
-          >
-            {/* Standings ride above the chat in the same rail, so who is up and
+          {/* chat rides beside the table as a real column, never an overlay */}
+          {chatOpen && (
+            <aside
+              aria-label="Table chat"
+              className="sticky top-4 hidden max-h-[calc(100dvh-2rem)] min-h-[30rem] w-80 shrink-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/70 md:flex dark:bg-slate-900 dark:ring-slate-700/70"
+            >
+              {/* Standings ride above the chat in the same rail, so who is up and
                 who is down is just there - it used to be a dialog you had to
                 open again after every hand. Collapsible, because on a short
                 screen the chat needs the room more. */}
-            <div className="border-b border-slate-200 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => {
-                  const next = !standingsDockOpen;
-                  setStandingsDockOpen(next);
-                  localStorage.setItem('4am-standings-dock', next ? 'on' : 'off');
-                }}
-                aria-expanded={standingsDockOpen}
-                className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60"
-              >
-                <h2 className="font-display text-sm font-semibold">Standings</h2>
-                <CaretDown
-                  size={14}
-                  weight="bold"
-                  className={cn(
-                    'text-slate-400 transition-transform',
-                    !standingsDockOpen && '-rotate-90',
-                  )}
-                />
-              </button>
-              {standingsDockOpen && (
-                <div className="max-h-[38vh] overflow-y-auto px-2.5 pb-2.5">
-                  {standings === null ? (
-                    <p className="px-1.5 py-2 text-xs text-slate-400">Counting chips…</p>
-                  ) : (
-                    <LeaderboardTable rows={standings} minHands={room.room.minSettleHands} />
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2.5 dark:border-slate-800">
-              <h2 className="font-display text-sm font-semibold">Table chat</h2>
-              <button
-                type="button"
-                onClick={() => setChatOpen(false)}
-                aria-label="Close chat"
-                className="rounded-md p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 p-2.5">
-              <ChatPanel chrome={false} />
-            </div>
-          </aside>
-        )}
+              <div className="border-b border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !standingsDockOpen;
+                    setStandingsDockOpen(next);
+                    localStorage.setItem('4am-standings-dock', next ? 'on' : 'off');
+                  }}
+                  aria-expanded={standingsDockOpen}
+                  className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                >
+                  <h2 className="font-display text-sm font-semibold">Standings</h2>
+                  <CaretDown
+                    size={14}
+                    weight="bold"
+                    className={cn(
+                      'text-slate-400 transition-transform',
+                      !standingsDockOpen && '-rotate-90',
+                    )}
+                  />
+                </button>
+                {standingsDockOpen && (
+                  <div className="max-h-[38vh] overflow-y-auto px-2.5 pb-2.5">
+                    {standings === null ? (
+                      <p className="px-1.5 py-2 text-xs text-slate-400">Counting chips…</p>
+                    ) : (
+                      <LeaderboardTable rows={standings} minHands={room.room.minSettleHands} />
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2.5 dark:border-slate-800">
+                <h2 className="font-display text-sm font-semibold">Table chat</h2>
+                <button
+                  type="button"
+                  onClick={() => setChatOpen(false)}
+                  aria-label="Close chat"
+                  className="rounded-md p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 p-2.5">
+                <ChatPanel chrome={false} />
+              </div>
+            </aside>
+          )}
         </div>
       </div>
 
-
-      <BrokeBuyInDialog
-        roomId={roomId!}
-        open={amBroke && !brokeDismissed}
-        onClose={() => setBrokeDismissed(true)}
-      />
-      <ShareHandDialog open={shareOpen} onClose={() => setShareOpen(false)} data={shareData} />
-      <Dialog
-        open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-        title="Invite friends to this table"
-      >
-        <div className="space-y-5">
-          {room.room.joinCode !== '' && (
-            <ShareRoom joinCode={room.room.joinCode} roomName={room.room.name} />
-          )}
-          <div className="border-t border-slate-200/70 pt-4 dark:border-slate-700/70">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Or invite a friend directly
-            </p>
-            <InviteFriendsDialogBody roomId={roomId!} memberIds={room.players.map((p) => p.userId)} />
-          </div>
-        </div>
-      </Dialog>
-      <Dialog open={watchOpen} onClose={() => setWatchOpen(false)} title="Watch-only share link">
-        <div className="space-y-4">
-          <label className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
-            <input
-              type="checkbox"
-              checked={watchInfo?.allow ?? false}
-              onChange={(e) =>
-                void api
-                  .spectateSettings(roomId!, e.target.checked)
-                  .then(setWatchInfo)
-                  .catch(() => {})
-              }
-              className="mt-0.5"
-            />
-            <span>
-              Let anyone with the link watch this table. Viewers see the public game only: no hole
-              cards, no join code, no chips of their own.
-            </span>
-          </label>
-          {watchInfo && (
-            <div className="flex items-center gap-2">
-              <code className="min-w-0 flex-1 truncate rounded-lg bg-slate-100 px-3 py-2 text-xs dark:bg-slate-800">
-                {`${location.origin}/watch/${watchInfo.token}`}
-              </code>
-              <Button
-                variant="secondary"
-                onClick={() =>
-                  void navigator.clipboard.writeText(`${location.origin}/watch/${watchInfo.token}`)
-                }
-              >
-                Copy
-              </Button>
-            </div>
-          )}
-          {joinReqs.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Watchers asking to play
-              </p>
-              {joinReqs.map((r) => (
-                <div
-                  key={r.id}
-                  className="flex items-center gap-3 rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800/60"
-                >
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                    {r.displayName}
-                  </span>
-                  <Button
-                    variant="success"
-                    onClick={() =>
-                      void api
-                        .admit(roomId!, r.userId, true)
-                        .then(() => setJoinReqs((q) => q.filter((x) => x.id !== r.id)))
-                    }
-                  >
-                    Let them in
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() =>
-                      void api
-                        .admit(roomId!, r.userId, false)
-                        .then(() => setJoinReqs((q) => q.filter((x) => x.id !== r.id)))
-                    }
-                  >
-                    No
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </Dialog>
-      <Dialog open={standingsOpen} onClose={() => setStandingsOpen(false)} title="Room standings" size="lg">
-        {standings === null ? (
-          <Spinner label="Counting the chips…" />
-        ) : standings.length === 0 ? (
-          <p className="text-sm text-slate-500">No completed hands yet. Deal one and check back.</p>
-        ) : (
-          <LeaderboardTable rows={standings} minHands={room.room.minSettleHands} />
-        )}
-      </Dialog>
-
-      {/* connection state */}
-      {room && !wsConnected && (
-        <div className="fixed left-1/2 top-3 z-50 -translate-x-1/2 rounded-full bg-amber-500 px-4 py-1.5 text-xs font-semibold text-white shadow-lg">
-          Connection lost. Reconnecting…
-        </div>
-      )}
-
-      {/* error toasts */}
-      {errors.length > 0 && (
-        <div className="fixed bottom-4 left-4 z-50 rounded-xl bg-slate-900 px-4 py-2.5 text-sm text-white shadow-lg dark:bg-slate-100 dark:text-slate-900">
-          {errors[0]}
-        </div>
-      )}
+      {sharedDialogs}
     </div>
   );
 }

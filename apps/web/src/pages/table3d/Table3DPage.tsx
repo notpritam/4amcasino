@@ -8,10 +8,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { RANKS, rankOf, suitOf, type CardId } from '@4am/shared';
-import { bindGameClient } from '../../shared/gameClient.ts';
 import { wsClient } from '../../shared/ws.ts';
 import { useStore } from '../../shared/store.ts';
-import { api } from '../../shared/api.ts';
 import { play } from '../../shared/sounds.ts';
 import { cn } from '../../shared/lib/cn.ts';
 import { ActionBar } from '../../widgets/table/ActionBar.tsx';
@@ -22,6 +20,9 @@ import {
   Camera,
   Check,
   ChatCircleDots,
+  ChatCircle,
+  DotsThree,
+  SignOut,
   Question,
   HandWaving,
   SlidersHorizontal,
@@ -30,7 +31,12 @@ import {
   Users,
   X,
 } from '@phosphor-icons/react';
-import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
+import { BankControls } from '../../widgets/table/BankControls.tsx';
+import { LastHandStrip } from '../../widgets/table/LastHandStrip.tsx';
+import { Dialog } from '../../shared/ui/index.tsx';
+import { TablePage, type TablePresentation } from '../table/TablePage.tsx';
+import { TableCards } from './TableCards.tsx';
+import { publicCardsBySeat } from './publicTableCards.ts';
 import { soundsEnabled, setSoundsEnabled } from '../../shared/sounds.ts';
 import { parseAvatar } from './avatar.ts';
 import { buildCharacter, disposeObject, idleCharacter } from './character.ts';
@@ -166,6 +172,10 @@ function buildChips(amount: number, bb: number): THREE.Group {
 /* ── the page ───────────────────────────────────────────────────────────── */
 
 export function Table3DPage() {
+  return <TablePage renderTable={(table) => <Table3DView table={table} />} />;
+}
+
+function Table3DView({ table }: { table: TablePresentation }) {
   // lightning flash on every showdown reveal (requested by notpritam)
   const [thunderKey, setThunderKey] = useState(0);
   useEffect(() => {
@@ -197,7 +207,7 @@ export function Table3DPage() {
   const [cameraView, setCameraView] = useState('Table');
   const [soundOn, setSoundOn] = useState(soundsEnabled);
   const [sceneError, setSceneError] = useState('');
-  const [loadError, setLoadError] = useState('');
+  const [kickArmed, setKickArmed] = useState<number | null>(null);
   const [reaction, setReaction] = useState('');
   const reactionTimer = useRef<ReturnType<typeof setTimeout>>();
   const connected = useStore((s) => s.wsConnected);
@@ -217,21 +227,8 @@ export function Table3DPage() {
   const urgent = hand.deadline !== null && hand.deadline - now < 10_000;
 
   useEffect(() => {
-    bindGameClient();
-    wsClient.joinRoom(roomId!);
-    let alive = true;
-    setLoadError('');
-    api.getRoom(roomId!).catch(() => {
-      if (alive) setLoadError('Could not load this table. Check your connection and try again.');
-    });
-    return () => {
-      alive = false;
-    };
-  }, [roomId]);
-
-  useEffect(() => {
     const close = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape' || document.querySelector('[role="dialog"]')) return;
       setCustomizeOpen(false);
       setEmoteOpen(false);
       setPanel(null);
@@ -1199,13 +1196,12 @@ export function Table3DPage() {
         }
 
         // players in the hand hold their two cards up like humans do
-        if (inHand && !folded) {
+        const publicCards = publicCardsBySeat(h)[p.seat!];
+        if ((inHand && !folded) || publicCards) {
           const held = new THREE.Group();
           held.name = 'held-cards';
           for (let ci = 0; ci < 2; ci++) {
-            const revealed =
-              h.showdown?.reveals.find((entry) => entry.seat === p.seat)?.cards ?? h.shown[p.seat!];
-            const hc = makeCard(revealed?.[ci] ?? null, 0.22, 0);
+            const hc = makeCard(publicCards?.[ci] ?? null, publicCards ? 0.32 : 0.22, 0);
             hc.rotation.set(-0.5, 0, (ci - 0.5) * 0.35);
             hc.position.set((ci - 0.5) * 0.14, 0, 0.02 * ci);
             held.add(hc);
@@ -1492,7 +1488,7 @@ export function Table3DPage() {
         : myTurn
           ? 'Your turn'
           : handActive
-            ? `${actingName ?? 'Table'} is thinking`
+            ? (table.status ?? `${actingName ?? 'Table'} is thinking`)
             : 'Waiting for the next hand';
   const seconds = hand.deadline ? Math.max(0, Math.ceil((hand.deadline - now) / 1000)) : null;
   const closeStudio = () => {
@@ -1517,7 +1513,12 @@ export function Table3DPage() {
       )}
     >
       <header className="lounge-header">
-        <Link to={`/room/${roomId}`} className="lounge-button back-to-table">
+        <Link
+          to={`/room/${roomId}`}
+          className="lounge-button back-to-table"
+          aria-label="2D table"
+          title="Switch to 2D table"
+        >
           <ArrowLeft size={17} />
           <span>2D table</span>
         </Link>
@@ -1529,6 +1530,39 @@ export function Table3DPage() {
             <b>·</b>
             {activeRoom ? `${activeRoom.room.sb} / ${activeRoom.room.bb} blinds` : 'Joining table'}
           </span>
+        </div>
+        <div className="lounge-room-tools">
+          {!table.amSpectator && <BankControls roomId={roomId!} mode="hub" />}
+          {table.voiceControl}
+          <button
+            className="lounge-icon chat-trigger"
+            aria-label={
+              table.unreadChat ? `Open chat, ${table.unreadChat} unread messages` : 'Open chat'
+            }
+            aria-expanded={table.chatOpen}
+            onClick={() => table.setChatOpen(true)}
+          >
+            <ChatCircle size={20} />
+            {table.unreadChat > 0 && (
+              <span className="lounge-unread">
+                {table.unreadChat > 9 ? '9+' : table.unreadChat}
+              </span>
+            )}
+          </button>
+          <button
+            className="lounge-button table-controls-trigger"
+            aria-label="More table controls"
+            aria-expanded={table.menuOpen}
+            onClick={() => {
+              table.setMenuOpen(true);
+              setCustomizeOpen(false);
+              setPanel(null);
+              setEmoteOpen(false);
+            }}
+          >
+            <DotsThree size={22} />
+            <span>Table</span>
+          </button>
         </div>
         <button
           className="lounge-icon sound-toggle"
@@ -1570,21 +1604,21 @@ export function Table3DPage() {
             {pot.toLocaleString()} <small>in the pot</small>
           </strong>
         </div>
-        {(!activeRoom || sceneError || loadError) && (
+        {sceneError && (
           <div className="scene-message" role="status">
-            <h2>
-              {sceneError
-                ? 'Switch to the 2D table'
-                : loadError
-                  ? 'Table unavailable'
-                  : 'Joining your table…'}
-            </h2>
-            <p>{sceneError || loadError || 'Getting the room ready for you.'}</p>
-            {(sceneError || loadError) && (
-              <Link className="lounge-button primary" to={`/room/${roomId}`}>
-                Open 2D table
-              </Link>
-            )}
+            <h2>The 3D scene is unavailable</h2>
+            <p>{sceneError}</p>
+            <Link className="lounge-button primary" to={`/room/${roomId}`}>
+              Open 2D table
+            </Link>
+          </div>
+        )}
+        {(table.runTwice || table.seatPicker) && (
+          <div className="lounge-game-prompt">
+            <fieldset disabled={!connected}>
+              {table.runTwice}
+              {table.seatPicker}
+            </fieldset>
           </div>
         )}
         {!customizeOpen && (
@@ -1625,45 +1659,95 @@ export function Table3DPage() {
                 <X size={18} />
               </button>
             </div>
-            <p className="field-hint">Pick a player to interact.</p>
-            {activeRoom?.players
-              .filter((p) => p.seat !== null)
-              .map((player) => (
-                <button
-                  className="player-row"
-                  key={player.userId}
-                  disabled={player.userId === auth.userId || mySeat === null || !connected}
-                  onClick={(event) => {
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    setTargetMenu({
-                      seat: player.seat!,
-                      name: player.displayName,
-                      x: rect.right + 8,
-                      y: rect.top,
-                    });
-                  }}
-                >
+            <p className="field-hint">Profiles, seats, and table reactions.</p>
+            {table.players.map((player) => (
+              <div className="lounge-player-entry" key={player.userId}>
+                <div className="player-row">
                   <span
                     className="player-color"
-                    style={{ background: parseAvatar(player.avatar3d).c }}
+                    style={{
+                      background: parseAvatar(
+                        activeRoom?.players.find((p) => p.userId === player.userId)?.avatar3d,
+                      ).c,
+                    }}
                   />
                   <span>
-                    {player.userId === auth.userId ? 'You' : player.displayName}
+                    <Link to={`/players/${player.userId}`}>
+                      {player.displayName}
+                      {player.userId === auth.userId ? ' · You' : ''}
+                    </Link>
                     <small>
+                      Seat {player.seat + 1} ·{' '}
                       {player.sittingOut
                         ? 'Sitting out'
-                        : player.connected
-                          ? 'At the table'
-                          : 'Reconnecting'}
+                        : !player.connected
+                          ? 'Reconnecting'
+                          : player.allIn
+                            ? 'All-in'
+                            : player.folded
+                              ? 'Folded'
+                              : player.isToAct
+                                ? 'Their turn'
+                                : 'At the table'}
                     </small>
                   </span>
-                  <strong>
-                    {(
-                      hand.betting?.seats.find((s) => s.seat === player.seat)?.stack ?? player.stack
-                    ).toLocaleString()}
-                  </strong>
-                </button>
-              ))}
+                  <strong>{player.stack.toLocaleString()}</strong>
+                </div>
+                <div className="player-detail-row">
+                  <span>
+                    {[
+                      player.isButton && 'Dealer',
+                      player.isSB && 'Small blind',
+                      player.isBB && 'Big blind',
+                      player.speaking && 'Speaking',
+                      player.voiceMuted && 'Muted',
+                      player.pendingBuy > 0 && `${player.pendingBuy} pending`,
+                      hand.readyCheck?.ready.includes(player.userId) && 'Ready',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                  {player.userId !== auth.userId && (
+                    <>
+                      <button
+                        className="lounge-button"
+                        disabled={mySeat === null || !connected}
+                        onClick={(event) => {
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          setTargetMenu({
+                            seat: player.seat,
+                            name: player.displayName,
+                            x: rect.right + 8,
+                            y: rect.top,
+                          });
+                        }}
+                      >
+                        React
+                      </button>
+                      {table.canManagePlayers && (
+                        <button
+                          className="lounge-button"
+                          disabled={!connected}
+                          aria-label={
+                            kickArmed === player.userId
+                              ? `Confirm stand up ${player.displayName}`
+                              : `Stand up ${player.displayName}`
+                          }
+                          onClick={() => {
+                            if (kickArmed === player.userId) {
+                              table.standUp(player.userId);
+                              setKickArmed(null);
+                            } else setKickArmed(player.userId);
+                          }}
+                        >
+                          {kickArmed === player.userId ? 'Confirm stand up' : 'Stand up'}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
           </section>
         )}
         {panel === 'help' && (
@@ -1696,9 +1780,12 @@ export function Table3DPage() {
               Tap a character or open Players to send a playful nudge. Reactions are shared with the
               table.
             </p>
-            <p>Your cards stay readable below. Use the same poker controls to play your hand.</p>
+            <p>
+              Community cards, both runouts, and public reveals stay readable below. Tap your cards
+              to enlarge them. Open Table for invites, records, seats, and preferences.
+            </p>
             <Link to={`/room/${roomId}`} className="lounge-button">
-              Open the full 2D table
+              Switch to 2D table
             </Link>
           </section>
         )}
@@ -1735,6 +1822,27 @@ export function Table3DPage() {
           </section>
         )}
       </main>
+
+      <Dialog open={table.menuOpen} onClose={() => table.setMenuOpen(false)} title="Table controls">
+        <div className="lounge-shared-controls">{table.utilities}</div>
+        <div className="lounge-extra-controls">
+          {table.fullscreenControl}
+          <button
+            className="lounge-button"
+            onClick={() => {
+              setSoundsEnabled(!soundOn);
+              setSoundOn(!soundOn);
+            }}
+          >
+            {soundOn ? <SpeakerSlash size={17} /> : <SpeakerHigh size={17} />}
+            {soundOn ? 'Mute sound' : 'Enable sound'}
+          </button>
+          <Link to="/lobby" className="lounge-button">
+            <SignOut size={17} />
+            Leave table
+          </Link>
+        </div>
+      </Dialog>
 
       {targetMenu && (
         <>
@@ -1843,22 +1951,24 @@ export function Table3DPage() {
             {reaction}
           </div>
         )}
+        <TableCards onEnlarge={table.showLargeCards} onResult={table.showResult} />
+        {table.peekPanel && (
+          <details className="lounge-peek" open={hand.peekOffers.length > 0 ? true : undefined}>
+            <summary>
+              {hand.peekOffers.length > 0 ? 'Private card offer — respond' : 'Private card peeks'}
+            </summary>
+            <fieldset disabled={!connected}>{table.peekPanel}</fieldset>
+          </details>
+        )}
         <div className="play-controls">
-          {mySeat !== null && hand.myCards.length > 0 && (
-            <div className="private-hand">
-              <div className="private-cards">
-                {hand.myCards.map((card, index) => (
-                  <PlayingCard key={`${card}-${index}`} card={card} size="sm" />
-                ))}
-              </div>
-              <span>Your cards</span>
-            </div>
-          )}
           <fieldset className="poker-actions" disabled={!connected}>
             {activeRoom && (
               <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} hideIdleStart={false} />
             )}
           </fieldset>
+        </div>
+        <div className="lounge-last-hand">
+          <LastHandStrip roomId={roomId!} light />
         </div>
       </footer>
     </div>

@@ -13,3 +13,13 @@ Alternatives considered: imported humanoid models (asset/licensing/loading overh
 5. Run typecheck, production build, relevant tests, design detector, and browser checks with local fixture data on desktop and mobile. Inspect screenshots, fix observed defects, and confirm improvements.
 
 Gameplay, balances, settlement, and hosting migration stay outside this UI work.
+
+## Follow-up: full table-control parity (local only)
+
+User additions: every control available in UI mode must be available in 3D; make the cards readable on the table or another UI. Explicit instruction: do not deploy this follow-up.
+
+Use `TablePage` as the shared room controller. Its optional presentation callback supplies the 3D shell with the same role-gated utilities, seat state, vote/peek prompts, results, and dialogs. Keep the Three renderer, wardrobe, cameras, and character interactions in `Table3DView`. Reuse `ActionBar`, `BankControls`, `ChatPanel`, `FloatingCards`, `LastHandStrip`, and `ShowdownCards`.
+
+Provide a permanent card rail for community cards, both runouts, private cards, and publicly shown hands. Only `shown` and showdown reveals may enter opponents' public card display; paid peeks stay in their private panel. Closing a result must not erase the hand or disable its remaining post-hand controls.
+
+Validate the shared flows with local mocked transport, real client signing/proof generation for game messages, role/state fixtures, desktop/mobile screenshots, WebGL fallback, and return-to-2D cleanup. Keep changes on `feat/3d-control-parity`; no push, merge into main, or deployment.
