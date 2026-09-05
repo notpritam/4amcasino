@@ -2,7 +2,7 @@
 // ABOUTME: customisable characters at every seat, live cards/chips/turn state from
 // ABOUTME: the same store as the 2D table, fully playable via the HUD action bar.
 // ABOUTME: Requested by notpritam - see docs/FEATURES.md.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -17,118 +17,25 @@ import { cn } from '../../shared/lib/cn.ts';
 import { ActionBar } from '../../widgets/table/ActionBar.tsx';
 import { ATTACKS, EMOTES, type EmoteKind } from './emotes.ts';
 
-/* ── the character wardrobe ─────────────────────────────────────────────── */
-
-export interface Avatar3D {
-  c: string; // body color hex
-  t: string; // trim/glow color hex
-  head: 'round' | 'cube' | 'cone';
-  hat: 'none' | 'cap' | 'halo' | 'crown';
-  /** the bust-out blast you leave the table with */
-  fx: 'boom' | 'rocket' | 'sparks';
-}
-
-const DEFAULT_AVATAR: Avatar3D = { c: '#a78bfa', t: '#e879f9', head: 'round', hat: 'none', fx: 'boom' };
-const FX: Avatar3D['fx'][] = ['boom', 'rocket', 'sparks'];
-const BODY_COLORS = ['#a78bfa', '#e879f9', '#60a5fa', '#34d399', '#fbbf24', '#fb7185', '#f8fafc', '#64748b'];
-const HEADS: Avatar3D['head'][] = ['round', 'cube', 'cone'];
-const HATS: Avatar3D['hat'][] = ['none', 'cap', 'halo', 'crown'];
-
-function parseAvatar(raw: string | null | undefined): Avatar3D {
-  try {
-    const v = JSON.parse(raw ?? '') as Partial<Avatar3D>;
-    const hex = (x: unknown, fb: string) =>
-      typeof x === 'string' && /^#[0-9a-fA-F]{6}$/.test(x) ? x : fb;
-    return {
-      c: hex(v.c, DEFAULT_AVATAR.c),
-      t: hex(v.t, DEFAULT_AVATAR.t),
-      head: HEADS.includes(v.head as Avatar3D['head']) ? (v.head as Avatar3D['head']) : 'round',
-      hat: HATS.includes(v.hat as Avatar3D['hat']) ? (v.hat as Avatar3D['hat']) : 'none',
-      fx: FX.includes(v.fx as Avatar3D['fx']) ? (v.fx as Avatar3D['fx']) : 'boom',
-    };
-  } catch {
-    return DEFAULT_AVATAR;
-  }
-}
-
-/** A low-poly person: capsule body, chosen head, chosen hat, neon trim. */
-function buildCharacter(cfg: Avatar3D, dimmed: boolean): THREE.Group {
-  const g = new THREE.Group();
-  const body = new THREE.Color(cfg.c);
-  const mat = new THREE.MeshStandardMaterial({
-    color: body,
-    roughness: 0.6,
-    metalness: 0.15,
-    transparent: dimmed,
-    opacity: dimmed ? 0.35 : 1,
-  });
-  const trim = new THREE.MeshStandardMaterial({
-    color: 0x1a0b2e,
-    emissive: new THREE.Color(cfg.t),
-    emissiveIntensity: dimmed ? 0.15 : 0.9,
-    roughness: 0.4,
-  });
-
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.5, 6, 14), mat);
-  torso.position.y = 0.62;
-  g.add(torso);
-
-  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.035, 8, 22), trim);
-  belt.rotation.x = Math.PI / 2;
-  belt.position.y = 0.55;
-  g.add(belt);
-
-  let headGeo: THREE.BufferGeometry;
-  if (cfg.head === 'cube') headGeo = new THREE.BoxGeometry(0.42, 0.4, 0.42);
-  else if (cfg.head === 'cone') headGeo = new THREE.ConeGeometry(0.28, 0.5, 18);
-  else headGeo = new THREE.SphereGeometry(0.26, 20, 16);
-  const head = new THREE.Mesh(headGeo, mat);
-  head.position.y = cfg.head === 'cone' ? 1.32 : 1.28;
-  g.add(head);
-
-  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.07, 0.05), trim);
-  visor.position.set(0, 1.29, cfg.head === 'cube' ? 0.22 : 0.24);
-  g.add(visor);
-
-  // articulated arms: shoulder pivots so emotes can wave, clap, flex, slap
-  for (const side of [-1, 1] as const) {
-    const shoulder = new THREE.Group();
-    shoulder.position.set(side * 0.36, 1.0, 0);
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.34, 4, 10), mat);
-    arm.position.y = -0.24;
-    shoulder.add(arm);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), trim);
-    hand.position.y = -0.5;
-    shoulder.add(hand);
-    shoulder.rotation.z = side * 0.16; // resting pose, slightly out
-    g.add(shoulder);
-    if (side === -1) g.userData.armL = shoulder;
-    else g.userData.armR = shoulder;
-  }
-  g.userData.head = head;
-
-  if (cfg.hat === 'cap') {
-    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 18), trim);
-    brim.position.y = 1.5;
-    g.add(brim);
-  } else if (cfg.hat === 'halo') {
-    const halo = new THREE.Mesh(
-      new THREE.TorusGeometry(0.24, 0.03, 8, 26),
-      new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 1.4 }),
-    );
-    halo.rotation.x = Math.PI / 2.3;
-    halo.position.y = 1.66;
-    g.add(halo);
-  } else if (cfg.hat === 'crown') {
-    const crown = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.22, 0.26, 0.16, 5),
-      new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xb45309, emissiveIntensity: 0.5, metalness: 0.7, roughness: 0.3 }),
-    );
-    crown.position.y = 1.56;
-    g.add(crown);
-  }
-  return g;
-}
+import {
+  ArrowLeft,
+  Camera,
+  Check,
+  ChatCircleDots,
+  Question,
+  HandWaving,
+  SlidersHorizontal,
+  SpeakerHigh,
+  SpeakerSlash,
+  Users,
+  X,
+} from '@phosphor-icons/react';
+import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
+import { soundsEnabled, setSoundsEnabled } from '../../shared/sounds.ts';
+import { parseAvatar } from './avatar.ts';
+import { buildCharacter, disposeObject, idleCharacter } from './character.ts';
+import { Wardrobe } from './Wardrobe.tsx';
+import './table3d.css';
 
 /* ── canvas textures: cards and name tags ───────────────────────────────── */
 
@@ -204,7 +111,11 @@ function makeCard(id: CardId | null, w = 0.55, tilt = 0.14): THREE.Mesh {
   const h = w * 1.39;
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(w, h),
-    new THREE.MeshBasicMaterial({ map: cardTexture(id), transparent: true, side: THREE.DoubleSide }),
+    new THREE.MeshBasicMaterial({
+      map: cardTexture(id),
+      transparent: true,
+      side: THREE.DoubleSide,
+    }),
   );
   mesh.rotation.x = -Math.PI / 2 + tilt;
   mesh.position.y = FELT_TOP + 0.02 + Math.sin(tilt) * (h / 2);
@@ -237,7 +148,11 @@ function buildChips(amount: number, bb: number): THREE.Group {
     for (let i = 0; i < count; i++) {
       const chip = new THREE.Mesh(
         new THREE.CylinderGeometry(0.13, 0.13, 0.045, 20),
-        new THREE.MeshStandardMaterial({ color: CHIP_COLORS[tier], roughness: 0.35, metalness: 0.2 }),
+        new THREE.MeshStandardMaterial({
+          color: CHIP_COLORS[tier],
+          roughness: 0.35,
+          metalness: 0.2,
+        }),
       );
       chip.position.set(col * 0.3, 0.03 + i * 0.05, 0);
       g.add(chip);
@@ -248,61 +163,15 @@ function buildChips(amount: number, bb: number): THREE.Group {
   return g;
 }
 
-/** A turntable preview of the draft character, so you see every change live. */
-function CharacterPreview({ cfg }: { cfg: Avatar3D }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const mount = ref.current;
-    if (!mount) return;
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1d1033);
-    const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 20);
-    camera.position.set(0, 1.35, 3.1);
-    camera.lookAt(0, 0.85, 0);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(224, 190);
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    mount.appendChild(renderer.domElement);
-    scene.add(new THREE.AmbientLight(0x9d8bd8, 0.7));
-    const key = new THREE.PointLight(0xffffff, 14, 20);
-    key.position.set(2, 3, 3);
-    scene.add(key);
-    const disc = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.75, 0.85, 0.1, 32),
-      new THREE.MeshStandardMaterial({ color: 0x2c1650, emissive: 0x7c3aed, emissiveIntensity: 0.4 }),
-    );
-    scene.add(disc);
-    const char = buildCharacter(cfg, false);
-    scene.add(char);
-    let raf = 0;
-    const loop = () => {
-      raf = requestAnimationFrame(loop);
-      char.rotation.y += 0.02;
-      renderer.render(scene, camera);
-    };
-    loop();
-    return () => {
-      cancelAnimationFrame(raf);
-      scene.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.geometry) m.geometry.dispose();
-        if (m.material) (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose());
-      });
-      renderer.dispose();
-      mount.removeChild(renderer.domElement);
-    };
-  }, [cfg]);
-  return <div ref={ref} className="overflow-hidden rounded-xl" />;
-}
-
 /* ── the page ───────────────────────────────────────────────────────────── */
 
 export function Table3DPage() {
   // lightning flash on every showdown reveal (requested by notpritam)
   const [thunderKey, setThunderKey] = useState(0);
   useEffect(() => {
-    const boom = () => setThunderKey((k) => k + 1);
+    const boom = () => {
+      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) setThunderKey((k) => k + 1);
+    };
     window.addEventListener('4am-thunder', boom);
     return () => window.removeEventListener('4am-thunder', boom);
   }, []);
@@ -312,15 +181,30 @@ export function Table3DPage() {
   const hand = useStore((s) => s.hand);
   const auth = useStore((s) => s.auth);
   const [customizeOpen, setCustomizeOpen] = useState(false);
-  const flyRef = useRef<((pos: [number, number, number], look: [number, number, number]) => void) | null>(null);
+  const flyRef = useRef<
+    ((pos: [number, number, number], look: [number, number, number]) => void) | null
+  >(null);
   const [emoteOpen, setEmoteOpen] = useState(false);
-  const [targetMenu, setTargetMenu] = useState<{ seat: number; name: string; x: number; y: number } | null>(null);
+  const [targetMenu, setTargetMenu] = useState<{
+    seat: number;
+    name: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const targetMenuRef = useRef(setTargetMenu);
   targetMenuRef.current = setTargetMenu;
-  const [draft, setDraft] = useState<Avatar3D>(DEFAULT_AVATAR);
-  const [saved, setSaved] = useState(false);
+  const [panel, setPanel] = useState<'players' | 'help' | null>(null);
+  const [cameraView, setCameraView] = useState('Table');
+  const [soundOn, setSoundOn] = useState(soundsEnabled);
+  const [sceneError, setSceneError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [reaction, setReaction] = useState('');
+  const reactionTimer = useRef<ReturnType<typeof setTimeout>>();
+  const connected = useStore((s) => s.wsConnected);
+  const characterButton = useRef<HTMLButtonElement>(null);
+  const activeRoom = room?.room.id === roomId ? room : null;
 
-  const me = room?.players.find((p) => p.userId === auth.userId);
+  const me = activeRoom?.players.find((p) => p.userId === auth.userId);
   const mySeat = me?.seat ?? null;
   const isHost = room?.room.hostId === auth.userId;
 
@@ -335,18 +219,37 @@ export function Table3DPage() {
   useEffect(() => {
     bindGameClient();
     wsClient.joinRoom(roomId!);
-    api.getRoom(roomId!).catch(() => {});
+    let alive = true;
+    setLoadError('');
+    api.getRoom(roomId!).catch(() => {
+      if (alive) setLoadError('Could not load this table. Check your connection and try again.');
+    });
+    return () => {
+      alive = false;
+    };
   }, [roomId]);
 
   useEffect(() => {
-    if (me) setDraft(parseAvatar(me.avatar3d));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me?.avatar3d]);
+    const close = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setCustomizeOpen(false);
+      setEmoteOpen(false);
+      setPanel(null);
+      setTargetMenu(null);
+      characterButton.current?.focus();
+    };
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('keydown', close);
+      clearTimeout(reactionTimer.current);
+    };
+  }, []);
 
   /* the whole three.js world lives in this effect */
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
+    setSceneError('');
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x150b26);
@@ -355,23 +258,51 @@ export function Table3DPage() {
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 60);
     camera.position.set(0, 5.2, 8.6);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+    } catch {
+      setSceneError(
+        'Your device could not start the 3D view. You can keep playing at the 2D table.',
+      );
+      return;
+    }
+    const motion = matchMedia('(prefers-reduced-motion: reduce)');
+    let alive = true;
+    const auxiliaryFrames = new Set<number>();
+    const timeouts = new Set<ReturnType<typeof setTimeout>>();
+    const nextFrame = (fn: FrameRequestCallback) => {
+      const id = requestAnimationFrame((time) => {
+        auxiliaryFrames.delete(id);
+        if (alive) fn(time);
+      });
+      auxiliaryFrames.add(id);
+    };
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      setSceneError('The 3D view paused. Reload to restore it, or continue at the 2D table.');
+    };
+    renderer.domElement.addEventListener('webglcontextlost', onContextLost);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 700 ? 1.5 : 1.75));
     // the Blender-style setup: an environment map for image-based lighting,
     // filmic tone mapping, and a shadow-casting sun
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.autoUpdate = false;
     const pmrem = new THREE.PMREMGenerator(renderer);
-    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    const environmentScene = new RoomEnvironment();
+    const environmentTarget = pmrem.fromScene(environmentScene, 0.04);
+    environmentScene.dispose();
+    scene.environment = environmentTarget.texture;
     scene.environmentIntensity = 0.4;
     mount.appendChild(renderer.domElement);
 
     const sun = new THREE.DirectionalLight(0xd8c7ff, 2.2);
     sun.position.set(7, 12, 5);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(1024, 1024);
     sun.shadow.camera.left = -10;
     sun.shadow.camera.right = 10;
     sun.shadow.camera.top = 10;
@@ -393,19 +324,37 @@ export function Table3DPage() {
     controls.enableDamping = true;
     controls.maxPolarAngle = 1.42;
     controls.minDistance = 2.2;
-    controls.maxDistance = 18;
+    controls.maxDistance = 36;
     controls.enablePan = true;
     controls.keyPanSpeed = 14;
-    controls.listenToKeyEvents(window); // arrow keys walk the room
+    // Camera keys never intercept sliders or text controls. Drag/touch uses OrbitControls.
 
     // smooth fly-to for the camera preset buttons
+    let cameraPreset: { pos: [number, number, number]; look: [number, number, number] } = {
+      pos: [0, 6.5, 10.8],
+      look: [0, 0.7, 0],
+    };
     let flyPos: THREE.Vector3 | null = null;
     let flyLook: THREE.Vector3 | null = null;
     const fly = (pos: [number, number, number], look: [number, number, number]) => {
+      cameraPreset = { pos, look };
       flyPos = new THREE.Vector3(...pos);
       flyLook = new THREE.Vector3(...look);
+      const fit = Math.max(1, 1.5 / camera.aspect);
+      flyPos.sub(flyLook).multiplyScalar(Math.min(fit, 2.3)).add(flyLook);
+      if (motion.matches) {
+        camera.position.copy(flyPos);
+        controls.target.copy(flyLook);
+        flyPos = null;
+        flyLook = null;
+      }
     };
     flyRef.current = fly;
+    const stopFly = () => {
+      flyPos = null;
+      flyLook = null;
+    };
+    controls.addEventListener('start', stopFly);
 
     /* the room: violet haze, neon grid floor, glowing pillars */
     scene.add(new THREE.AmbientLight(0x8b7ab8, 0.35));
@@ -418,7 +367,6 @@ export function Table3DPage() {
     const blue = new THREE.PointLight(0x818cf8, 25, 30);
     blue.position.set(8, 4, 6);
     scene.add(blue);
-
 
     /* ── the casino room ── */
     const R = 19; // room radius
@@ -444,7 +392,8 @@ export function Table3DPage() {
     }
     cc.fillStyle = 'rgba(232,121,249,0.14)';
     for (let ix = 0; ix < 4; ix++)
-      for (let iy = 0; iy < 4; iy++) cc.beginPath(), cc.arc(ix * 64 + 32, iy * 64 + 32, 5, 0, 7), cc.fill();
+      for (let iy = 0; iy < 4; iy++)
+        (cc.beginPath(), cc.arc(ix * 64 + 32, iy * 64 + 32, 5, 0, 7), cc.fill());
     const carpetTex = new THREE.CanvasTexture(carpetCanvas);
     carpetTex.colorSpace = THREE.SRGBColorSpace;
     carpetTex.wrapS = carpetTex.wrapT = THREE.RepeatWrapping;
@@ -563,7 +512,11 @@ export function Table3DPage() {
       slot.add(screen);
       const lever = new THREE.Mesh(
         new THREE.SphereGeometry(0.08, 10, 10),
-        new THREE.MeshStandardMaterial({ color: 0xe879f9, emissive: 0xe879f9, emissiveIntensity: 0.8 }),
+        new THREE.MeshStandardMaterial({
+          color: 0xe879f9,
+          emissive: 0xe879f9,
+          emissiveIntensity: 0.8,
+        }),
       );
       lever.position.set(0.62, 1.8, 0);
       slot.add(lever);
@@ -585,7 +538,11 @@ export function Table3DPage() {
     bar.add(counter);
     const counterGlow = new THREE.Mesh(
       new THREE.BoxGeometry(7.05, 0.06, 1.15),
-      new THREE.MeshStandardMaterial({ color: 0x1a0b2e, emissive: 0xa78bfa, emissiveIntensity: 1.5 }),
+      new THREE.MeshStandardMaterial({
+        color: 0x1a0b2e,
+        emissive: 0xa78bfa,
+        emissiveIntensity: 1.5,
+      }),
     );
     counterGlow.position.y = 1.18;
     bar.add(counterGlow);
@@ -623,14 +580,11 @@ export function Table3DPage() {
     rc.fill();
     const rouletteTex = new THREE.CanvasTexture(rouletteCanvas);
     rouletteTex.colorSpace = THREE.SRGBColorSpace;
-    const roulette = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.5, 1.6, 0.28, 36),
-      [
-        new THREE.MeshStandardMaterial({ color: 0x2b1650, roughness: 0.4 }),
-        new THREE.MeshStandardMaterial({ map: rouletteTex, roughness: 0.5 }),
-        new THREE.MeshStandardMaterial({ color: 0x2b1650 }),
-      ],
-    );
+    const roulette = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.6, 0.28, 36), [
+      new THREE.MeshStandardMaterial({ color: 0x2b1650, roughness: 0.4 }),
+      new THREE.MeshStandardMaterial({ map: rouletteTex, roughness: 0.5 }),
+      new THREE.MeshStandardMaterial({ color: 0x2b1650 }),
+    ]);
     roulette.position.set(-R + 5, 1.05, -R + 7.5);
     roulette.castShadow = true;
     scene.add(roulette);
@@ -725,7 +679,11 @@ export function Table3DPage() {
       artTex.colorSpace = THREE.SRGBColorSpace;
       const art = new THREE.Mesh(
         new THREE.PlaneGeometry(1.6, 2),
-        new THREE.MeshStandardMaterial({ map: artTex, emissive: 0x4c1d95, emissiveIntensity: 0.35 }),
+        new THREE.MeshStandardMaterial({
+          map: artTex,
+          emissive: 0x4c1d95,
+          emissiveIntensity: 0.35,
+        }),
       );
       const frame = new THREE.Mesh(
         new THREE.BoxGeometry(1.85, 2.25, 0.08),
@@ -734,7 +692,9 @@ export function Table3DPage() {
       const artAngle = ang;
       frame.position.set(Math.cos(artAngle) * (R - 0.35), 4.4, Math.sin(artAngle) * (R - 0.35));
       frame.lookAt(0, 4.4, 0);
-      art.position.copy(frame.position).addScaledVector(frame.position.clone().setY(0).normalize(), -0.06);
+      art.position
+        .copy(frame.position)
+        .addScaledVector(frame.position.clone().setY(0).normalize(), -0.06);
       art.position.y = 4.4;
       art.lookAt(0, 4.4, 0);
       scene.add(frame);
@@ -758,7 +718,11 @@ export function Table3DPage() {
     }
     const catEyes = new THREE.Mesh(
       new THREE.BoxGeometry(0.02, 0.02, 0.14),
-      new THREE.MeshStandardMaterial({ color: 0xe879f9, emissive: 0xe879f9, emissiveIntensity: 1.6 }),
+      new THREE.MeshStandardMaterial({
+        color: 0xe879f9,
+        emissive: 0xe879f9,
+        emissiveIntensity: 1.6,
+      }),
     );
     catEyes.position.set(0.38, 0.24, 0);
     cat.add(catEyes);
@@ -781,8 +745,8 @@ export function Table3DPage() {
     felt.castShadow = true;
     scene.add(felt);
     const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(3.02, 0.075, 12, 64),
-      new THREE.MeshStandardMaterial({ color: 0x2c1650, emissive: 0xa78bfa, emissiveIntensity: 1.1 }),
+      new THREE.TorusGeometry(3.04, 0.14, 12, 80),
+      new THREE.MeshStandardMaterial({ color: 0x1d132c, roughness: 0.45, metalness: 0.2 }),
     );
     rim.rotation.x = Math.PI / 2;
     rim.scale.x = 1.55;
@@ -797,12 +761,61 @@ export function Table3DPage() {
     leg.castShadow = true;
     scene.add(leg);
 
+    // A tailored felt surface: double inlay, a quiet brand mark, and a padded rail.
+    const feltCanvas = document.createElement('canvas');
+    feltCanvas.width = feltCanvas.height = 1024;
+    const feltInk = feltCanvas.getContext('2d')!;
+    feltInk.fillStyle = '#23183b';
+    feltInk.fillRect(0, 0, 1024, 1024);
+    for (const radius of [466, 453]) {
+      feltInk.beginPath();
+      feltInk.arc(512, 512, radius, 0, Math.PI * 2);
+      feltInk.strokeStyle = radius === 466 ? '#817052' : '#4f3a65';
+      feltInk.lineWidth = 2;
+      feltInk.stroke();
+    }
+    feltInk.textAlign = 'center';
+    feltInk.fillStyle = '#71607e';
+    feltInk.font = '600 48px sans-serif';
+    feltInk.fillText('4 A M', 512, 700);
+    feltInk.font = '500 17px sans-serif';
+    feltInk.fillStyle = '#9885a5';
+    feltInk.fillText('A SEAT AT YOUR TABLE', 512, 734);
+    const feltMap = new THREE.CanvasTexture(feltCanvas);
+    feltMap.colorSpace = THREE.SRGBColorSpace;
+    feltMap.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    const feltSurface = new THREE.Mesh(
+      new THREE.CircleGeometry(2.97, 80),
+      new THREE.MeshStandardMaterial({ map: feltMap, roughness: 0.95 }),
+    );
+    feltSurface.rotation.x = -Math.PI / 2;
+    feltSurface.scale.x = 1.55;
+    feltSurface.position.y = FELT_TOP + 0.003;
+    feltSurface.receiveShadow = true;
+    scene.add(feltSurface);
+    const underglow = new THREE.Mesh(
+      new THREE.TorusGeometry(3.025, 0.022, 8, 80),
+      new THREE.MeshStandardMaterial({
+        color: 0xa78bfa,
+        emissive: 0xa78bfa,
+        emissiveIntensity: 0.6,
+      }),
+    );
+    underglow.rotation.x = Math.PI / 2;
+    underglow.scale.x = 1.55;
+    underglow.position.y = 0.78;
+    scene.add(underglow);
+
     /* everything live rebuilds into this group */
     const dynamic = new THREE.Group();
     scene.add(dynamic);
     const turnRing = new THREE.Mesh(
       new THREE.TorusGeometry(0.62, 0.05, 10, 40),
-      new THREE.MeshStandardMaterial({ color: 0xe879f9, emissive: 0xe879f9, emissiveIntensity: 1.6 }),
+      new THREE.MeshStandardMaterial({
+        color: 0xe879f9,
+        emissive: 0xe879f9,
+        emissiveIntensity: 1.6,
+      }),
     );
     turnRing.rotation.x = Math.PI / 2;
     turnRing.visible = false;
@@ -810,7 +823,11 @@ export function Table3DPage() {
     // a bobbing arrow over the head of whoever is up
     const turnArrow = new THREE.Mesh(
       new THREE.ConeGeometry(0.22, 0.42, 4),
-      new THREE.MeshStandardMaterial({ color: 0xe879f9, emissive: 0xe879f9, emissiveIntensity: 1.8 }),
+      new THREE.MeshStandardMaterial({
+        color: 0xe879f9,
+        emissive: 0xe879f9,
+        emissiveIntensity: 1.8,
+      }),
     );
     turnArrow.rotation.x = Math.PI;
     turnArrow.visible = false;
@@ -838,7 +855,7 @@ export function Table3DPage() {
       baseRX: number;
     }[] = [];
     const spawnCard = (mesh: THREE.Mesh, key: string, delayMs: number) => {
-      if (!key || seen.has(key)) return;
+      if (motion.matches || !key || seen.has(key)) return;
       seen.add(key);
       mesh.visible = false;
       cardAnims.push({
@@ -852,12 +869,17 @@ export function Table3DPage() {
     const particles: { pts: THREE.Points; vel: Float32Array; t0: number; dur: number }[] = [];
 
     const burst = (at: THREE.Vector3, color: number, count: number, spread: number, up: number) => {
+      if (motion.matches) return;
       const pos = new Float32Array(count * 3);
       const vel = new Float32Array(count * 3);
       for (let i = 0; i < count; i++) {
         pos.set([at.x, at.y, at.z], i * 3);
         vel.set(
-          [(Math.random() - 0.5) * spread, Math.random() * up + 0.5, (Math.random() - 0.5) * spread],
+          [
+            (Math.random() - 0.5) * spread,
+            Math.random() * up + 0.5,
+            (Math.random() - 0.5) * spread,
+          ],
           i * 3,
         );
       }
@@ -878,11 +900,13 @@ export function Table3DPage() {
       sp.scale.set(1.3, 0.5, 1);
       sp.position.copy(at).add(new THREE.Vector3(0, 1.9, 0));
       scene.add(sp);
-      setTimeout(() => {
+      const timeout = setTimeout(() => {
+        timeouts.delete(timeout);
         scene.remove(sp);
         sp.material.map?.dispose();
         sp.material.dispose();
       }, 900);
+      timeouts.add(timeout);
     };
 
     const onPoke = (e: Event) => {
@@ -916,15 +940,18 @@ export function Table3DPage() {
           sp.material.dispose();
           return;
         }
-        sp.position.y += 0.012;
-        sp.material.opacity = 1 - lifeP;
-        requestAnimationFrame(rise);
+        if (!motion.matches) {
+          sp.position.y = at.y + 2.3 + lifeP * 0.6;
+          sp.material.opacity = 1 - lifeP;
+        }
+        nextFrame(rise);
       };
       rise();
     };
 
     const onEmote = (e: Event) => {
-      const d = (e as CustomEvent<{ fromSeat: number | null; kind: string; targetSeat?: number }>).detail;
+      const d = (e as CustomEvent<{ fromSeat: number | null; kind: string; targetSeat?: number }>)
+        .detail;
       if (d.kind in ATTACKS && d.targetSeat !== undefined) {
         // wind-up on the attacker, impact on the target
         if (d.fromSeat !== null)
@@ -933,12 +960,16 @@ export function Table3DPage() {
         play(ATTACKS[d.kind]!.sound);
         const home = homeBySeat.get(d.targetSeat);
         if (home) powSprite(home);
-        if (d.kind === 'chip' && d.fromSeat !== null) {
+        if (d.kind === 'chip' && d.fromSeat !== null && !motion.matches) {
           const from = homeBySeat.get(d.fromSeat);
           if (from && home) {
             const chip = new THREE.Mesh(
               new THREE.CylinderGeometry(0.13, 0.13, 0.05, 16),
-              new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xb45309, emissiveIntensity: 0.4 }),
+              new THREE.MeshStandardMaterial({
+                color: 0xfbbf24,
+                emissive: 0xb45309,
+                emissiveIntensity: 0.4,
+              }),
             );
             scene.add(chip);
             const born = performance.now();
@@ -953,7 +984,7 @@ export function Table3DPage() {
               chip.position.lerpVectors(from, home, fp);
               chip.position.y = 1.4 + Math.sin(Math.PI * fp) * 1.6;
               chip.rotation.x += 0.4;
-              requestAnimationFrame(flyChip);
+              nextFrame(flyChip);
             };
             flyChip();
           }
@@ -969,13 +1000,6 @@ export function Table3DPage() {
       }
     };
     window.addEventListener('4am-emote', onEmote);
-    (window as unknown as Record<string, unknown>).__dbg = {
-      anims,
-      charBySeat,
-      homeBySeat,
-      cardAnims,
-    };
-
     /* tap a player to shove them (a click, not an orbit-drag) */
     const ray = new THREE.Raycaster();
     let downAt: [number, number] | null = null;
@@ -1014,29 +1038,25 @@ export function Table3DPage() {
     renderer.domElement.addEventListener('pointerdown', onDown);
     renderer.domElement.addEventListener('pointerup', onUp);
 
-    const disposeDeep = (obj: THREE.Object3D) => {
-      obj.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.geometry) m.geometry.dispose();
-        const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
-        for (const mat of mats) {
-          const anyMat = mat as THREE.MeshBasicMaterial;
-          if (anyMat.map) anyMat.map.dispose();
-          mat.dispose();
-        }
-      });
-    };
+    const disposeDeep = disposeObject;
 
     let dirty = true;
     const rebuild = () => {
       dirty = false;
+      renderer.shadowMap.needsUpdate = true;
+      cardAnims.length = 0;
+      // Keep rigs alive across betting/connection updates. Dispose only replaced looks.
+      charBySeat.forEach((character) => dynamic.remove(character));
       disposeDeep(dynamic);
       dynamic.clear();
-      charBySeat.clear();
       homeBySeat.clear();
       const st = useStore.getState();
       const r = st.room;
-      if (!r) return;
+      if (!r || r.room.id !== roomId) {
+        charBySeat.forEach(disposeDeep);
+        charBySeat.clear();
+        return;
+      }
       const h = st.hand;
       const betting = h.betting;
       const myId = st.auth.userId;
@@ -1046,8 +1066,16 @@ export function Table3DPage() {
       const meIdx = seated.findIndex((p) => p.userId === myId);
       if (meIdx > 0) order = [...seated.slice(meIdx), ...seated.slice(0, meIdx)];
       const n = Math.max(order.length, 1);
+      const currentSeats = new Set(order.map((player) => player.seat!));
+      for (const [seat, character] of charBySeat)
+        if (!currentSeats.has(seat)) {
+          disposeDeep(character);
+          charBySeat.delete(seat);
+        }
 
       turnRing.visible = false;
+      turnArrow.visible = false;
+      if (seen.size > 600) seen.clear();
       order.forEach((p, i) => {
         const a = Math.PI / 2 + (i / n) * Math.PI * 2;
         const px = Math.cos(a) * 5.6;
@@ -1057,9 +1085,22 @@ export function Table3DPage() {
         const folded = !!engine?.folded;
 
         const cfg = parseAvatar(p.avatar3d);
-        const char = buildCharacter(cfg, folded || !!p.sittingOut);
+        const signature = JSON.stringify([cfg, folded, p.sittingOut]);
+        let char = charBySeat.get(p.seat!);
+        if (!char || char.userData.signature !== signature) {
+          if (char) disposeDeep(char);
+          char = buildCharacter(cfg, folded || !!p.sittingOut);
+          char.userData.signature = signature;
+        }
+        const previousCards = char.getObjectByName('held-cards');
+        if (previousCards) {
+          char.remove(previousCards);
+          disposeDeep(previousCards);
+        }
         char.position.set(px, 0, pz);
         char.rotation.y = Math.atan2(px, pz) + Math.PI;
+        delete char.userData.pokeSeat;
+        delete char.userData.pokeName;
         if (p.userId !== myId) {
           char.userData.pokeSeat = p.seat;
           char.userData.pokeName = p.displayName;
@@ -1067,6 +1108,29 @@ export function Table3DPage() {
         charBySeat.set(p.seat!, char);
         homeBySeat.set(p.seat!, new THREE.Vector3(px, 0, pz));
         dynamic.add(char);
+        const chair = new THREE.Group();
+        const upholstery = new THREE.MeshStandardMaterial({
+          color: 0x21172f,
+          metalness: 0.15,
+          roughness: 0.75,
+        });
+        const chairSeat = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.44, 0.4, 0.12, 24),
+          upholstery,
+        );
+        chairSeat.position.set(0, 0.38, -0.12);
+        const chairBack = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.27, 4, 16), upholstery);
+        chairBack.scale.z = 0.32;
+        chairBack.position.set(0, 0.76, -0.36);
+        const chairStem = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.06, 0.08, 0.33, 12),
+          new THREE.MeshStandardMaterial({ color: 0x554664, metalness: 0.8, roughness: 0.3 }),
+        );
+        chairStem.position.set(0, 0.18, -0.12);
+        chair.add(chairSeat, chairBack, chairStem);
+        chair.position.set(px, 0, pz);
+        chair.rotation.y = char.rotation.y;
+        dynamic.add(chair);
 
         // a fresh fold gets its little slump (timeout folds included)
         const foldKey = `${h.handId}:fold:${p.seat}`;
@@ -1104,26 +1168,26 @@ export function Table3DPage() {
         if (isToAct) {
           turnRing.visible = true;
           turnRing.position.set(px, 0.06, pz);
-          turnArrow.visible = true;
-          turnArrow.position.set(px, 2.55, pz);
+          turnArrow.visible = p.userId !== myId;
+          turnArrow.position.set(px, 3.25, pz);
         }
         if (!betting || betting.toAct === null || h.result || h.abort) turnArrow.visible = false;
 
         const stackShown = engine && !h.result ? engine.stack : p.stack;
         if (p.userId !== myId) {
-        const label = new THREE.Sprite(
-          new THREE.SpriteMaterial({
-            map: labelTexture(
-              p.userId === myId ? 'You' : p.displayName,
-              String(stackShown),
-              isToAct ? '#e879f9' : '#a78bfa',
-            ),
-            transparent: true,
-          }),
-        );
-        label.scale.set(1.7, 0.64, 1);
-        label.position.set(px, 2.1, pz);
-        dynamic.add(label);
+          const label = new THREE.Sprite(
+            new THREE.SpriteMaterial({
+              map: labelTexture(
+                p.userId === myId ? 'You' : p.displayName,
+                String(stackShown),
+                isToAct ? '#e879f9' : '#a78bfa',
+              ),
+              transparent: true,
+            }),
+          );
+          label.scale.set(1.7, 0.64, 1);
+          label.position.set(px, 2.65, pz);
+          dynamic.add(label);
         }
 
         // this street's chips slide toward the middle
@@ -1137,8 +1201,11 @@ export function Table3DPage() {
         // players in the hand hold their two cards up like humans do
         if (inHand && !folded) {
           const held = new THREE.Group();
+          held.name = 'held-cards';
           for (let ci = 0; ci < 2; ci++) {
-            const hc = makeCard(null, 0.22, 0);
+            const revealed =
+              h.showdown?.reveals.find((entry) => entry.seat === p.seat)?.cards ?? h.shown[p.seat!];
+            const hc = makeCard(revealed?.[ci] ?? null, 0.22, 0);
             hc.rotation.set(-0.5, 0, (ci - 0.5) * 0.35);
             hc.position.set((ci - 0.5) * 0.14, 0, 0.02 * ci);
             held.add(hc);
@@ -1146,7 +1213,6 @@ export function Table3DPage() {
           held.position.set(0, 0.95, 0.4);
           char.add(held);
         }
-
       });
 
       /* board and my cards */
@@ -1156,7 +1222,11 @@ export function Table3DPage() {
         cardMesh.position.z = 0.1;
         dynamic.add(cardMesh);
         // the flop cascades left to right; turn and river flip on arrival
-        spawnCard(cardMesh, h.handId ? `${h.handId}:b:${i}` : '', h.board.length === 3 ? i * 150 : 0);
+        spawnCard(
+          cardMesh,
+          h.handId ? `${h.handId}:b:${i}` : '',
+          h.board.length === 3 ? i * 150 : 0,
+        );
       });
       // run it twice: the second board sits one row behind the first
       h.board2.forEach((cardId, i) => {
@@ -1185,7 +1255,10 @@ export function Table3DPage() {
         pile.scale.setScalar(1.15);
         dynamic.add(pile);
         const potLabel = new THREE.Sprite(
-          new THREE.SpriteMaterial({ map: labelTexture('POT', String(pot), '#e879f9'), transparent: true }),
+          new THREE.SpriteMaterial({
+            map: labelTexture('POT', String(pot), '#e879f9'),
+            transparent: true,
+          }),
         );
         potLabel.scale.set(1.5, 0.56, 1);
         potLabel.position.set(0, 1.85, -1.15);
@@ -1196,16 +1269,23 @@ export function Table3DPage() {
       });
     };
 
-    const unsub = useStore.subscribe(() => {
-      dirty = true;
+    const unsub = useStore.subscribe((state, previous) => {
+      if (
+        state.room !== previous.room ||
+        state.hand !== previous.hand ||
+        state.auth.userId !== previous.auth.userId
+      )
+        dirty = true;
     });
 
     const size = () => {
       const w = mount.clientWidth;
       const hgt = mount.clientHeight;
+      if (!w || !hgt) return;
       renderer.setSize(w, hgt);
       camera.aspect = w / hgt;
       camera.updateProjectionMatrix();
+      fly(cameraPreset.pos, cameraPreset.look);
     };
     size();
     const ro = new ResizeObserver(size);
@@ -1215,13 +1295,16 @@ export function Table3DPage() {
     const clock = new THREE.Clock();
     const loop = () => {
       raf = requestAnimationFrame(loop);
+      if (document.hidden) return;
       if (dirty) rebuild();
-      const t = clock.getElapsedTime();
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const t = motion.matches ? 0 : clock.elapsedTime;
       if (turnRing.visible) {
         const pulse = 1 + Math.sin(t * 5) * 0.12;
         turnRing.scale.set(pulse, pulse, 1);
-        (turnRing.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.2 + Math.sin(t * 5) * 0.7;
-        turnArrow.position.y = 2.55 + Math.sin(t * 4) * 0.14;
+        (turnRing.material as THREE.MeshStandardMaterial).emissiveIntensity =
+          1.2 + Math.sin(t * 5) * 0.7;
+        turnArrow.position.y = 3.25 + Math.sin(t * 4) * 0.14;
         turnArrow.rotation.y = t * 2;
       }
 
@@ -1234,13 +1317,7 @@ export function Table3DPage() {
         char.position.copy(home);
         char.rotation.set(0, Math.atan2(home.x, home.z) + Math.PI, 0); // face center, stand upright
         char.scale.setScalar(1);
-        const armL = char.userData.armL as THREE.Group | undefined;
-        const armR = char.userData.armR as THREE.Group | undefined;
-        const headObj = char.userData.head as THREE.Object3D | undefined;
-        if (armL) armL.rotation.set(0, 0, -0.16 + Math.sin(t * 1.1 + seat) * 0.05);
-        if (armR) armR.rotation.set(0, 0, 0.16 - Math.sin(t * 1.1 + seat) * 0.05);
-        if (headObj) headObj.rotation.set(0, Math.sin(t * 0.4 + seat * 2) * 0.22, 0);
-        char.scale.setScalar(1 + Math.sin(t * 1.3 + seat) * 0.012);
+        idleCharacter(char, t, seat, motion.matches);
       }
       // dealt cards: drop from above while flipping face-down → face-up
       for (let i = cardAnims.length - 1; i >= 0; i--) {
@@ -1279,7 +1356,7 @@ export function Table3DPage() {
                     ? 900
                     : 1700;
         const prog = (nowMs - anim.t0) / dur;
-        if (!char || !home || prog >= 1) {
+        if (motion.matches || !char || !home || prog >= 1) {
           anims.splice(i, 1);
           continue;
         }
@@ -1337,43 +1414,54 @@ export function Table3DPage() {
         for (let j = 0; j < positions.count; j++) {
           positions.setXYZ(
             j,
-            positions.getX(j) + pt.vel[j * 3]! * 0.016,
-            positions.getY(j) + (pt.vel[j * 3 + 1]! - life * 2.2) * 0.016,
-            positions.getZ(j) + pt.vel[j * 3 + 2]! * 0.016,
+            positions.getX(j) + pt.vel[j * 3]! * dt,
+            positions.getY(j) + (pt.vel[j * 3 + 1]! - life * 2.2) * dt,
+            positions.getZ(j) + pt.vel[j * 3 + 2]! * dt,
           );
         }
         positions.needsUpdate = true;
         (pt.pts.material as THREE.PointsMaterial).opacity = 1 - life;
       }
-      rim.material.emissiveIntensity = 1.0 + Math.sin(t * 1.4) * 0.25;
+
       roulette.rotation.y = t * 0.7;
       holoGroup.children.forEach((holo, hi) => {
         const ph = (holo.userData.phase as number) + t * 0.6;
         holo.position.set(Math.cos(ph) * 1.5, Math.sin(t * 1.2 + hi) * 0.25, Math.sin(ph) * 1.5);
         holo.rotation.y = ph + Math.PI / 2;
       });
-      jackpot.material.opacity = 0.55 + (Math.sin(t * 4) > 0.4 ? 0.45 : 0);
+      jackpot.material.opacity = 0.86;
       for (const sw of sweepers) {
-        sw.light.target.position.set(Math.cos(t * 0.5 + sw.phase) * 9, 0, Math.sin(t * 0.5 + sw.phase) * 9);
+        sw.light.target.position.set(
+          Math.cos(t * 0.5 + sw.phase) * 9,
+          0,
+          Math.sin(t * 0.5 + sw.phase) * 9,
+        );
         sw.light.target.updateMatrixWorld();
       }
       motes.rotation.y = t * 0.02;
       catTail.rotation.x = Math.sin(t * 2.2) * 0.5;
       if (flyPos && flyLook) {
-        camera.position.lerp(flyPos, 0.08);
-        controls.target.lerp(flyLook, 0.08);
+        camera.position.lerp(flyPos, 1 - Math.exp(-7 * dt));
+        controls.target.lerp(flyLook, 1 - Math.exp(-7 * dt));
         if (camera.position.distanceTo(flyPos) < 0.05) {
           flyPos = null;
           flyLook = null;
         }
       }
+      if (anims.length > 0 && !motion.matches) renderer.shadowMap.needsUpdate = true;
       controls.update();
       renderer.render(scene, camera);
     };
     loop();
 
     return () => {
+      alive = false;
       cancelAnimationFrame(raf);
+      auxiliaryFrames.forEach(cancelAnimationFrame);
+      timeouts.forEach(clearTimeout);
+      window.removeEventListener('4am-emote', onEmote);
+      renderer.domElement.removeEventListener('webglcontextlost', onContextLost);
+      flyRef.current = null;
       window.removeEventListener('4am-poke', onPoke);
       renderer.domElement.removeEventListener('pointerdown', onDown);
       renderer.domElement.removeEventListener('pointerup', onUp);
@@ -1381,6 +1469,7 @@ export function Table3DPage() {
       ro.disconnect();
       controls.dispose();
       disposeDeep(scene);
+      environmentTarget.dispose();
       pmrem.dispose();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
@@ -1388,237 +1477,390 @@ export function Table3DPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
 
-  const saveAvatar = () => {
-    void api
-      .updateProfile({ avatar3d: JSON.stringify(draft) })
-      .then(() => {
-        setSaved(true);
-        setTimeout(() => setSaved(false), 1500);
-      })
-      .catch(() => {});
+  const pot = hand.betting?.seats.reduce((total, seat) => total + seat.total, 0) ?? 0;
+  const handActive = !!hand.handId && !hand.result && !hand.abort;
+  const myTurn = mySeat !== null && handActive && hand.betting?.toAct === mySeat;
+  const actingName = activeRoom?.players.find(
+    (player) => player.seat === hand.betting?.toAct,
+  )?.displayName;
+  const status = !connected
+    ? 'Reconnecting…'
+    : hand.abort
+      ? 'Hand ended'
+      : hand.result
+        ? 'Hand complete'
+        : myTurn
+          ? 'Your turn'
+          : handActive
+            ? `${actingName ?? 'Table'} is thinking`
+            : 'Waiting for the next hand';
+  const seconds = hand.deadline ? Math.max(0, Math.ceil((hand.deadline - now) / 1000)) : null;
+  const closeStudio = () => {
+    setCustomizeOpen(false);
+    characterButton.current?.focus();
+  };
+  const sendReaction = (kind: EmoteKind) => {
+    if (!connected || mySeat === null) return;
+    wsClient.send({ t: 'emote', kind });
+    setEmoteOpen(false);
+    setReaction(`${EMOTES[kind]?.label ?? 'Reaction'} sent`);
+    clearTimeout(reactionTimer.current);
+    reactionTimer.current = setTimeout(() => setReaction(''), 2200);
   };
 
-  const swatch = useMemo(() => draft.c, [draft.c]);
-
   return (
-    <div className="relative h-[100dvh] w-full overflow-hidden bg-[#150b26] text-white">
-      <div ref={mountRef} className="absolute inset-0" />
-      {thunderKey > 0 && <div key={thunderKey} className="thunder-flash" aria-hidden="true" />}
-
-      {/* HUD: top strip */}
-      <div className="absolute inset-x-0 top-0 z-10 flex items-center gap-3 p-3">
-        <Link
-          to={`/room/${roomId}`}
-          className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold backdrop-blur hover:bg-white/20"
-        >
-          ← 2D
-        </Link>
-        <span className="font-display text-lg font-bold text-violet-200">{room?.room.name}</span>
-        <span className="text-xs text-violet-300/70">drag to orbit · scroll to zoom · arrows to move</span>
-        <button
-          onClick={() => setCustomizeOpen((v) => !v)}
-          className={cn(
-            'ml-auto rounded-full px-4 py-2 text-sm font-semibold backdrop-blur',
-            customizeOpen ? 'bg-fuchsia-500 text-white' : 'bg-white/10 hover:bg-white/20',
-          )}
-        >
-          Your character
-        </button>
-      </div>
-
-      {/* character customiser */}
-      {customizeOpen && (
-        <div className="absolute right-3 top-16 z-10 max-h-[calc(100dvh-9rem)] w-64 space-y-4 overflow-y-auto rounded-2xl bg-[#1d1033]/90 p-4 ring-1 ring-violet-400/30 backdrop-blur">
-          <CharacterPreview cfg={draft} />
-          <div>
-            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-violet-300">Color</div>
-            <div className="flex flex-wrap gap-1.5">
-              {BODY_COLORS.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setDraft((d) => ({ ...d, c }))}
-                  aria-label={`Body color ${c}`}
-                  className={cn('h-7 w-7 rounded-full ring-2', swatch === c ? 'ring-white' : 'ring-transparent')}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-violet-300">Glow trim</div>
-            <div className="flex flex-wrap gap-1.5">
-              {BODY_COLORS.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setDraft((d) => ({ ...d, t: c }))}
-                  aria-label={`Trim color ${c}`}
-                  className={cn('h-7 w-7 rounded-full ring-2', draft.t === c ? 'ring-white' : 'ring-transparent')}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-violet-300">Head</div>
-            <div className="flex gap-1.5">
-              {HEADS.map((headKind) => (
-                <button
-                  key={headKind}
-                  onClick={() => setDraft((d) => ({ ...d, head: headKind }))}
-                  className={cn(
-                    'flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold capitalize',
-                    draft.head === headKind ? 'bg-violet-500 text-white' : 'bg-white/10 hover:bg-white/20',
-                  )}
-                >
-                  {headKind}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-violet-300">Hat</div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {HATS.map((hatKind) => (
-                <button
-                  key={hatKind}
-                  onClick={() => setDraft((d) => ({ ...d, hat: hatKind }))}
-                  className={cn(
-                    'rounded-lg px-2 py-1.5 text-xs font-semibold capitalize',
-                    draft.hat === hatKind ? 'bg-violet-500 text-white' : 'bg-white/10 hover:bg-white/20',
-                  )}
-                >
-                  {hatKind}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-violet-300">
-              Bust-out blast
-            </div>
-            <div className="flex gap-1.5">
-              {FX.map((fxKind) => (
-                <button
-                  key={fxKind}
-                  onClick={() => setDraft((d) => ({ ...d, fx: fxKind }))}
-                  className={cn(
-                    'flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold capitalize',
-                    draft.fx === fxKind ? 'bg-violet-500 text-white' : 'bg-white/10 hover:bg-white/20',
-                  )}
-                >
-                  {fxKind}
-                </button>
-              ))}
-            </div>
-            <p className="mt-1 text-[0.66rem] leading-snug text-violet-300/60">
-              Plays for the whole table when you run out of chips.
-            </p>
-          </div>
-          <button
-            onClick={saveAvatar}
-            className="w-full rounded-lg bg-fuchsia-500 py-2 text-sm font-bold text-white hover:bg-fuchsia-400"
-          >
-            {saved ? 'Saved - the table sees it' : 'Save character'}
-          </button>
-        </div>
+    <div
+      className={cn(
+        'table3d-lounge dark',
+        myTurn && 'is-my-turn',
+        hand.myCards.length > 0 && mySeat !== null && 'has-private-hand',
       )}
+    >
+      <header className="lounge-header">
+        <Link to={`/room/${roomId}`} className="lounge-button back-to-table">
+          <ArrowLeft size={17} />
+          <span>2D table</span>
+        </Link>
+        <div className="lounge-title">
+          <h1>{activeRoom?.room.name ?? 'Your table'}</h1>
+          <span>
+            <i className={connected ? 'connection-dot connected' : 'connection-dot'} />
+            {connected ? 'Connected' : 'Reconnecting'}
+            <b>·</b>
+            {activeRoom ? `${activeRoom.room.sb} / ${activeRoom.room.bb} blinds` : 'Joining table'}
+          </span>
+        </div>
+        <button
+          className="lounge-icon sound-toggle"
+          aria-label={soundOn ? 'Mute sound' : 'Enable sound'}
+          aria-pressed={soundOn}
+          onClick={() => {
+            setSoundsEnabled(!soundOn);
+            setSoundOn(!soundOn);
+          }}
+        >
+          {soundOn ? <SpeakerHigh size={19} /> : <SpeakerSlash size={19} />}
+        </button>
+        <button
+          ref={characterButton}
+          className="lounge-button character-trigger"
+          aria-expanded={customizeOpen}
+          onClick={() => {
+            setCustomizeOpen(!customizeOpen);
+            setPanel(null);
+            setEmoteOpen(false);
+            setTargetMenu(null);
+          }}
+        >
+          <SlidersHorizontal size={18} />
+          <span>Your character</span>
+        </button>
+      </header>
 
-      {/* emotes: everyone at the table sees yours */}
-      <div className="absolute bottom-28 right-3 z-10 flex flex-col items-end gap-2">
-        {emoteOpen && (
-          <div className="grid max-h-72 w-64 grid-cols-4 gap-1 overflow-y-auto rounded-2xl bg-[#1d1033]/95 p-2 ring-1 ring-violet-400/30 backdrop-blur">
-            {(Object.entries(EMOTES) as [EmoteKind, NonNullable<(typeof EMOTES)[EmoteKind]>][])
-              .filter(([k]) => k !== 'celebrate')
-              .map(([kind, def]) => (
-                <button
-                  key={kind}
-                  title={def.label}
-                  onClick={() => {
-                    wsClient.send({ t: 'emote', kind });
-                    setEmoteOpen(false);
-                  }}
-                  className="flex flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-lg hover:bg-white/10"
-                >
-                  {def.emoji}
-                  <span className="text-[0.55rem] leading-none text-violet-300/80">{def.label}</span>
-                </button>
-              ))}
+      <main className="lounge-stage" aria-label="3D poker table">
+        <div
+          ref={mountRef}
+          className="lounge-canvas"
+          aria-label="3D casino. Drag to orbit. Use the camera buttons to change view."
+        />
+        {thunderKey > 0 && <div key={thunderKey} className="thunder-flash" aria-hidden="true" />}
+        <div className="table-readout">
+          <span>{handActive ? (hand.betting?.street ?? 'Dealing') : 'Texas Hold’em'}</span>
+          <strong>
+            {pot.toLocaleString()} <small>in the pot</small>
+          </strong>
+        </div>
+        {(!activeRoom || sceneError || loadError) && (
+          <div className="scene-message" role="status">
+            <h2>
+              {sceneError
+                ? 'Switch to the 2D table'
+                : loadError
+                  ? 'Table unavailable'
+                  : 'Joining your table…'}
+            </h2>
+            <p>{sceneError || loadError || 'Getting the room ready for you.'}</p>
+            {(sceneError || loadError) && (
+              <Link className="lounge-button primary" to={`/room/${roomId}`}>
+                Open 2D table
+              </Link>
+            )}
           </div>
         )}
-        <button
-          onClick={() => setEmoteOpen((v) => !v)}
-          className={cn(
-            'rounded-full px-4 py-2 text-sm font-semibold backdrop-blur',
-            emoteOpen ? 'bg-fuchsia-500 text-white' : 'bg-white/10 hover:bg-white/20',
-          )}
-        >
-          🎭 Emotes
-        </button>
-      </div>
-
-      {/* tap a player: pick your mischief */}
-      {targetMenu && (
-        <div
-          className="fixed z-20 w-40 overflow-hidden rounded-xl bg-[#1d1033]/95 ring-1 ring-violet-400/40 backdrop-blur"
-          style={{ left: Math.min(targetMenu.x, window.innerWidth - 170), top: Math.min(targetMenu.y, window.innerHeight - 160) }}
-        >
-          <div className="border-b border-violet-400/20 px-3 py-1.5 text-xs font-bold text-violet-200">
-            {targetMenu.name}
+        {!customizeOpen && (
+          <div className="camera-controls" aria-label="Camera view">
+            <Camera size={16} />
+            {(
+              [
+                ['Table', [0, 6.5, 10.8], [0, 0.7, 0]],
+                ['Overhead', [0, 15, 0.01], [0, 1, 0]],
+                ['Side', [12, 5, 3], [0, 1, 0]],
+                ['Close', [0, 3.6, 7.4], [0, 1, 0]],
+              ] as [string, [number, number, number], [number, number, number]][]
+            ).map(([label, position, look]) => (
+              <button
+                key={label}
+                aria-pressed={cameraView === label}
+                onClick={() => {
+                  setCameraView(label);
+                  flyRef.current?.(position, look);
+                }}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-          {(
-            [
-              ['👉 Shove', 'shove'],
-              ['🖐️ Slap', 'slap'],
-              ['🪙 Throw a chip', 'chip'],
-            ] as const
-          ).map(([label, kind]) => (
+        )}
+        <span className="orbit-hint">Drag to orbit · Scroll to zoom</span>
+        {customizeOpen && <Wardrobe initial={parseAvatar(me?.avatar3d)} onClose={closeStudio} />}
+        {panel === 'players' && (
+          <section className="lounge-panel players-panel" aria-label="Players at the table">
+            <div className="panel-heading">
+              <h2>At the table</h2>
+              <button
+                className="lounge-icon"
+                aria-label="Close player list"
+                onClick={() => setPanel(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="field-hint">Pick a player to interact.</p>
+            {activeRoom?.players
+              .filter((p) => p.seat !== null)
+              .map((player) => (
+                <button
+                  className="player-row"
+                  key={player.userId}
+                  disabled={player.userId === auth.userId || mySeat === null || !connected}
+                  onClick={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setTargetMenu({
+                      seat: player.seat!,
+                      name: player.displayName,
+                      x: rect.right + 8,
+                      y: rect.top,
+                    });
+                  }}
+                >
+                  <span
+                    className="player-color"
+                    style={{ background: parseAvatar(player.avatar3d).c }}
+                  />
+                  <span>
+                    {player.userId === auth.userId ? 'You' : player.displayName}
+                    <small>
+                      {player.sittingOut
+                        ? 'Sitting out'
+                        : player.connected
+                          ? 'At the table'
+                          : 'Reconnecting'}
+                    </small>
+                  </span>
+                  <strong>
+                    {(
+                      hand.betting?.seats.find((s) => s.seat === player.seat)?.stack ?? player.stack
+                    ).toLocaleString()}
+                  </strong>
+                </button>
+              ))}
+          </section>
+        )}
+        {panel === 'help' && (
+          <section className="lounge-panel help-panel" aria-label="3D table help">
+            <div className="panel-heading">
+              <h2>Make yourself at home</h2>
+              <button
+                className="lounge-icon"
+                aria-label="Close help"
+                onClick={() => setPanel(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
             <button
-              key={kind}
+              className="lounge-button"
               onClick={() => {
-                if (kind === 'shove') wsClient.send({ t: 'poke', targetSeat: targetMenu.seat });
-                else wsClient.send({ t: 'emote', kind, targetSeat: targetMenu.seat });
-                setTargetMenu(null);
+                setSoundsEnabled(!soundOn);
+                setSoundOn(!soundOn);
               }}
-              className="block w-full px-3 py-2 text-left text-sm hover:bg-white/10"
             >
-              {label}
+              {soundOn ? <SpeakerSlash size={18} /> : <SpeakerHigh size={18} />}
+              {soundOn ? 'Mute sound' : 'Enable sound'}
             </button>
-          ))}
+            <p>
+              Drag to look around. Pinch or scroll to zoom. Camera presets bring you back to the
+              action.
+            </p>
+            <p>
+              Tap a character or open Players to send a playful nudge. Reactions are shared with the
+              table.
+            </p>
+            <p>Your cards stay readable below. Use the same poker controls to play your hand.</p>
+            <Link to={`/room/${roomId}`} className="lounge-button">
+              Open the full 2D table
+            </Link>
+          </section>
+        )}
+        {emoteOpen && (
+          <section className="lounge-panel reactions-panel" aria-label="Table reactions">
+            <div className="panel-heading">
+              <div>
+                <h2>Say it with a move</h2>
+                <p>Everyone at the table sees it.</p>
+              </div>
+              <button
+                className="lounge-icon"
+                aria-label="Close reactions"
+                onClick={() => setEmoteOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="reaction-grid">
+              {(Object.entries(EMOTES) as [EmoteKind, NonNullable<(typeof EMOTES)[EmoteKind]>][])
+                .filter(([kind]) => kind !== 'celebrate')
+                .map(([kind, def]) => (
+                  <button
+                    key={kind}
+                    aria-label={def.label}
+                    disabled={!connected || mySeat === null}
+                    onClick={() => sendReaction(kind)}
+                  >
+                    <span aria-hidden="true">{def.emoji}</span>
+                    {def.label}
+                  </button>
+                ))}
+            </div>
+          </section>
+        )}
+      </main>
+
+      {targetMenu && (
+        <>
           <button
+            className="target-dismiss"
+            aria-label="Dismiss player interaction"
             onClick={() => setTargetMenu(null)}
-            className="block w-full px-3 py-1.5 text-left text-xs text-violet-300/60 hover:bg-white/10"
+          />
+          <section
+            className="lounge-panel target-panel"
+            aria-label={`Interact with ${targetMenu.name}`}
+            style={{
+              left: Math.max(12, Math.min(targetMenu.x, window.innerWidth - 232)),
+              top: Math.max(80, Math.min(targetMenu.y, window.innerHeight - 245)),
+            }}
           >
-            Never mind
-          </button>
-        </div>
+            <div className="panel-heading">
+              <h2>{targetMenu.name}</h2>
+              <button
+                className="lounge-icon"
+                aria-label="Close player interaction"
+                onClick={() => setTargetMenu(null)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            {(
+              [
+                ['Shove', 'shove'],
+                ['High-energy slap', 'slap'],
+                ['Toss a chip', 'chip'],
+              ] as const
+            ).map(([label, kind]) => (
+              <button
+                className="target-action"
+                disabled={!connected || mySeat === null}
+                key={kind}
+                onClick={() => {
+                  if (kind === 'shove') wsClient.send({ t: 'poke', targetSeat: targetMenu.seat });
+                  else wsClient.send({ t: 'emote', kind, targetSeat: targetMenu.seat });
+                  setTargetMenu(null);
+                }}
+              >
+                <HandWaving size={17} />
+                {label}
+              </button>
+            ))}
+          </section>
+        </>
       )}
 
-      {/* camera presets */}
-      <div className="absolute bottom-28 left-3 z-10 flex flex-col gap-1.5">
-        {(
-          [
-            ['Seat', [0, 5.2, 8.6], [0, 0.5, 0]],
-            ['Top', [0, 14, 0.01], [0, 1, 0]],
-            ['Side', [11.5, 3.2, 0], [0, 1, 0]],
-            ['Close', [0, 2.4, 5.2], [0, 1, 0.4]],
-          ] as [string, [number, number, number], [number, number, number]][]
-        ).map(([label, pos, look]) => (
-          <button
-            key={label}
-            onClick={() => flyRef.current?.(pos, look)}
-            className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold backdrop-blur hover:bg-white/20"
+      <footer className="lounge-footer">
+        <div className="lounge-toolbar">
+          <div
+            className={cn('turn-status', myTurn && 'your-turn', urgent && myTurn && 'urgent')}
+            role="status"
           >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* HUD: the same live controls as the 2D table */}
-      {room && (
-        <div className="absolute inset-x-0 bottom-0 z-10 mx-auto max-w-5xl p-3">
-          <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} hideIdleStart={false} />
+            <i className="status-indicator" />
+            <span>{status}</span>
+            {handActive && seconds !== null && <strong>{seconds}s</strong>}
+          </div>
+          <div className="lounge-tools">
+            <button
+              className="lounge-button"
+              aria-expanded={panel === 'players'}
+              onClick={() => {
+                setPanel(panel === 'players' ? null : 'players');
+                setCustomizeOpen(false);
+                setEmoteOpen(false);
+              }}
+            >
+              <Users size={17} />
+              <span>Players</span>
+              <small>{activeRoom?.players.filter((p) => p.seat !== null).length ?? 0}</small>
+            </button>
+            <button
+              className="lounge-button"
+              aria-expanded={emoteOpen}
+              disabled={mySeat === null || !connected}
+              onClick={() => {
+                setEmoteOpen(!emoteOpen);
+                setCustomizeOpen(false);
+                setPanel(null);
+              }}
+            >
+              <ChatCircleDots size={18} />
+              <span>React</span>
+            </button>
+            <button
+              className="lounge-icon"
+              aria-label="How to use the 3D table"
+              aria-expanded={panel === 'help'}
+              onClick={() => {
+                setPanel(panel === 'help' ? null : 'help');
+                setCustomizeOpen(false);
+                setEmoteOpen(false);
+              }}
+            >
+              <Question size={19} />
+            </button>
+          </div>
         </div>
-      )}
+        {reaction && (
+          <div className="reaction-feedback" role="status">
+            <Check size={15} />
+            {reaction}
+          </div>
+        )}
+        <div className="play-controls">
+          {mySeat !== null && hand.myCards.length > 0 && (
+            <div className="private-hand">
+              <div className="private-cards">
+                {hand.myCards.map((card, index) => (
+                  <PlayingCard key={`${card}-${index}`} card={card} size="sm" />
+                ))}
+              </div>
+              <span>Your cards</span>
+            </div>
+          )}
+          <fieldset className="poker-actions" disabled={!connected}>
+            {activeRoom && (
+              <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} hideIdleStart={false} />
+            )}
+          </fieldset>
+        </div>
+      </footer>
     </div>
   );
 }
