@@ -39,10 +39,30 @@ board in overhead view. Both runouts have equal-size, separate rows; private and
 public opponent cards rest at their own places on the felt.
 
 Characters sit on a cushion at 0.61 with hips at 0.73, bent thighs/knees, and grounded
-boots. Upper-body gestures pivot at the pelvis. Physical seat IDs retain their
-positions when occupancy changes; keep the camera anchor stable until the room is
-remounted. Emotes enter and return to a seated rest pose; one animation owns each
-seat, with a short pose blend when interrupted. Targeted effects share a visible
-wind-up, flight/contact, recoil, and recovery timeline. Reduced motion retains
-interaction feedback without moving the character. Character profile data and all
-shared table controls stay compatible with 2D mode.
+boots. Upper-body gestures pivot at the pelvis. Chairs retain their canonical room
+positions and orientation for every viewer; they never follow a gesture. Standing,
+the chair aisle, walking, turning, and sitting are separate movement stages. Leg
+IK keeps the soles grounded and the stride follows distance travelled. Gestures
+layer on the current posture, with a short blend when interrupted; they cannot
+move the character off its walking path. Targeted effects share a visible wind-up,
+flight/contact, recoil, and recovery timeline. Reduced motion settles movement
+immediately and keeps interaction feedback.
+
+The room perimeter contains a TV wall, drinks counter, sofa corners, a dance area,
+and a city-view spot. Use click/tap destinations around fixed furniture; reserve
+dragging for the camera. A destination ring shows where the player is going. A
+break reserves the seat and chips; a live, unfolded hand delays departure. Return
+and choosing an empty chair use the same approach and sitting stages. Reactions
+remain available to unseated members.
+
+The TV has a real video surface, an original silent ambient loop, a public table
+channel, and local-file playback. Label playback as local to the device. Keep
+play/pause, mute, volume, seeking, fullscreen, recovery, and closing accessible.
+Honor reduced motion and pause hidden playback.
+
+Card and chip places belong to the felt, independently of the wider seating
+layout. Both runouts, public opponent cards, and the viewer's private cards must
+remain clear of the rail and chip stacks from all nine seats. The large-card
+viewer and shared 2D controls remain available. The world viewport keeps a fixed
+height across turns; the dock scrolls internally. Put betting actions before the
+card rail on phones and bring the dock to its top when the player's turn begins.

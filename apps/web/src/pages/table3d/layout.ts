@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { loungeSeat } from '@4am/shared';
 
 /** Physical seats never redistribute when someone joins or leaves. */
 export function seatPlacement(seat: number, anchor = 0) {
   const angle = Math.PI / 2 + (((seat - anchor + 9) % 9) / 9) * Math.PI * 2;
-  const position = new THREE.Vector3(Math.cos(angle) * 5.35, 0, Math.sin(angle) * 3.8);
+  const point = loungeSeat((seat - anchor + 9) % 9);
+  const position = new THREE.Vector3(point.x, 0, point.z);
   return { angle, position, yaw: Math.atan2(position.x, position.z) + Math.PI };
 }
 
@@ -39,6 +41,28 @@ export function boardPlacement(index: number, second: boolean, doubleRunout: boo
   return { x: (index - 2) * 0.72, z: doubleRunout ? (second ? -0.57 : 0.57) : 0 };
 }
 
+/** Card places belong to the felt, independently of chair/character clearance. */
+export function opponentCardPlacement(seat: number) {
+  const angle = Math.PI / 2 + (seat / 9) * Math.PI * 2;
+  const x = Math.cos(angle) * 3.5,
+    z = Math.sin(angle) * 2.46;
+  return { x, z, yaw: Math.atan2(x, z) };
+}
+
+export function committedChipPlacement(seat: number) {
+  const angle = Math.PI / 2 + (seat / 9) * Math.PI * 2;
+  const x = Math.cos(angle) * 2.7,
+    z = Math.sin(angle) * 1.85;
+  return { x, z, yaw: Math.atan2(x, z) };
+}
+
+export function privateCardPlacement(seat: number) {
+  const angle = Math.PI / 2 + (seat / 9) * Math.PI * 2;
+  const x = Math.cos(angle) * 3.35,
+    z = Math.sin(angle) * 2.2;
+  return { x, z, yaw: Math.atan2(x, z) };
+}
+
 /** Flip clearance includes the card's rotating half-height, not just its center. */
 export function dealPose(width: number, progress: number) {
   const p = THREE.MathUtils.clamp(progress, 0, 1);
@@ -47,7 +71,7 @@ export function dealPose(width: number, progress: number) {
   return { angle, lift: remaining * 0.6 + (Math.abs(Math.sin(angle)) * width * 1.39) / 2 };
 }
 
-/** A yaw-only Euler decomposition can flip a chair by 180 degrees mid-emote. */
-export function orientChair(chair: THREE.Group, character: THREE.Group) {
-  chair.quaternion.copy(character.quaternion);
+/** Furniture belongs to the room, never to a character's gesture or walk. */
+export function orientChair(chair: THREE.Group, seatYaw: number) {
+  chair.rotation.set(0, seatYaw, 0);
 }

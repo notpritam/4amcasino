@@ -146,6 +146,196 @@
   min-height: 0;
   overflow: hidden;
 }
+.lounge-world-tools {
+  position: absolute;
+  top: 18px;
+  left: 20px;
+  display: flex;
+  gap: 6px;
+  z-index: 7;
+  max-width: calc(100% - 40px);
+  overflow-x: auto;
+}
+.lounge-world-tools .lounge-button {
+  flex-shrink: 0;
+  background: var(--lounge-surface);
+}
+.lounge-explore-panel {
+  position: absolute;
+  top: 70px;
+  left: 20px;
+  width: min(360px, calc(100% - 40px));
+  max-height: calc(100% - 140px);
+  overflow-y: auto;
+  padding: 20px;
+  z-index: 19;
+  overscroll-behavior: contain;
+}
+.lounge-destinations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 20px;
+}
+.lounge-destinations .lounge-button {
+  justify-content: flex-start;
+  text-align: left;
+  white-space: normal;
+  min-height: 46px;
+  font-size: 12px;
+}
+.lounge-break-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+.lounge-travel-status,
+.tv-description {
+  color: var(--lounge-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 12px;
+}
+.lounge-tv-panel {
+  position: fixed;
+  top: 90px;
+  right: 20px;
+  width: min(380px, calc(100% - 40px));
+  max-height: calc(100dvh - 110px);
+  overflow-y: auto;
+  padding: 20px;
+  z-index: 28;
+  overscroll-behavior: contain;
+}
+.lounge-tv-panel[hidden] {
+  display: none;
+}
+.tv-channels {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  background: var(--lounge-bg);
+  border-radius: 9px;
+  margin: 18px 0 14px;
+}
+.tv-channels button {
+  flex: 1;
+  border-radius: 6px;
+  min-height: 38px;
+  font-size: 12px;
+}
+.tv-channels [aria-pressed='true'] {
+  background: var(--lounge-accent);
+  color: #21182d;
+}
+.lounge-tv-panel video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #08181e;
+  border-radius: 10px;
+}
+.lounge-tv-panel .tv-video-hidden {
+  display: none;
+}
+.tv-track {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+}
+.tv-track strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.tv-track > span {
+  color: var(--lounge-muted);
+  font-size: 10px;
+}
+.tv-seek {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+}
+.tv-seek span {
+  font-size: 11px;
+  color: var(--lounge-muted);
+  font-variant-numeric: tabular-nums;
+}
+.lounge-tv-panel input[type='range'] {
+  accent-color: var(--lounge-accent);
+  min-width: 0;
+  cursor: pointer;
+}
+.tv-playback {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.tv-playback input {
+  flex: 1;
+  width: 50px;
+}
+.tv-files {
+  display: flex;
+  gap: 8px;
+  margin-top: 20px;
+}
+.tv-files .lounge-button {
+  flex: 1;
+  padding-inline: 10px;
+  font-size: 12px;
+}
+.tv-error {
+  margin-top: 12px;
+  color: #ffbacb;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.camera-controls {
+  max-width: calc(100% - 40px);
+  overflow-x: auto;
+}
+.camera-controls button {
+  flex-shrink: 0;
+}
+@media (max-width: 700px) {
+  .lounge-world-tools {
+    top: 62px;
+    left: 10px;
+    max-width: calc(100% - 20px);
+  }
+  .lounge-world-tools .lounge-button {
+    min-height: 34px;
+    padding: 0 9px;
+    font-size: 11px;
+  }
+  .lounge-explore-panel {
+    position: fixed;
+    top: 120px;
+    left: 10px;
+    width: calc(100% - 20px);
+    max-height: calc(100dvh - 140px);
+    padding: 18px;
+  }
+  .lounge-tv-panel {
+    top: 120px;
+    right: 10px;
+    width: calc(100% - 20px);
+    max-height: calc(100dvh - 140px);
+    padding: 18px;
+  }
+  .camera-controls {
+    max-width: calc(100% - 20px);
+  }
+}
 .lounge-canvas {
   position: absolute;
   inset: 0;

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { Avatar3D } from './avatar.ts';
+import { posture, THIGH, SHIN } from './rigPose.ts';
 
 /** Dispose each owned resource once, including textures on sprites and meshes. */
 export function disposeObject(object: THREE.Object3D) {
@@ -144,14 +145,14 @@ export function buildCharacter(cfg: Avatar3D, dimmed = false): THREE.Group {
     hip.position.x = side * 0.175;
     root.add(hip);
     add(hip, new THREE.SphereGeometry(0.12, 14, 12), dark, 0, 0, 0);
-    add(hip, new THREE.CapsuleGeometry(0.115, 0.09, 5, 14), shell, 0, -0.15, 0);
+    add(hip, new THREE.CapsuleGeometry(0.115, 0.17, 5, 14), shell, 0, -THIGH / 2, 0);
     const knee = new THREE.Group();
-    knee.position.y = -0.3;
+    knee.position.y = -THIGH;
     hip.add(knee);
     add(knee, new THREE.SphereGeometry(0.11, 14, 12), dark, 0, 0, 0);
-    add(knee, new THREE.CapsuleGeometry(0.105, 0.26, 5, 14), shell, 0, -0.265, 0);
+    add(knee, new THREE.CapsuleGeometry(0.105, 0.18, 5, 14), shell, 0, -SHIN / 2, 0);
     const foot = new THREE.Group();
-    foot.position.y = -0.55;
+    foot.position.y = -SHIN;
     knee.add(foot);
     add(foot, box(0.29, 0.23, 0.44, 0.075), shell, 0, -0.035, 0.07);
     add(foot, box(0.3, 0.045, 0.44, 0.015), dark, 0, -0.152, 0.07);
@@ -210,6 +211,9 @@ export function buildCharacter(cfg: Avatar3D, dimmed = false): THREE.Group {
   body.children.forEach((child) => {
     child.position.y -= 0.53;
   });
+  // A supported pelvis closes the old gap between the suit and the cushion.
+  const pelvis = add(body, box(0.55, 0.18, 0.41, 0.07), shell, 0, -0.03, 0);
+  root.userData.pelvis = pelvis;
   idleCharacter(root, 0, 0, true);
   return root;
 }
@@ -248,6 +252,7 @@ export function idleCharacter(
     reduced ? 0 : Math.sin(t * 0.5 + phase) * 0.07,
     0,
   );
+  posture(char, seated ? 1 : 0);
   const blink = !reduced && (t + phase * 0.7) % 4.8 > 4.65;
   (char.userData.eyes as THREE.Mesh[]).forEach((eye) => {
     eye.scale.y = blink ? 0.12 : 1;

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { idleCharacter } from './character.ts';
 import { EMOTES, type EmoteKind } from './emotes.ts';
-import { blendPose, capturePose, envelope, smooth, type Pose } from './pose.ts';
+import { blendPose, capturePose, envelope, smooth, poseNodes, type Pose } from './pose.ts';
 
 export type MotionKind =
   'poke' | 'shove' | 'slap' | 'chip' | 'fold' | 'boom' | 'rocket' | 'sparks' | 'emote' | 'throw';
@@ -87,6 +87,9 @@ export class CharacterMotions {
     char.position.copy(home);
     char.rotation.set(0, Math.atan2(home.x, home.z) + Math.PI, 0);
     idleCharacter(char, now / 1000, seat, reduced, true);
+    this.layer(char, seat, now, reduced);
+  }
+  layer(char: THREE.Group, seat: number, now: number, reduced = false, keepFeet = false) {
     const anim = this.active.get(seat);
     if (!anim) return;
     const p = (now - anim.t0) / motionDuration(anim);
@@ -94,8 +97,23 @@ export class CharacterMotions {
       this.active.delete(seat);
       return;
     }
+    const base = capturePose(char);
     applyMotion(char, anim, p);
     if (anim.from && now - anim.t0 < 140) blendPose(char, anim.from, smooth((now - anim.t0) / 140));
     else anim.from = undefined;
+    // Locomotion owns travel. A reaction cannot slide into a table or chair.
+    char.position.x = base[0]!.position.x;
+    char.position.z = base[0]!.position.z;
+    if (keepFeet || char.userData.seated) {
+      char.position.y = base[0]!.position.y;
+      char.quaternion.copy(base[0]!.rotation);
+    }
+    if (keepFeet) {
+      const nodes = poseNodes(char);
+      for (let i = 7; i < nodes.length; i++) {
+        nodes[i]!.position.copy(base[i]!.position);
+        nodes[i]!.quaternion.copy(base[i]!.rotation);
+      }
+    }
   }
 }

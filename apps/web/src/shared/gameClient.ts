@@ -171,6 +171,9 @@ export function sendChat(text: string, kind: 'text' | 'sticker' | 'phrase' = 'te
 function handle(msg: ServerMsg): void {
   const store = useStore.getState();
   switch (msg.t) {
+    case 'lounge_presence':
+      store.setLoungePosition(msg.roomId, msg.userId, msg.position);
+      return;
     case 'room_state': {
       store.setRoom(msg);
       // after a reconnect (deploy or network drop): if the server no longer has

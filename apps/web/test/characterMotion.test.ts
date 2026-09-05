@@ -49,13 +49,16 @@ import {
   boardPlacement,
   buildChair,
   seatPlacement,
+  opponentCardPlacement,
+  committedChipPlacement,
+  privateCardPlacement,
   dealPose,
   orientChair,
 } from '../src/pages/table3d/layout.ts';
 import { buildLounge } from '../src/pages/table3d/scenery.ts';
 
 describe('seating, motion stages, and replacement', () => {
-  it('places hips on the cushion, thighs horizontally, and both soles on the rug', () => {
+  it('supports the pelvis on the cushion, slopes thighs forward, and plants both soles', () => {
     const char = buildCharacter(DEFAULT_AVATAR);
     idleCharacter(char, 0, 0, true, true);
     char.updateMatrixWorld(true);
@@ -64,8 +67,8 @@ describe('seating, motion stages, and replacement', () => {
       const knee = char.userData['knee' + side].getWorldPosition(new THREE.Vector3());
       const foot = char.userData['foot' + side].getWorldPosition(new THREE.Vector3());
       expect(hip.y).toBeCloseTo(0.73);
-      expect(knee.y).toBeCloseTo(hip.y);
-      expect(knee.z - hip.z).toBeCloseTo(0.3);
+      expect(knee.y).toBeCloseTo(0.65);
+      expect(knee.z - hip.z).toBeGreaterThan(0.36);
       expect(foot.z).toBeCloseTo(knee.z);
       expect(new THREE.Box3().setFromObject(char.userData['foot' + side]).min.y).toBeCloseTo(
         0.0055,
@@ -74,6 +77,7 @@ describe('seating, motion stages, and replacement', () => {
     }
     const chair = buildChair();
     expect(new THREE.Box3().setFromObject(chair.children[0]!).max.y).toBeCloseTo(0.61);
+    expect(new THREE.Box3().setFromObject(char.userData.pelvis).min.y).toBeCloseTo(0.61);
     disposeObject(char);
     disposeObject(chair);
   });
@@ -102,13 +106,16 @@ describe('seating, motion stages, and replacement', () => {
           const base = transforms(char);
           emote!.apply(char, p, 75);
           const result = transforms(char);
-          orientChair(chair, char);
+          orientChair(chair, home.yaw);
           chair.updateMatrixWorld(true);
           const cushion = chair.children[0]!.getWorldPosition(new THREE.Vector3());
           const back = chair.children[1]!.getWorldPosition(new THREE.Vector3());
           const chairFacing = cushion.sub(back).setY(0).normalize();
-          const characterFacing = new THREE.Vector3(0, 0, 1).applyQuaternion(char.quaternion);
-          expect(chairFacing.dot(characterFacing)).toBeCloseTo(1, 6);
+          const seatFacing = new THREE.Vector3(0, 0, 1).applyAxisAngle(
+            new THREE.Vector3(0, 1, 0),
+            home.yaw,
+          );
+          expect(chairFacing.dot(seatFacing)).toBeCloseTo(1, 6);
           expect(result.every(Number.isFinite)).toBe(true);
           if (p === 0 || p === 1) result.forEach((v, i) => expect(v).toBeCloseTo(base[i]!, 6));
           else changes += result.reduce((sum, v, i) => sum + Math.abs(v - base[i]!), 0);
@@ -178,7 +185,7 @@ describe('seating, motion stages, and replacement', () => {
     player.frame(char, 3, home, 900, true);
     expect(player.active.size).toBe(0);
     expect(char.position.equals(home)).toBe(true);
-    expect(char.userData.legL.rotation.x).toBeCloseTo(-Math.PI / 2);
+    expect(char.userData.legL.rotation.x).toBeLessThan(-1.3);
     expect(poseNodes(char).every((node) => node.matrix.elements.every(Number.isFinite))).toBe(true);
     disposeObject(char);
   });
@@ -193,6 +200,41 @@ describe('seating, motion stages, and replacement', () => {
 });
 
 describe('layout and overhead clearance', () => {
+  it('fits both private cards inside the rail at every seat', () => {
+    for (let seat = 0; seat < 9; seat++) {
+      const place = privateCardPlacement(seat);
+      for (const card of [-0.345, 0.345])
+        for (const x of [-0.31, 0.31])
+          for (const z of [-0.431, 0.431]) {
+            const px = place.x + Math.cos(place.yaw) * (card + x) + Math.sin(place.yaw) * z;
+            const pz = place.z - Math.sin(place.yaw) * (card + x) + Math.cos(place.yaw) * z;
+            expect((px / 4.49) ** 2 + (pz / 2.84) ** 2).toBeLessThan(1);
+          }
+    }
+  });
+  it('separates a four-column chip stack from every opponent card pair', () => {
+    for (let seat = 0; seat < 9; seat++) {
+      const cards = opponentCardPlacement(seat),
+        chips = committedChipPlacement(seat);
+      const clearance =
+        (cards.x - chips.x) * Math.sin(cards.yaw) + (cards.z - chips.z) * Math.cos(cards.yaw);
+      const angle = cards.yaw - chips.yaw;
+      const chipDepth = Math.abs(Math.sin(angle)) * 0.58 + Math.abs(Math.cos(angle)) * 0.13;
+      expect(clearance).toBeGreaterThan(0.251 + chipDepth + 0.02);
+    }
+  });
+  it('keeps every opponent card corner inside the felt and clear of the raised rail', () => {
+    for (let seat = 0; seat < 9; seat++) {
+      const place = opponentCardPlacement(seat);
+      for (const card of [-0.205, 0.205])
+        for (const x of [-0.18, 0.18])
+          for (const z of [-0.251, 0.251]) {
+            const px = place.x + Math.cos(place.yaw) * (card + x) + Math.sin(place.yaw) * z;
+            const pz = place.z - Math.sin(place.yaw) * (card + x) + Math.cos(place.yaw) * z;
+            expect((px / 4.49) ** 2 + (pz / 2.84) ** 2).toBeLessThan(1);
+          }
+    }
+  });
   it('keeps physical seat coordinates independent of occupied seats', () => {
     const initial = [0, 2, 5, 8].map((seat) => seatPlacement(seat, 2));
     const joined = [0, 1, 2, 4, 5, 8].map((seat) => ({ seat, ...seatPlacement(seat, 2) }));

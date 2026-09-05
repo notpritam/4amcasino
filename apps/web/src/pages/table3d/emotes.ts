@@ -383,10 +383,8 @@ export const EMOTES: Partial<Record<EmoteKind, EmoteDef>> = Object.assign(
           body.scale.copy(char.scale);
           char.scale.setScalar(1);
           if (char.userData.seated) {
-            if (!['jump', 'levitate', 'celebrate'].includes(kind)) {
-              body.position.y += (char.position.y - y) * 0.2;
-              char.position.y = y;
-            }
+            body.position.y += (char.position.y - y) * 0.04;
+            char.position.y = y;
             if (kind === 'moonwalk') {
               char.position.x = base[0]!.position.x;
               char.position.z = base[0]!.position.z;
@@ -406,7 +404,9 @@ export const EMOTES: Partial<Record<EmoteKind, EmoteDef>> = Object.assign(
           const spin = turns * Math.PI * 2 * smooth(p);
           if (turns) char.rotation.y = yaw;
           blendPose(char, base, envelope(p));
-          if (turns)
+          if (turns && char.userData.seated)
+            body.rotation.y += Math.sin(p * Math.PI * 2) * 0.45 * envelope(p);
+          else if (turns)
             char.quaternion
               .copy(base[0]!.rotation)
               .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), spin));

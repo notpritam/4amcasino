@@ -7,7 +7,16 @@ import { Link, useParams } from 'react-router-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { RANKS, rankOf, suitOf, type CardId } from '@4am/shared';
+import {
+  RANKS,
+  rankOf,
+  suitOf,
+  LOUNGE_DESTINATIONS,
+  isLoungeWalkable,
+  seatExit,
+  type LoungePoint,
+  type CardId,
+} from '@4am/shared';
 import { wsClient } from '../../shared/ws.ts';
 import { useStore } from '../../shared/store.ts';
 import { play } from '../../shared/sounds.ts';
@@ -30,6 +39,9 @@ import {
   SpeakerSlash,
   Users,
   X,
+  PersonSimpleWalk,
+  Television,
+  Armchair,
 } from '@phosphor-icons/react';
 import { BankControls } from '../../widgets/table/BankControls.tsx';
 import { LastHandStrip } from '../../widgets/table/LastHandStrip.tsx';
@@ -40,7 +52,16 @@ import { publicCardsBySeat } from './publicTableCards.ts';
 import { soundsEnabled, setSoundsEnabled } from '../../shared/sounds.ts';
 import { parseAvatar } from './avatar.ts';
 import { buildCharacter, disposeObject, idleCharacter } from './character.ts';
-import { buildChair, boardPlacement, seatPlacement, dealPose, orientChair } from './layout.ts';
+import {
+  buildChair,
+  boardPlacement,
+  opponentCardPlacement,
+  committedChipPlacement,
+  privateCardPlacement,
+  seatPlacement,
+  dealPose,
+  orientChair,
+} from './layout.ts';
 import { buildLounge } from './scenery.ts';
 import { capturePose, blendPose } from './pose.ts';
 import {
@@ -51,6 +72,9 @@ import {
   type CharacterMotion,
 } from './motion.ts';
 import { Wardrobe } from './Wardrobe.tsx';
+import { LoungeTV } from './LoungeTV.tsx';
+import { LoungeLocomotion, type TravelPose } from './locomotion.ts';
+import { posture, walkPose } from './rigPose.ts';
 import './table3d.css';
 
 /* ── canvas textures: cards and name tags ───────────────────────────────── */
@@ -165,10 +189,11 @@ function chipSplit(amount: number, bb: number): number[] {
   return counts;
 }
 
-function buildChips(amount: number, bb: number): THREE.Group {
+function buildChips(amount: number, bb: number, compact = false): THREE.Group {
   const g = new THREE.Group();
   const counts = chipSplit(amount, bb);
   let col = 0;
+  let level = 0;
   counts.forEach((count, tier) => {
     if (count === 0) return;
     for (let i = 0; i < count; i++) {
@@ -180,12 +205,15 @@ function buildChips(amount: number, bb: number): THREE.Group {
           metalness: 0.2,
         }),
       );
-      chip.position.set(col * 0.3, 0.03 + i * 0.05, 0);
+      chip.position.set(compact ? 0 : col * 0.3, 0.03 + (compact ? level++ : i) * 0.05, 0);
       g.add(chip);
     }
     col++;
   });
-  g.position.x -= ((col - 1) * 0.3) / 2;
+  if (!compact)
+    g.children.forEach((chip) => {
+      chip.position.x -= ((col - 1) * 0.3) / 2;
+    });
   return g;
 }
 
@@ -207,6 +235,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
   }, []);
   const { id: roomId } = useParams<{ id: string }>();
   const mountRef = useRef<HTMLDivElement>(null);
+  const dockRef = useRef<HTMLElement>(null);
   const room = useStore((s) => s.room);
   const hand = useStore((s) => s.hand);
   const auth = useStore((s) => s.auth);
@@ -233,10 +262,85 @@ function Table3DView({ table }: { table: TablePresentation }) {
   const connected = useStore((s) => s.wsConnected);
   const characterButton = useRef<HTMLButtonElement>(null);
   const activeRoom = room?.room.id === roomId ? room : null;
+  const loungePresence = useStore((s) => s.lounge);
+  const [exploreOpen, setExploreOpen] = useState(false);
+  const [tvOpen, setTVOpen] = useState(false);
+  const [tvChannel, setTVChannel] = useState<'film' | 'table'>('film');
+  const tvChannelRef = useRef(tvChannel);
+  tvChannelRef.current = tvChannel;
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const myPositionRef = useRef<TravelPose>();
+  const worldPositionsRef = useRef(new Map<number, LoungePoint>());
+  const [travelStatus, setTravelStatus] = useState<TravelPose['status']>('seated');
+  const [breakDestination, setBreakDestination] = useState<LoungePoint | null>(null);
+  const [chooseSeat, setChooseSeat] = useState(false);
 
   const me = activeRoom?.players.find((p) => p.userId === auth.userId);
   const mySeat = me?.seat ?? null;
   const isHost = room?.room.hostId === auth.userId;
+  const handActive = !!hand.handId && !hand.result && !hand.abort;
+  const myTurn = mySeat !== null && handActive && hand.betting?.toAct === mySeat;
+  useEffect(() => {
+    if (myTurn) dockRef.current?.scrollTo({ top: 0, behavior: 'instant' });
+  }, [myTurn]);
+  const contesting =
+    mySeat !== null &&
+    (hand.handId
+      ? handActive &&
+        hand.seats.some((s) => s.userId === auth.userId) &&
+        !hand.betting?.seats.find((s) => s.seat === mySeat)?.folded
+      : !!activeRoom?.handActive);
+  const away = !!loungePresence[auth.userId ?? 0] || mySeat === null;
+  const requestWalk = (point: LoungePoint) => {
+    if (!connected || !me) return;
+    if (!isLoungeWalkable(point)) {
+      setReaction('Choose a clear spot inside the lounge.');
+      clearTimeout(reactionTimer.current);
+      reactionTimer.current = setTimeout(() => setReaction(''), 2200);
+      return;
+    }
+    if (!away) {
+      wsClient.send({ t: 'sit_out', sittingOut: true });
+      setBreakDestination(point);
+    } else wsClient.send({ t: 'lounge_move', x: point.x, z: point.z });
+    setChooseSeat(false);
+  };
+  const returnToSeat = () => {
+    setBreakDestination(null);
+    if (mySeat === null) {
+      setChooseSeat(true);
+      setExploreOpen(false);
+    } else wsClient.send({ t: 'lounge_return' });
+    setCameraView('Table');
+    flyRef.current?.([0, 6.5, 10.8], [0, 0.7, 0]);
+  };
+  const worldActionsRef = useRef({
+    walk: requestWalk,
+    tv: () => setTVOpen(true),
+    seat: (_seat: number) => {},
+  });
+  worldActionsRef.current = {
+    walk: (point) => {
+      if (away) requestWalk(point);
+    },
+    tv: () => setTVOpen(true),
+    seat: (seat) => {
+      if (!connected || !me) return;
+      if (mySeat === null && !activeRoom?.handActive) wsClient.send({ t: 'sit', seat });
+      else if (seat === mySeat) returnToSeat();
+      else setChooseSeat(true);
+    },
+  };
+  useEffect(() => {
+    if (!breakDestination || !connected || !me?.sittingOut || contesting) return;
+    wsClient.send({ t: 'lounge_move', x: breakDestination.x, z: breakDestination.z });
+    setCameraView('Lounge');
+    flyRef.current?.([11, 10, 17], [0, 1, 0]);
+    setBreakDestination(null);
+  }, [breakDestination, connected, me?.sittingOut, contesting]);
+  useEffect(() => {
+    if (mySeat !== null) setChooseSeat(false);
+  }, [mySeat]);
 
   // clock for the urgent state on the HUD bar
   const [now, setNow] = useState(Date.now());
@@ -253,6 +357,8 @@ function Table3DView({ table }: { table: TablePresentation }) {
       setEmoteOpen(false);
       setPanel(null);
       setTargetMenu(null);
+      setExploreOpen(false);
+      setTVOpen(false);
       characterButton.current?.focus();
     };
     window.addEventListener('keydown', close);
@@ -374,7 +480,81 @@ function Table3DView({ table }: { table: TablePresentation }) {
     };
     controls.addEventListener('start', stopFly);
 
-    scene.add(buildLounge());
+    const lounge = buildLounge();
+    scene.add(lounge);
+    const destinationRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.32, 0.37, 40),
+      new THREE.MeshBasicMaterial({ color: 0xe8d5a9, transparent: true, opacity: 0.9 }),
+    );
+    destinationRing.name = 'walking-destination';
+    destinationRing.rotation.x = -Math.PI / 2;
+    destinationRing.visible = false;
+    scene.add(destinationRing);
+    const tvScreen = lounge.getObjectByName('lounge-tv-screen') as THREE.Mesh<
+      THREE.PlaneGeometry,
+      THREE.MeshBasicMaterial
+    >;
+    const video = videoRef.current;
+    let videoTexture: THREE.VideoTexture | undefined;
+    const liveCanvas = document.createElement('canvas');
+    liveCanvas.width = 960;
+    liveCanvas.height = 540;
+    const liveTexture = new THREE.CanvasTexture(liveCanvas);
+    liveTexture.colorSpace = THREE.SRGBColorSpace;
+    const resetVideoTexture = () => {
+      videoTexture?.dispose();
+      if (video) {
+        videoTexture = new THREE.VideoTexture(video);
+        videoTexture.colorSpace = THREE.SRGBColorSpace;
+      }
+      renderRequested = true;
+    };
+    video?.addEventListener('loadeddata', resetVideoTexture);
+    if (video && video.readyState >= 2) resetVideoTexture();
+    const drawLiveTV = () => {
+      const ink = liveCanvas.getContext('2d')!;
+      const { hand: current, room: currentRoom } = useStore.getState();
+      ink.fillStyle = '#112a2e';
+      ink.fillRect(0, 0, 960, 540);
+      ink.fillStyle = '#bfa376';
+      ink.font = '500 28px Onest, sans-serif';
+      ink.fillText('4AM  /  TABLE LIVE', 48, 60);
+      const pot = current.betting?.seats.reduce((sum, seat) => sum + seat.total, 0) ?? 0;
+      ink.fillStyle = '#f4f0e6';
+      ink.font = '600 78px Bricolage Grotesque, sans-serif';
+      ink.fillText(`${pot.toLocaleString()} in the pot`, 48, 167);
+      const name = currentRoom?.players.find((p) => p.seat === current.betting?.toAct)?.displayName;
+      ink.fillStyle = '#bad4ca';
+      ink.font = '400 28px Onest, sans-serif';
+      ink.fillText(
+        current.result
+          ? 'Hand complete'
+          : name
+            ? `${name.slice(0, 28)} is playing`
+            : 'The next hand is coming',
+        48,
+        218,
+      );
+      current.board.forEach((card, index) => {
+        const x = 48 + index * 133;
+        ink.fillStyle = '#f4f0e6';
+        ink.beginPath();
+        ink.roundRect(x, 277, 108, 154, 10);
+        ink.fill();
+        const suit = suitOf(card);
+        ink.fillStyle = suit === 1 || suit === 2 ? '#ae3237' : '#163138';
+        ink.font = '600 46px Onest, sans-serif';
+        ink.fillText(RANKS[rankOf(card)]!, x + 16, 331);
+        ink.font = '54px serif';
+        ink.fillText(SUIT_GLYPHS[suit]!, x + 31, 401);
+      });
+      ink.fillStyle = '#bad4ca';
+      ink.font = '400 22px Onest, sans-serif';
+      ink.fillText('Good company. One more hand.', 48, 491);
+      liveTexture.needsUpdate = true;
+    };
+    drawLiveTV();
+    let lastTVFrame = 0;
 
     /* the table: teal wool felt, walnut base, leather rail */
     const felt = new THREE.Mesh(
@@ -477,6 +657,8 @@ function Table3DView({ table }: { table: TablePresentation }) {
 
     /* fun: pokes, fold slumps, bust-out blasts */
     const motions = new CharacterMotions();
+    const travel = new LoungeLocomotion();
+    let lastTravelStatus = '';
     const startMotion = (anim: CharacterMotion) => motions.start(anim, charBySeat.get(anim.seat));
     const charBySeat = new Map<number, THREE.Group>();
     const homeBySeat = new Map<number, THREE.Vector3>();
@@ -602,8 +784,24 @@ function Table3DView({ table }: { table: TablePresentation }) {
     };
 
     const onEmote = (e: Event) => {
-      const d = (e as CustomEvent<{ fromSeat: number | null; kind: string; targetSeat?: number }>)
-        .detail;
+      const detail = (
+        e as CustomEvent<{
+          fromSeat: number | null;
+          fromUserId?: number;
+          kind: string;
+          targetSeat?: number;
+        }>
+      ).detail;
+      const d = {
+        ...detail,
+        fromSeat: detail.fromSeat ?? (detail.fromUserId ? -detail.fromUserId : null),
+      };
+      if (
+        detail.fromUserId &&
+        d.fromSeat !== null &&
+        charBySeat.get(d.fromSeat)?.userData.userId !== detail.fromUserId
+      )
+        return;
       if (ATTACKS[d.kind] && d.targetSeat !== undefined) {
         const home = homeBySeat.get(d.targetSeat);
         const from = d.fromSeat === null ? undefined : homeBySeat.get(d.fromSeat);
@@ -654,9 +852,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
           chip.name = 'targeted-projectile';
           if (chip instanceof THREE.Sprite) chip.scale.setScalar(0.65);
           let launch: THREE.Vector3 | null = null;
-          const land = (
-            charBySeat.get(d.targetSeat)!.userData.head as THREE.Group
-          ).getWorldPosition(new THREE.Vector3());
+          const land = new THREE.Vector3();
           scene.add(chip);
           const flyChip = () => {
             const fp = (performance.now() - born - 160) / (CONTACT_MS - 160);
@@ -677,6 +873,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
                 (
                   charBySeat.get(d.fromSeat!)?.userData.handR as THREE.Mesh | undefined
                 )?.getWorldPosition(new THREE.Vector3()) ?? from.clone().setY(1.5);
+            (charBySeat.get(d.targetSeat!)!.userData.head as THREE.Group).getWorldPosition(land);
             chip.position.copy(chipPosition(launch ?? from, land, Math.max(0, fp)));
             if (chip instanceof THREE.Mesh) chip.rotation.x = fp * Math.PI * 4;
             nextFrame(flyChip);
@@ -716,7 +913,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
         -((e.clientY - rect.top) / rect.height) * 2 + 1,
       );
       ray.setFromCamera(ndc, camera);
-      const hits = ray.intersectObjects([dynamic, felt, rim, feltSurface], true);
+      const hits = ray.intersectObjects([dynamic, felt, rim, feltSurface, lounge], true);
       for (const hit of hits) {
         let visible = true;
         for (let ancestor: THREE.Object3D | null = hit.object; ancestor; ancestor = ancestor.parent)
@@ -724,6 +921,24 @@ function Table3DView({ table }: { table: TablePresentation }) {
         if (!visible) continue;
         let o: THREE.Object3D | null = hit.object;
         while (o) {
+          if (o.userData.chooseSeat !== undefined) {
+            worldActionsRef.current.seat(o.userData.chooseSeat);
+            return;
+          }
+          if (o.userData.loungePoint) {
+            worldActionsRef.current.walk(o.userData.loungePoint);
+            return;
+          }
+          if (o.userData.loungeSpot) {
+            const spot = o.userData.loungeSpot as keyof typeof LOUNGE_DESTINATIONS;
+            if (spot === 'tv') worldActionsRef.current.tv();
+            if (LOUNGE_DESTINATIONS[spot]) worldActionsRef.current.walk(LOUNGE_DESTINATIONS[spot]);
+            return;
+          }
+          if (o.userData.walkFloor) {
+            worldActionsRef.current.walk({ x: hit.point.x, z: hit.point.z });
+            return;
+          }
           if (o.userData.pokeSeat !== undefined) {
             targetMenuRef.current({
               seat: o.userData.pokeSeat as number,
@@ -750,7 +965,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
     const disposeDeep = disposeObject;
 
     let dirty = true;
-    let viewAnchor: number | null = null;
+    const viewAnchor = 0; // Everyone shares one physical room; only the camera changes.
     const rebuild = () => {
       dirty = false;
       renderer.shadowMap.needsUpdate = true;
@@ -772,16 +987,24 @@ function Table3DView({ table }: { table: TablePresentation }) {
       const betting = h.betting;
       const myId = st.auth.userId;
 
-      const seated = r.players.filter((p) => p.seat !== null).sort((a, b) => a.seat! - b.seat!);
-      const myPhysicalSeat = seated.find((player) => player.userId === myId)?.seat;
-      if (viewAnchor === null) viewAnchor = myPhysicalSeat ?? 0;
-      const order = seated;
-      const currentSeats = new Set(order.map((player) => player.seat!));
-      for (const [seat, character] of charBySeat)
-        if (!currentSeats.has(seat)) {
+      const order = r.players.filter((p) => p.seat !== null || p.connected);
+      const oldOwners = new Map([...charBySeat].map(([key, char]) => [key, char.userData.userId]));
+      const oldCharacters = new Map(
+        [...charBySeat.values()].map((char) => [char.userData.userId as number, char]),
+      );
+      charBySeat.clear();
+      const currentKeys = new Set(order.map((p) => p.seat ?? -p.userId));
+      for (const key of motions.active.keys())
+        if (
+          !currentKeys.has(key) ||
+          oldOwners.get(key) !== order.find((p) => (p.seat ?? -p.userId) === key)?.userId
+        )
+          motions.remove(key);
+      for (const [id, character] of oldCharacters)
+        if (!order.some((p) => p.userId === id)) {
           disposeDeep(character);
-          charBySeat.delete(seat);
-          motions.remove(seat);
+          travel.remove(id);
+          oldCharacters.delete(id);
         }
 
       turnRing.visible = false;
@@ -794,7 +1017,11 @@ function Table3DView({ table }: { table: TablePresentation }) {
           seen.add(key);
         }
       order.forEach((p) => {
-        const { position, yaw } = seatPlacement(p.seat!, viewAnchor!);
+        const key = p.seat ?? -p.userId;
+        const { position, yaw } =
+          p.seat !== null
+            ? seatPlacement(p.seat, viewAnchor)
+            : { position: new THREE.Vector3(((p.userId % 5) - 2) * 0.65, 0, 6.4), yaw: Math.PI };
         const px = position.x,
           pz = position.z;
         const engine = betting?.seats.find((s) => s.seat === p.seat);
@@ -803,14 +1030,14 @@ function Table3DView({ table }: { table: TablePresentation }) {
 
         const cfg = parseAvatar(p.avatar3d);
         const signature = JSON.stringify([p.userId, cfg, folded, p.sittingOut]);
-        let char = charBySeat.get(p.seat!);
+        let char = oldCharacters.get(p.userId);
         if (!char || char.userData.signature !== signature) {
           const previousPose = char?.userData.userId === p.userId ? capturePose(char) : undefined;
           if (char) {
             if (char.userData.userId !== p.userId) motions.remove(p.seat!);
             disposeDeep(char);
           }
-          char = buildCharacter(cfg, folded || !!p.sittingOut);
+          char = buildCharacter(cfg, folded && !p.sittingOut);
           char.userData.signature = signature;
           char.userData.userId = p.userId;
           char.position.copy(position);
@@ -818,24 +1045,40 @@ function Table3DView({ table }: { table: TablePresentation }) {
           idleCharacter(char, performance.now() / 1000, p.seat!, motion.matches, true);
           if (previousPose) blendPose(char, previousPose, 0);
         }
+        char.userData.physicalSeat = p.seat;
         delete char.userData.pokeSeat;
         delete char.userData.pokeName;
         if (p.userId !== myId) {
-          char.userData.pokeSeat = p.seat;
+          char.userData.pokeSeat = key;
           char.userData.pokeName = p.displayName;
         }
-        charBySeat.set(p.seat!, char);
-        homeBySeat.set(p.seat!, new THREE.Vector3(px, 0, pz));
+        charBySeat.set(key, char);
+        homeBySeat.set(key, char.position.clone());
         dynamic.add(char);
-        const chair = buildChair();
-        char.userData.chair = chair;
-        if (p.userId !== myId) {
-          chair.userData.pokeSeat = p.seat;
-          chair.userData.pokeName = p.displayName;
+        if (p.seat !== null) {
+          const chair = buildChair();
+          char.userData.chair = chair;
+          chair.position.copy(position);
+          orientChair(chair, yaw);
+          chair.userData.chooseSeat = p.seat;
+          dynamic.add(chair);
         }
-        chair.position.set(px, 0, pz);
-        chair.rotation.y = char.rotation.y;
-        dynamic.add(chair);
+        if (p.seat === null) {
+          const label = new THREE.Sprite(
+            new THREE.SpriteMaterial({
+              map: labelTexture(p.displayName, 'In the lounge', '#bed6d0'),
+              transparent: true,
+            }),
+          );
+          label.userData.screenLabel = true;
+          label.userData.hideOverhead = true;
+          label.userData.followActor = key;
+          label.userData.pokeSeat = key;
+          label.userData.pokeName = p.displayName;
+          label.scale.set(1.35, 0.51, 1);
+          dynamic.add(label);
+          return;
+        }
 
         // a fresh fold gets its little slump (timeout folds included)
         const foldKey = `${h.handId}:fold:${p.seat}`;
@@ -898,7 +1141,8 @@ function Table3DView({ table }: { table: TablePresentation }) {
           );
           label.userData.hideOverhead = true;
           label.userData.screenLabel = true;
-          label.userData.pokeSeat = p.seat;
+          label.userData.pokeSeat = key;
+          label.userData.followActor = key;
           label.userData.pokeName = p.displayName;
           label.scale.set(1.35, 0.51, 1);
           label.position.set(px, 2.65, pz);
@@ -908,15 +1152,17 @@ function Table3DView({ table }: { table: TablePresentation }) {
         // this street's chips slide toward the middle
         const committed = engine?.committed ?? 0;
         if (committed > 0) {
-          const chips = buildChips(committed, r.room.bb);
-          chips.position.set(px * 0.53, 1.03, pz * 0.53);
-          if (p.userId === myId)
-            chips.position.add(
-              new THREE.Vector3(1.2, 0, 0).applyAxisAngle(
-                new THREE.Vector3(0, 1, 0),
-                yaw - Math.PI,
-              ),
-            );
+          const chips = buildChips(committed, r.room.bb, p.userId === myId);
+          const placement = committedChipPlacement(p.seat!);
+          chips.position.set(placement.x, 1.03, placement.z);
+          chips.rotation.y = placement.yaw;
+          if (p.userId === myId) {
+            // A compact personal stack fits between the larger private cards and
+            // the board without spreading into the next player's card place.
+            chips.scale.set(0.75, 0.5, 0.75);
+            chips.position.x *= 0.84;
+            chips.position.z *= 0.84;
+          }
           dynamic.add(chips);
         }
 
@@ -931,11 +1177,23 @@ function Table3DView({ table }: { table: TablePresentation }) {
             card.position.x = (ci - 0.5) * 0.41;
             pair.add(card);
           }
-          pair.position.set(px * 0.68, 0, pz * 0.68);
-          pair.rotation.y = yaw - Math.PI;
+          const cards = opponentCardPlacement(p.seat!);
+          pair.position.set(cards.x, 0, cards.z);
+          pair.rotation.y = cards.yaw;
           dynamic.add(pair);
         }
       });
+
+      for (let seat = 0; seat < 9; seat++)
+        if (!order.some((p) => p.seat === seat)) {
+          const chair = buildChair(),
+            placement = seatPlacement(seat);
+          chair.position.copy(placement.position);
+          orientChair(chair, placement.yaw);
+          chair.userData.chooseSeat = seat;
+          dynamic.add(chair);
+        }
+      drawLiveTV();
 
       /* board and my cards */
       h.board.forEach((cardId, i) => {
@@ -964,14 +1222,14 @@ function Table3DView({ table }: { table: TablePresentation }) {
       });
       const mySeatNow = r.players.find((p) => p.userId === myId)?.seat ?? null;
       if (mySeatNow !== null && h.myCards.length > 0 && h.handId) {
-        const place = seatPlacement(mySeatNow, viewAnchor!);
+        const place = privateCardPlacement(mySeatNow);
         const pair = new THREE.Group();
-        pair.position.copy(place.position).multiplyScalar(0.53);
-        pair.rotation.y = place.yaw - Math.PI;
+        pair.position.set(place.x, 0, place.z);
+        pair.rotation.y = place.yaw;
         h.myCards.forEach((cardId, i) => {
-          const mine = makeCard(cardId, 0.72, 0);
+          const mine = makeCard(cardId, 0.62, 0);
           mine.name = `private-card-${i}`;
-          mine.position.x = (i - 0.5) * 0.8;
+          mine.position.x = (i - 0.5) * 0.69;
           pair.add(mine);
           spawnCard(mine, `${h.handId}:mine:${i}`, i * 140);
         });
@@ -982,8 +1240,8 @@ function Table3DView({ table }: { table: TablePresentation }) {
       const pot = betting ? betting.seats.reduce((sum, x) => sum + x.total, 0) : 0;
       if (pot > 0) {
         const pile = buildChips(pot, r.room.bb);
-        pile.position.set(2.7, 1.03, 0);
-        pile.scale.setScalar(1.15);
+        pile.position.set(2.26, 1.03, 0);
+        pile.scale.setScalar(0.6);
         dynamic.add(pile);
         const potLabel = new THREE.Sprite(
           new THREE.SpriteMaterial({
@@ -993,7 +1251,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
         );
         potLabel.userData.hideOverhead = true;
         potLabel.scale.set(1.5, 0.56, 1);
-        potLabel.position.set(2.7, 1.85, 0);
+        potLabel.position.set(2.26, 1.85, 0);
         dynamic.add(potLabel);
       }
       dynamic.traverse((o) => {
@@ -1002,8 +1260,14 @@ function Table3DView({ table }: { table: TablePresentation }) {
     };
 
     const unsub = useStore.subscribe((state, previous) => {
+      if (state.lounge !== previous.lounge) {
+        renderRequested = true;
+        renderer.shadowMap.needsUpdate = true;
+      }
       if (
-        state.room !== previous.room ||
+        state.room?.room !== previous.room?.room ||
+        state.room?.players !== previous.room?.players ||
+        state.room?.handActive !== previous.room?.handActive ||
         state.hand !== previous.hand ||
         state.auth.userId !== previous.auth.userId
       )
@@ -1047,13 +1311,58 @@ function Table3DView({ table }: { table: TablePresentation }) {
       const motionWasActive = motions.active.size > 0;
       // every character starts each frame at its base pose, breathes a little,
       // then active animations write absolute offsets on top - nothing drifts
-      for (const [seat, char] of charBySeat) {
-        const home = homeBySeat.get(seat);
-        if (!home) continue;
-        motions.frame(char, seat, home, nowMs, motion.matches);
-        const chair = char.userData.chair as THREE.Group;
-        if (chair) orientChair(chair, char);
+      let travelling = false;
+      worldPositionsRef.current.clear();
+      for (const [key, char] of charBySeat) {
+        const id = char.userData.userId as number;
+        const pose = travel.update(
+          id,
+          char.userData.physicalSeat as number | null,
+          useStore.getState().lounge[id],
+          nowMs,
+          motion.matches,
+        );
+        char.position.set(pose.x, 0, pose.z);
+        char.rotation.set(0, pose.yaw, 0);
+        idleCharacter(char, nowMs / 1000, id, motion.matches, false);
+        posture(char, pose.sitting);
+        if (pose.status === 'walking') walkPose(char, pose.distance, motion.matches);
+        const moving = !['seated', 'standing'].includes(pose.status);
+        travelling ||= moving;
+        motions.layer(char, key, nowMs, motion.matches, moving);
+        homeBySeat.set(key, new THREE.Vector3(pose.x, 0, pose.z));
+        worldPositionsRef.current.set(key, { x: pose.x, z: pose.z });
+        if (id === useStore.getState().auth.userId) {
+          myPositionRef.current = pose;
+          const target = useStore.getState().lounge[id];
+          destinationRing.visible =
+            !!target && Math.hypot(pose.x - target.x, pose.z - target.z) > 0.3;
+          if (target) destinationRing.position.set(target.x, 0.025, target.z);
+          if (lastTravelStatus !== pose.status) {
+            lastTravelStatus = pose.status;
+            setTravelStatus(pose.status);
+          }
+        }
       }
+      if (travelling) renderer.shadowMap.needsUpdate = true;
+      const nextTVTexture =
+        tvChannelRef.current === 'film' && videoTexture ? videoTexture : liveTexture;
+      if (tvScreen.material.map !== nextTVTexture) {
+        tvScreen.material.map = nextTVTexture;
+        tvScreen.material.needsUpdate = true;
+        renderRequested = true;
+      }
+      if (
+        tvChannelRef.current === 'film' &&
+        video &&
+        !video.paused &&
+        video.readyState >= 2 &&
+        nowMs - lastTVFrame > 66
+      ) {
+        lastTVFrame = nowMs;
+        renderRequested = true;
+      }
+
       // dealt cards: drop from above while flipping face-down → face-up
       for (let i = cardAnims.length - 1; i >= 0; i--) {
         const ca = cardAnims[i]!;
@@ -1128,6 +1437,10 @@ function Table3DView({ table }: { table: TablePresentation }) {
       const cameraChanged = controls.update();
       const overhead = camera.position.clone().sub(controls.target).normalize().y > 0.9;
       dynamic.traverse((object) => {
+        if (object.userData.followActor !== undefined) {
+          const actor = charBySeat.get(object.userData.followActor);
+          if (actor) object.position.copy(actor.position).add(new THREE.Vector3(0, 2.65, 0));
+        }
         if (object.userData.hideOverhead) object.visible = !overhead;
         if (object.userData.screenLabel) {
           const worldPerPixel =
@@ -1144,6 +1457,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
         !motion.matches ||
         wasDirty ||
         cameraChanged ||
+        travelling ||
         renderRequested ||
         previousReducedMotion !== motion.matches
       ) {
@@ -1169,6 +1483,10 @@ function Table3DView({ table }: { table: TablePresentation }) {
       unsub();
       ro.disconnect();
       controls.dispose();
+      video?.removeEventListener('loadeddata', resetVideoTexture);
+      tvScreen.material.map = null;
+      videoTexture?.dispose();
+      liveTexture.dispose();
       disposeDeep(scene);
       environmentTarget.dispose();
       pmrem.dispose();
@@ -1179,8 +1497,6 @@ function Table3DView({ table }: { table: TablePresentation }) {
   }, [roomId]);
 
   const pot = hand.betting?.seats.reduce((total, seat) => total + seat.total, 0) ?? 0;
-  const handActive = !!hand.handId && !hand.result && !hand.abort;
-  const myTurn = mySeat !== null && handActive && hand.betting?.toAct === mySeat;
   const actingName = activeRoom?.players.find(
     (player) => player.seat === hand.betting?.toAct,
   )?.displayName;
@@ -1201,7 +1517,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
     characterButton.current?.focus();
   };
   const sendReaction = (kind: EmoteKind) => {
-    if (!connected || mySeat === null) return;
+    if (!connected || !me) return;
     wsClient.send({ t: 'emote', kind });
     setEmoteOpen(false);
     setReaction(`${EMOTES[kind]?.label ?? 'Reaction'} sent`);
@@ -1309,6 +1625,152 @@ function Table3DView({ table }: { table: TablePresentation }) {
             {pot.toLocaleString()} <small>in the pot</small>
           </strong>
         </div>
+        <div className="lounge-world-tools">
+          <button
+            className="lounge-button"
+            aria-expanded={exploreOpen}
+            onClick={() => {
+              setExploreOpen(!exploreOpen);
+              setTVOpen(false);
+              setCustomizeOpen(false);
+            }}
+          >
+            <PersonSimpleWalk size={18} />
+            Lounge
+          </button>
+          <button
+            className="lounge-button"
+            aria-expanded={tvOpen}
+            onClick={() => {
+              setTVOpen(!tvOpen);
+              setExploreOpen(false);
+              setCustomizeOpen(false);
+            }}
+          >
+            <Television size={18} />
+            TV
+          </button>
+          {(away || breakDestination) && me && (
+            <button className="lounge-button" disabled={!connected} onClick={returnToSeat}>
+              <Armchair size={18} />
+              {mySeat === null
+                ? 'Choose seat'
+                : breakDestination
+                  ? 'Stay seated'
+                  : 'Return to seat'}
+            </button>
+          )}
+        </div>
+        {exploreOpen && (
+          <section className="lounge-panel lounge-explore-panel" aria-label="Explore the lounge">
+            <div className="panel-heading">
+              <div>
+                <h2>Make yourself at home</h2>
+                <p>
+                  {breakDestination
+                    ? 'Your break starts after this hand.'
+                    : away
+                      ? 'Tap the floor to walk. Drag to look around.'
+                      : 'Take a break. Your seat and chips stay yours.'}
+                </p>
+              </div>
+              <button
+                className="lounge-icon"
+                aria-label="Close lounge controls"
+                onClick={() => setExploreOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="lounge-destinations">
+              {Object.entries(LOUNGE_DESTINATIONS)
+                .filter(([key]) => key !== 'entry')
+                .map(([key, destination]) => (
+                  <button
+                    className="lounge-button"
+                    key={key}
+                    disabled={!connected || !me}
+                    onClick={() => {
+                      requestWalk(destination);
+                      setExploreOpen(false);
+                      if (key === 'tv') setTVOpen(true);
+                      if (key === 'dance') setEmoteOpen(true);
+                    }}
+                  >
+                    {key === 'tv' ? <Television size={17} /> : <PersonSimpleWalk size={17} />}
+                    {destination.label}
+                  </button>
+                ))}
+            </div>
+            <div className="lounge-break-actions">
+              {!away && !breakDestination && (
+                <button
+                  className="lounge-button primary"
+                  disabled={!connected || !me}
+                  onClick={() => requestWalk(LOUNGE_DESTINATIONS.entry)}
+                >
+                  {contesting ? 'Leave after this hand' : 'Get up and explore'}
+                </button>
+              )}
+              {(away || breakDestination) && me && (
+                <button
+                  className="lounge-button primary"
+                  disabled={!connected}
+                  onClick={returnToSeat}
+                >
+                  <Armchair size={17} />
+                  {mySeat === null
+                    ? 'Choose a seat'
+                    : breakDestination
+                      ? 'Cancel break'
+                      : 'Return to seat'}
+                </button>
+              )}
+              {away && travelStatus === 'walking' && (
+                <button
+                  className="lounge-button"
+                  disabled={!connected}
+                  onClick={() => {
+                    const point = myPositionRef.current;
+                    if (point && isLoungeWalkable(point))
+                      wsClient.send({ t: 'lounge_move', x: point.x, z: point.z });
+                  }}
+                >
+                  Stop walking
+                </button>
+              )}
+              {away && mySeat !== null && !activeRoom?.handActive && (
+                <button
+                  className="lounge-button"
+                  disabled={!connected}
+                  onClick={() => wsClient.send({ t: 'leave_seat' })}
+                >
+                  Free my seat
+                </button>
+              )}
+            </div>
+            <p className="lounge-travel-status" role="status">
+              {breakDestination
+                ? 'You remain in this hand. You can still use all poker actions.'
+                : travelStatus === 'getting-up'
+                  ? 'Getting up from your chair…'
+                  : travelStatus === 'walking'
+                    ? 'Walking through the lounge…'
+                    : travelStatus === 'sitting-down'
+                      ? 'Taking your seat…'
+                      : away
+                        ? 'Reactions and chat work throughout the room.'
+                        : 'Standing dances are available when you leave the chair.'}
+            </p>
+          </section>
+        )}
+        <LoungeTV
+          open={tvOpen}
+          onClose={() => setTVOpen(false)}
+          videoRef={videoRef}
+          channel={tvChannel}
+          onChannel={setTVChannel}
+        />
         {sceneError && (
           <div className="scene-message" role="status">
             <h2>The 3D scene is unavailable</h2>
@@ -1318,11 +1780,11 @@ function Table3DView({ table }: { table: TablePresentation }) {
             </Link>
           </div>
         )}
-        {(table.runTwice || table.seatPicker) && (
+        {(table.runTwice || (table.seatPicker && (!away || chooseSeat))) && (
           <div className="lounge-game-prompt">
             <fieldset disabled={!connected}>
               {table.runTwice}
-              {table.seatPicker}
+              {(!away || chooseSeat) && table.seatPicker}
             </fieldset>
           </div>
         )}
@@ -1335,6 +1797,8 @@ function Table3DView({ table }: { table: TablePresentation }) {
                 ['Overhead', [0, 15, 0.01], [0, 1, 0]],
                 ['Side', [12, 5, 3], [0, 1, 0]],
                 ['Close', [0, 3.6, 7.4], [0, 1, 0]],
+                ['Lounge', [11, 10, 17], [0, 1, 0]],
+                ['TV', [0, 3.4, -2.5], [0, 2.9, -8.3]],
               ] as [string, [number, number, number], [number, number, number]][]
             ).map(([label, position, look]) => (
               <button
@@ -1350,7 +1814,9 @@ function Table3DView({ table }: { table: TablePresentation }) {
             ))}
           </div>
         )}
-        <span className="orbit-hint">Drag to orbit · Scroll to zoom</span>
+        <span className="orbit-hint">
+          {away ? 'Tap clear floor to walk · Drag to orbit' : 'Drag to orbit · Scroll to zoom'}
+        </span>
         {customizeOpen && <Wardrobe initial={parseAvatar(me?.avatar3d)} onClose={closeStudio} />}
         {panel === 'players' && (
           <section className="lounge-panel players-panel" aria-label="Players at the table">
@@ -1416,7 +1882,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
                     <>
                       <button
                         className="lounge-button"
-                        disabled={mySeat === null || !connected}
+                        disabled={!me || !connected}
                         onClick={(event) => {
                           const rect = event.currentTarget.getBoundingClientRect();
                           setTargetMenu({
@@ -1499,7 +1965,11 @@ function Table3DView({ table }: { table: TablePresentation }) {
             <div className="panel-heading">
               <div>
                 <h2>Say it with a move</h2>
-                <p>Everyone at the table sees it.</p>
+                <p>
+                  {away
+                    ? 'Standing moves. Everyone sees them.'
+                    : 'Seated reactions. Explore for standing moves.'}
+                </p>
               </div>
               <button
                 className="lounge-icon"
@@ -1516,7 +1986,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
                   <button
                     key={kind}
                     aria-label={def.label}
-                    disabled={!connected || mySeat === null}
+                    disabled={!connected || !me}
                     onClick={() => sendReaction(kind)}
                   >
                     <span aria-hidden="true">{def.emoji}</span>
@@ -1574,31 +2044,73 @@ function Table3DView({ table }: { table: TablePresentation }) {
                 <X size={16} />
               </button>
             </div>
+            <button
+              className="target-action"
+              disabled={!connected || !me}
+              onClick={() => {
+                sendReaction('wave');
+                setTargetMenu(null);
+              }}
+            >
+              <HandWaving size={17} />
+              Wave hello
+            </button>
+            <button
+              className="target-action"
+              disabled={!connected || !me}
+              onClick={() => {
+                let point =
+                  targetMenu.seat >= 0
+                    ? seatExit(targetMenu.seat).at(-1)!
+                    : worldPositionsRef.current.get(targetMenu.seat);
+                if (point && isLoungeWalkable(point)) {
+                  const center = point;
+                  for (let step = 0; step < 8; step++) {
+                    const angle = (step * Math.PI) / 4;
+                    const beside = {
+                      x: center.x + Math.cos(angle) * 0.85,
+                      z: center.z + Math.sin(angle) * 0.85,
+                    };
+                    if (isLoungeWalkable(beside)) {
+                      point = beside;
+                      break;
+                    }
+                  }
+                  requestWalk(point);
+                }
+                setTargetMenu(null);
+              }}
+            >
+              <PersonSimpleWalk size={17} />
+              Walk over
+            </button>
             {(
               [
                 ['Shove', 'shove'],
                 ['High-energy slap', 'slap'],
                 ['Toss a chip', 'chip'],
               ] as const
-            ).map(([label, kind]) => (
-              <button
-                className="target-action"
-                disabled={!connected || mySeat === null}
-                key={kind}
-                onClick={() => {
-                  wsClient.send({ t: 'emote', kind, targetSeat: targetMenu.seat });
-                  setTargetMenu(null);
-                }}
-              >
-                <HandWaving size={17} />
-                {label}
-              </button>
-            ))}
+            )
+              .filter(() => targetMenu.seat >= 0)
+              .map(([label, kind]) => (
+                <button
+                  className="target-action"
+                  disabled={!connected || !me}
+                  key={kind}
+                  onClick={() => {
+                    wsClient.send({ t: 'emote', kind, targetSeat: targetMenu.seat });
+                    setTargetMenu(null);
+                  }}
+                >
+                  <HandWaving size={17} />
+                  {label}
+                </button>
+              ))}
           </section>
         </>
       )}
 
-      <footer className="lounge-footer">
+      <footer className="lounge-footer" ref={dockRef}>
         <div className="lounge-toolbar">
           <div
             className={cn('turn-status', myTurn && 'your-turn', urgent && myTurn && 'urgent')}
@@ -1625,7 +2137,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
             <button
               className="lounge-button"
               aria-expanded={emoteOpen}
-              disabled={mySeat === null || !connected}
+              disabled={!me || !connected}
               onClick={() => {
                 setEmoteOpen(!emoteOpen);
                 setCustomizeOpen(false);
@@ -1655,6 +2167,13 @@ function Table3DView({ table }: { table: TablePresentation }) {
             {reaction}
           </div>
         )}
+        <div className="play-controls">
+          <fieldset className="poker-actions" disabled={!connected}>
+            {activeRoom && (
+              <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} hideIdleStart={false} />
+            )}
+          </fieldset>
+        </div>
         <TableCards onEnlarge={table.showLargeCards} onResult={table.showResult} />
         {table.peekPanel && (
           <details className="lounge-peek" open={hand.peekOffers.length > 0 ? true : undefined}>
@@ -1664,13 +2183,6 @@ function Table3DView({ table }: { table: TablePresentation }) {
             <fieldset disabled={!connected}>{table.peekPanel}</fieldset>
           </details>
         )}
-        <div className="play-controls">
-          <fieldset className="poker-actions" disabled={!connected}>
-            {activeRoom && (
-              <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} hideIdleStart={false} />
-            )}
-          </fieldset>
-        </div>
         <div className="lounge-last-hand">
           <LastHandStrip roomId={roomId!} light />
         </div>
