@@ -76,18 +76,21 @@ export function buildCharacter(cfg: Avatar3D, dimmed = false): THREE.Group {
   };
   const box = (x: number, y: number, z: number, radius = 0.08) =>
     new RoundedBoxGeometry(x, y, z, 3, radius);
-  add(root, box(0.66, 0.65, 0.43, 0.14), shell, 0, 0.78, 0);
-  add(root, box(0.38, 0.3, 0.055, 0.045), dark, 0, 0.81, 0.224);
-  add(root, new THREE.SphereGeometry(0.066, 16, 12), glow, 0, 0.85, 0.265);
+  const body = new THREE.Group();
+  root.add(body);
+  root.userData.body = body;
+  add(body, box(0.66, 0.65, 0.43, 0.14), shell, 0, 0.78, 0);
+  add(body, box(0.38, 0.3, 0.055, 0.045), dark, 0, 0.81, 0.224);
+  add(body, new THREE.SphereGeometry(0.066, 16, 12), glow, 0, 0.85, 0.265);
   for (let i = 0; i < 3; i++)
-    add(root, box(0.045, 0.019, 0.02, 0.005), white, (i - 1) * 0.075, 0.72, 0.26);
-  add(root, box(0.57, 0.08, 0.45, 0.035), dark, 0, 0.53, 0);
-  add(root, box(0.14, 0.075, 0.03, 0.02), glow, 0, 0.53, 0.235);
-  add(root, new THREE.CylinderGeometry(0.13, 0.15, 0.15, 16), dark, 0, 1.15, 0);
+    add(body, box(0.045, 0.019, 0.02, 0.005), white, (i - 1) * 0.075, 0.72, 0.26);
+  add(body, box(0.57, 0.08, 0.45, 0.035), dark, 0, 0.53, 0);
+  add(body, box(0.14, 0.075, 0.03, 0.02), glow, 0, 0.53, 0.235);
+  add(body, new THREE.CylinderGeometry(0.13, 0.15, 0.15, 16), dark, 0, 1.15, 0);
 
   const head = new THREE.Group();
   head.position.y = 1.49;
-  root.add(head);
+  body.add(head);
   root.userData.head = head;
   if (cfg.head === 'cube') add(head, box(0.7, 0.6, 0.59, 0.12), shell, 0, 0, 0);
   else if (cfg.head === 'cone') {
@@ -122,18 +125,39 @@ export function buildCharacter(cfg: Avatar3D, dimmed = false): THREE.Group {
     earLight.rotation.z = Math.PI / 2;
     const shoulder = new THREE.Group();
     shoulder.position.set(side * 0.39, 1.0, 0);
-    root.add(shoulder);
+    body.add(shoulder);
     add(shoulder, new THREE.SphereGeometry(0.12, 16, 12), dark, 0, 0, 0);
     add(shoulder, new THREE.CapsuleGeometry(0.105, 0.19, 5, 14), shell, 0, -0.17, 0);
-    add(shoulder, new THREE.SphereGeometry(0.09, 14, 12), dark, 0, -0.32, 0);
-    add(shoulder, new THREE.CapsuleGeometry(0.105, 0.14, 5, 14), shell, 0, -0.42, 0.018);
-    add(shoulder, box(0.2, 0.08, 0.21, 0.03), glow, 0, -0.51, 0.02);
-    add(shoulder, new THREE.SphereGeometry(0.112, 16, 12), white, 0, -0.6, 0.032);
-    shoulder.rotation.z = side * 0.16;
-    root.userData[side === -1 ? 'armL' : 'armR'] = shoulder;
-    add(root, new THREE.CapsuleGeometry(0.13, 0.16, 5, 14), dark, side * 0.175, 0.34, 0);
-    add(root, box(0.29, 0.23, 0.44, 0.075), shell, side * 0.175, 0.145, 0.07);
-    add(root, box(0.3, 0.045, 0.44, 0.015), dark, side * 0.175, 0.047, 0.07);
+    const elbow = new THREE.Group();
+    elbow.position.y = -0.3;
+    shoulder.add(elbow);
+    add(elbow, new THREE.SphereGeometry(0.09, 14, 12), dark, 0, 0, 0);
+    add(elbow, new THREE.CapsuleGeometry(0.095, 0.11, 5, 14), shell, 0, -0.12, 0);
+    add(elbow, box(0.19, 0.07, 0.2, 0.03), glow, 0, -0.21, 0);
+    const hand = add(elbow, new THREE.SphereGeometry(0.106, 16, 12), white, 0, -0.29, 0.015);
+    root.userData[side === -1 ? 'handL' : 'handR'] = hand;
+    const suffix = side === -1 ? 'L' : 'R';
+    root.userData['arm' + suffix] = shoulder;
+    root.userData['elbow' + suffix] = elbow;
+
+    const hip = new THREE.Group();
+    hip.position.x = side * 0.175;
+    root.add(hip);
+    add(hip, new THREE.SphereGeometry(0.12, 14, 12), dark, 0, 0, 0);
+    add(hip, new THREE.CapsuleGeometry(0.115, 0.09, 5, 14), shell, 0, -0.15, 0);
+    const knee = new THREE.Group();
+    knee.position.y = -0.3;
+    hip.add(knee);
+    add(knee, new THREE.SphereGeometry(0.11, 14, 12), dark, 0, 0, 0);
+    add(knee, new THREE.CapsuleGeometry(0.105, 0.26, 5, 14), shell, 0, -0.265, 0);
+    const foot = new THREE.Group();
+    foot.position.y = -0.55;
+    knee.add(foot);
+    add(foot, box(0.29, 0.23, 0.44, 0.075), shell, 0, -0.035, 0.07);
+    add(foot, box(0.3, 0.045, 0.44, 0.015), dark, 0, -0.152, 0.07);
+    root.userData['leg' + suffix] = hip;
+    root.userData['knee' + suffix] = knee;
+    root.userData['foot' + suffix] = foot;
   }
   root.userData.eyes = eyes;
   const smile = add(
@@ -182,17 +206,46 @@ export function buildCharacter(cfg: Avatar3D, dimmed = false): THREE.Group {
       );
     }
   }
+  // Upper body pivots at the pelvis; knees and feet stay planted during a lean.
+  body.children.forEach((child) => {
+    child.position.y -= 0.53;
+  });
+  idleCharacter(root, 0, 0, true);
   return root;
 }
 
-export function idleCharacter(char: THREE.Group, t: number, phase = 0, reduced = false) {
-  const wave = reduced ? 0 : Math.sin(t * 1.6 + phase);
-  char.scale.setScalar(1 + wave * 0.007);
-  (char.userData.armL as THREE.Group).rotation.set(0, 0, -0.16 + wave * 0.035);
-  (char.userData.armR as THREE.Group).rotation.set(0, 0, 0.16 - wave * 0.035);
+export function idleCharacter(
+  char: THREE.Group,
+  t: number,
+  phase = 0,
+  reduced = false,
+  seated = false,
+) {
+  char.userData.seated = seated;
+  const breath = reduced ? 0 : Math.sin(t * 1.6 + phase);
+  const hipY = seated ? 0.73 : 1.03;
+  char.scale.setScalar(1);
+  const body = char.userData.body as THREE.Group;
+  body.position.set(0, hipY, 0);
+  body.rotation.set(0, 0, 0);
+  body.scale.set(1, 1 + breath * 0.006, 1);
+  for (const side of ['L', 'R']) {
+    const sign = side === 'L' ? -1 : 1;
+    const leg = char.userData['leg' + side] as THREE.Group;
+    leg.position.set(sign * 0.175, hipY, 0);
+    leg.rotation.set(seated ? -Math.PI / 2 : 0, 0, 0);
+    (char.userData['foot' + side] as THREE.Group).rotation.set(0, 0, 0);
+    (char.userData['knee' + side] as THREE.Group).rotation.set(seated ? Math.PI / 2 : 0, 0, 0);
+    (char.userData['arm' + side] as THREE.Group).rotation.set(
+      seated ? -1.15 : 0,
+      0,
+      sign * (seated ? 0.08 : 0.16) + breath * 0.012,
+    );
+    (char.userData['elbow' + side] as THREE.Group).rotation.set(seated ? -0.42 : -0.08, 0, 0);
+  }
   (char.userData.head as THREE.Group).rotation.set(
     0,
-    reduced ? 0 : Math.sin(t * 0.5 + phase) * 0.1,
+    reduced ? 0 : Math.sin(t * 0.5 + phase) * 0.07,
     0,
   );
   const blink = !reduced && (t + phase * 0.7) % 4.8 > 4.65;

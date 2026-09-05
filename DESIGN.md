@@ -29,3 +29,20 @@ slate and indigo Tailwind variables, so components keep writing plain
 slate/indigo utilities - never hardcode the green in components. The table
 plays on a wireframe grid, not felt. Magenta appears only as flourish
 (// comments, card offset shadows, chroma text) - never for primary actions.
+
+## 3D midnight lounge
+
+The 3D table uses teal wool felt, a walnut floor, brass window frames, warm perimeter
+lamps, and a quiet city backdrop. Keep the space above the entire playing surface
+open: no ceiling meshes, chandeliers, floating decoration, or pot labels across the
+board in overhead view. Both runouts have equal-size, separate rows; private and
+public opponent cards rest at their own places on the felt.
+
+Characters sit on a cushion at 0.61 with hips at 0.73, bent thighs/knees, and grounded
+boots. Upper-body gestures pivot at the pelvis. Physical seat IDs retain their
+positions when occupancy changes; keep the camera anchor stable until the room is
+remounted. Emotes enter and return to a seated rest pose; one animation owns each
+seat, with a short pose blend when interrupted. Targeted effects share a visible
+wind-up, flight/contact, recoil, and recovery timeline. Reduced motion retains
+interaction feedback without moving the character. Character profile data and all
+shared table controls stay compatible with 2D mode.

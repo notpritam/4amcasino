@@ -389,8 +389,9 @@ function handle(msg: ServerMsg): void {
     }
 
     case 'poke': {
-      play('thwack');
-      window.dispatchEvent(new CustomEvent('4am-poke', { detail: msg }));
+      const event = new CustomEvent('4am-poke', { detail: msg, cancelable: true });
+      // The 3D scene times its own contact sound; 2D keeps immediate feedback.
+      if (window.dispatchEvent(event)) play('thwack');
       return;
     }
 

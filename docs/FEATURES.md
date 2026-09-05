@@ -22,9 +22,9 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | Controls never hide mid-hand: Fold / Call / Raise stay in place off-turn and arm as pre-actions | **notpritam** |
 | Mid-hand kick: the banker can stand anyone up any time; it means auto-kicked from the next deal | **notpritam** |
 | Raise highlight: amber glowing badge that pops on the raiser seat; quiet chips for calls, bold ALL-IN | **notpritam** |
-| The 3D world: three.js purple-cyberpunk table at /room/:id/3d, customisable characters (color, head, hat) synced to everyone, fully playable via the HUD | **notpritam** |
-| 3D fun: live character preview, glow-trim + blast customisation, tap-to-shove pokes (POW), fold slumps, bust-out blasts, overhead turn arrow | **notpritam** |
-| 3D casino room: carpet, neon walls, suit signs, house sign, slot machines, bar, chandelier | **notpritam** |
+| The 3D world: three.js midnight-lounge table at /room/:id/3d, customisable characters (color, head, hat) synced to everyone, fully playable via the HUD | **notpritam** |
+| 3D fun: live character preview, glow-trim + blast customisation, jointed seated poses, targeted gestures (POW), fold slumps, returning bust effects, camera-aware turn arrow | **notpritam** |
+| 3D card lounge: teal felt, walnut floor, brass city windows, perimeter lamps and seating; open overhead card view | **notpritam** |
 | Living casino ambience: spinning roulette, orbiting holo cards, blinking JACKPOT, sweeping spotlights, dust motes, wall art, bar cat | **notpritam** |
 | Card reveal choreography: board cards flip back-to-face with a cascading flop, in 2D and in the 3D world (drop + flip onto the felt) | **notpritam** |
 | New-design landing page (round isometric table preview, 3D world story) and README refresh with fresh screenshots | **notpritam** |

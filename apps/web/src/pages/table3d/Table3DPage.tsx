@@ -1,4 +1,4 @@
-// ABOUTME: The table as a three.js world - light-purple cyberpunk room, procedural
+// ABOUTME: The table as a three.js world - open-roof midnight card lounge, procedural
 // ABOUTME: customisable characters at every seat, live cards/chips/turn state from
 // ABOUTME: the same store as the 2D table, fully playable via the HUD action bar.
 // ABOUTME: Requested by notpritam - see docs/FEATURES.md.
@@ -40,6 +40,16 @@ import { publicCardsBySeat } from './publicTableCards.ts';
 import { soundsEnabled, setSoundsEnabled } from '../../shared/sounds.ts';
 import { parseAvatar } from './avatar.ts';
 import { buildCharacter, disposeObject, idleCharacter } from './character.ts';
+import { buildChair, boardPlacement, seatPlacement, dealPose, orientChair } from './layout.ts';
+import { buildLounge } from './scenery.ts';
+import { capturePose, blendPose } from './pose.ts';
+import {
+  CharacterMotions,
+  CONTACT_MS,
+  chipPosition,
+  motionDuration,
+  type CharacterMotion,
+} from './motion.ts';
 import { Wardrobe } from './Wardrobe.tsx';
 import './table3d.css';
 
@@ -93,7 +103,7 @@ function labelTexture(name: string, sub: string, accent: string): THREE.CanvasTe
   c.width = 256;
   c.height = 96;
   const x = c.getContext('2d')!;
-  x.fillStyle = 'rgba(21,11,38,0.82)';
+  x.fillStyle = 'rgba(13,31,34,0.92)';
   x.beginPath();
   x.roundRect(4, 4, 248, 88, 18);
   x.fill();
@@ -120,9 +130,19 @@ function makeCard(id: CardId | null, w = 0.55, tilt = 0.14): THREE.Mesh {
     new THREE.MeshBasicMaterial({
       map: cardTexture(id),
       transparent: true,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
     }),
   );
+  if (id !== null) {
+    const back = new THREE.Mesh(
+      mesh.geometry,
+      new THREE.MeshBasicMaterial({ map: cardTexture(null), transparent: true }),
+    );
+    back.rotation.y = Math.PI;
+    back.position.z = -0.002;
+    mesh.add(back);
+  }
+  mesh.userData.cardWidth = w;
   mesh.rotation.x = -Math.PI / 2 + tilt;
   mesh.position.y = FELT_TOP + 0.02 + Math.sin(tilt) * (h / 2);
   return mesh;
@@ -249,8 +269,8 @@ function Table3DView({ table }: { table: TablePresentation }) {
     setSceneError('');
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x150b26);
-    scene.fog = new THREE.Fog(0x150b26, 16, 44);
+    scene.background = new THREE.Color(0x11272d);
+    scene.fog = new THREE.Fog(0x11272d, 24, 52);
 
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 60);
     camera.position.set(0, 5.2, 8.6);
@@ -266,6 +286,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
     }
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
     let alive = true;
+    let renderRequested = true;
     const auxiliaryFrames = new Set<number>();
     const timeouts = new Set<ReturnType<typeof setTimeout>>();
     const nextFrame = (fn: FrameRequestCallback) => {
@@ -296,7 +317,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
     scene.environmentIntensity = 0.4;
     mount.appendChild(renderer.domElement);
 
-    const sun = new THREE.DirectionalLight(0xd8c7ff, 2.2);
+    const sun = new THREE.DirectionalLight(0xffe3bf, 2.5);
     sun.position.set(7, 12, 5);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
@@ -353,388 +374,12 @@ function Table3DView({ table }: { table: TablePresentation }) {
     };
     controls.addEventListener('start', stopFly);
 
-    /* the room: violet haze, neon grid floor, glowing pillars */
-    scene.add(new THREE.AmbientLight(0x8b7ab8, 0.35));
-    const key = new THREE.PointLight(0xa78bfa, 40, 40);
-    key.position.set(0, 8, 0);
-    scene.add(key);
-    const magenta = new THREE.PointLight(0xe879f9, 30, 30);
-    magenta.position.set(-8, 4, -6);
-    scene.add(magenta);
-    const blue = new THREE.PointLight(0x818cf8, 25, 30);
-    blue.position.set(8, 4, 6);
-    scene.add(blue);
+    scene.add(buildLounge());
 
-    /* ── the casino room ── */
-    const R = 19; // room radius
-
-    // patterned carpet
-    const carpetCanvas = document.createElement('canvas');
-    carpetCanvas.width = 256;
-    carpetCanvas.height = 256;
-    const cc = carpetCanvas.getContext('2d')!;
-    cc.fillStyle = '#1c1132';
-    cc.fillRect(0, 0, 256, 256);
-    cc.strokeStyle = 'rgba(167,139,250,0.16)';
-    cc.lineWidth = 3;
-    for (let i = -4; i < 8; i++) {
-      cc.beginPath();
-      cc.moveTo(i * 64, 0);
-      cc.lineTo(i * 64 + 256, 256);
-      cc.stroke();
-      cc.beginPath();
-      cc.moveTo(i * 64 + 256, 0);
-      cc.lineTo(i * 64, 256);
-      cc.stroke();
-    }
-    cc.fillStyle = 'rgba(232,121,249,0.14)';
-    for (let ix = 0; ix < 4; ix++)
-      for (let iy = 0; iy < 4; iy++)
-        (cc.beginPath(), cc.arc(ix * 64 + 32, iy * 64 + 32, 5, 0, 7), cc.fill());
-    const carpetTex = new THREE.CanvasTexture(carpetCanvas);
-    carpetTex.colorSpace = THREE.SRGBColorSpace;
-    carpetTex.wrapS = carpetTex.wrapT = THREE.RepeatWrapping;
-    carpetTex.repeat.set(12, 12);
-    const carpet = new THREE.Mesh(
-      new THREE.CircleGeometry(R, 48),
-      new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 0.95 }),
-    );
-    carpet.rotation.x = -Math.PI / 2;
-    carpet.position.y = 0.002;
-    carpet.receiveShadow = true;
-    scene.add(carpet);
-
-    // enclosing wall with neon trim bands
-    const wall = new THREE.Mesh(
-      new THREE.CylinderGeometry(R, R, 9, 32, 1, true),
-      new THREE.MeshStandardMaterial({ color: 0x160c28, roughness: 0.9, side: THREE.BackSide }),
-    );
-    wall.position.y = 4.5;
-    scene.add(wall);
-    for (const [y, col] of [
-      [0.5, 0xa78bfa],
-      [7.6, 0xe879f9],
-    ] as const) {
-      const band = new THREE.Mesh(
-        new THREE.TorusGeometry(R - 0.05, 0.06, 8, 64),
-        new THREE.MeshStandardMaterial({ color: 0x1a0b2e, emissive: col, emissiveIntensity: 1.6 }),
-      );
-      band.rotation.x = Math.PI / 2;
-      band.position.y = y;
-      scene.add(band);
-    }
-    // ceiling + chandelier over the table
-    const ceiling = new THREE.Mesh(
-      new THREE.CircleGeometry(R, 32),
-      new THREE.MeshStandardMaterial({ color: 0x120a20, roughness: 1 }),
-    );
-    ceiling.rotation.x = Math.PI / 2;
-    ceiling.position.y = 9;
-    scene.add(ceiling);
-    for (let i = 0; i < 3; i++) {
-      const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(1.1 + i * 0.7, 0.045, 8, 48),
-        new THREE.MeshStandardMaterial({
-          color: 0x1a0b2e,
-          emissive: i % 2 ? 0xe879f9 : 0xa78bfa,
-          emissiveIntensity: 1.8,
-        }),
-      );
-      ring.rotation.x = Math.PI / 2;
-      ring.position.y = 6.6 - i * 0.25;
-      scene.add(ring);
-    }
-
-    // glowing suit signs at the compass points
-    const suitSign = (glyph: string, color: string, angle: number) => {
-      const sc = document.createElement('canvas');
-      sc.width = 128;
-      sc.height = 128;
-      const sx = sc.getContext('2d')!;
-      sx.shadowColor = color;
-      sx.shadowBlur = 26;
-      sx.fillStyle = color;
-      sx.font = '96px system-ui';
-      sx.textAlign = 'center';
-      sx.fillText(glyph, 64, 100);
-      const tex = new THREE.CanvasTexture(sc);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
-      sp.scale.set(2.6, 2.6, 1);
-      sp.position.set(Math.cos(angle) * (R - 1), 5.4, Math.sin(angle) * (R - 1));
-      scene.add(sp);
-    };
-    suitSign('♠', '#a78bfa', Math.PI / 4);
-    suitSign('♥', '#e879f9', (Math.PI * 3) / 4);
-    suitSign('♦', '#f0abfc', (Math.PI * 5) / 4);
-    suitSign('♣', '#c4b5fd', (Math.PI * 7) / 4);
-
-    // the house sign
-    const signCanvas = document.createElement('canvas');
-    signCanvas.width = 1024;
-    signCanvas.height = 192;
-    const sg = signCanvas.getContext('2d')!;
-    sg.shadowColor = '#e879f9';
-    sg.shadowBlur = 34;
-    sg.fillStyle = '#f5d0fe';
-    sg.font = '700 120px system-ui';
-    sg.textAlign = 'center';
-    sg.fillText('4AM CASINO', 512, 132);
-    const signTex = new THREE.CanvasTexture(signCanvas);
-    signTex.colorSpace = THREE.SRGBColorSpace;
-    const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: signTex, transparent: true }));
-    sign.scale.set(9, 1.7, 1);
-    sign.position.set(0, 6.4, -(R - 1.2));
-    scene.add(sign);
-
-    // a row of slot machines along the back wall
-    for (let i = 0; i < 5; i++) {
-      const a = Math.PI * (0.32 + i * 0.09);
-      const slot = new THREE.Group();
-      const bodyBox = new THREE.Mesh(
-        new THREE.BoxGeometry(1.1, 2.1, 0.8),
-        new THREE.MeshStandardMaterial({ color: 0x241245, roughness: 0.5, metalness: 0.3 }),
-      );
-      bodyBox.position.y = 1.05;
-      slot.add(bodyBox);
-      const screen = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.8, 0.6),
-        new THREE.MeshStandardMaterial({
-          color: 0x0b0518,
-          emissive: i % 2 ? 0xe879f9 : 0x8b5cf6,
-          emissiveIntensity: 1.3,
-        }),
-      );
-      screen.position.set(0, 1.45, 0.41);
-      slot.add(screen);
-      const lever = new THREE.Mesh(
-        new THREE.SphereGeometry(0.08, 10, 10),
-        new THREE.MeshStandardMaterial({
-          color: 0xe879f9,
-          emissive: 0xe879f9,
-          emissiveIntensity: 0.8,
-        }),
-      );
-      lever.position.set(0.62, 1.8, 0);
-      slot.add(lever);
-      slot.position.set(Math.cos(a) * (R - 2.2), 0, -Math.abs(Math.sin(a)) * (R - 2.2));
-      slot.lookAt(0, 0, 0);
-      slot.traverse((o) => {
-        if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = true;
-      });
-      scene.add(slot);
-    }
-
-    // a bar on the opposite side, stools included
-    const bar = new THREE.Group();
-    const counter = new THREE.Mesh(
-      new THREE.BoxGeometry(7, 1.15, 1.1),
-      new THREE.MeshStandardMaterial({ color: 0x2b1650, roughness: 0.35, metalness: 0.4 }),
-    );
-    counter.position.y = 0.58;
-    bar.add(counter);
-    const counterGlow = new THREE.Mesh(
-      new THREE.BoxGeometry(7.05, 0.06, 1.15),
-      new THREE.MeshStandardMaterial({
-        color: 0x1a0b2e,
-        emissive: 0xa78bfa,
-        emissiveIntensity: 1.5,
-      }),
-    );
-    counterGlow.position.y = 1.18;
-    bar.add(counterGlow);
-    for (let i = 0; i < 4; i++) {
-      const stool = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.32, 0.28, 0.85, 14),
-        new THREE.MeshStandardMaterial({ color: 0x3b2168, roughness: 0.6 }),
-      );
-      stool.position.set(-2.6 + i * 1.7, 0.42, 1.35);
-      stool.castShadow = true;
-      bar.add(stool);
-    }
-    bar.position.set(0, 0, R - 3.4);
-    bar.rotation.y = Math.PI;
-    bar.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = true;
-    });
-    scene.add(bar);
-
-    // a roulette wheel spinning in the corner
-    const rouletteCanvas = document.createElement('canvas');
-    rouletteCanvas.width = 256;
-    rouletteCanvas.height = 256;
-    const rc = rouletteCanvas.getContext('2d')!;
-    for (let i = 0; i < 18; i++) {
-      rc.fillStyle = i % 2 ? '#7c3aed' : i % 3 ? '#1c1132' : '#e879f9';
-      rc.beginPath();
-      rc.moveTo(128, 128);
-      rc.arc(128, 128, 126, (i / 18) * Math.PI * 2, ((i + 1) / 18) * Math.PI * 2);
-      rc.fill();
-    }
-    rc.fillStyle = '#f5d0fe';
-    rc.beginPath();
-    rc.arc(128, 128, 26, 0, Math.PI * 2);
-    rc.fill();
-    const rouletteTex = new THREE.CanvasTexture(rouletteCanvas);
-    rouletteTex.colorSpace = THREE.SRGBColorSpace;
-    const roulette = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.6, 0.28, 36), [
-      new THREE.MeshStandardMaterial({ color: 0x2b1650, roughness: 0.4 }),
-      new THREE.MeshStandardMaterial({ map: rouletteTex, roughness: 0.5 }),
-      new THREE.MeshStandardMaterial({ color: 0x2b1650 }),
-    ]);
-    roulette.position.set(-R + 5, 1.05, -R + 7.5);
-    roulette.castShadow = true;
-    scene.add(roulette);
-    const rouletteStand = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.5, 0.9, 0.95, 16),
-      new THREE.MeshStandardMaterial({ color: 0x190d2e }),
-    );
-    rouletteStand.position.set(-R + 5, 0.45, -R + 7.5);
-    scene.add(rouletteStand);
-
-    // holo cards orbiting above the bar
-    const holoGroup = new THREE.Group();
-    for (let i = 0; i < 3; i++) {
-      const holo = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.9, 1.25),
-        new THREE.MeshBasicMaterial({
-          map: cardTexture(((i * 17 + 12) % 52) as CardId),
-          transparent: true,
-          opacity: 0.85,
-          side: THREE.DoubleSide,
-        }),
-      );
-      holo.userData.phase = (i / 3) * Math.PI * 2;
-      holoGroup.add(holo);
-    }
-    holoGroup.position.set(0, 3.4, R - 3.4);
-    scene.add(holoGroup);
-
-    // JACKPOT sign that blinks
-    const jkCanvas = document.createElement('canvas');
-    jkCanvas.width = 512;
-    jkCanvas.height = 128;
-    const jk = jkCanvas.getContext('2d')!;
-    jk.shadowColor = '#fbbf24';
-    jk.shadowBlur = 26;
-    jk.fillStyle = '#fde68a';
-    jk.font = '700 84px system-ui';
-    jk.textAlign = 'center';
-    jk.fillText('JACKPOT', 256, 94);
-    const jkTex = new THREE.CanvasTexture(jkCanvas);
-    jkTex.colorSpace = THREE.SRGBColorSpace;
-    const jackpot = new THREE.Sprite(new THREE.SpriteMaterial({ map: jkTex, transparent: true }));
-    jackpot.scale.set(4.4, 1.1, 1);
-    jackpot.position.set(-(R - 1.4) * 0.7, 6.2, -(R - 1.4) * 0.7);
-    scene.add(jackpot);
-
-    // two spotlights slowly sweeping the room
-    const sweepers: { light: THREE.SpotLight; phase: number }[] = [];
-    for (let i = 0; i < 2; i++) {
-      const spot = new THREE.SpotLight(i ? 0xe879f9 : 0xa78bfa, 120, 30, 0.35, 0.5);
-      spot.position.set(0, 8.6, 0);
-      const target = new THREE.Object3D();
-      scene.add(target);
-      spot.target = target;
-      scene.add(spot);
-      sweepers.push({ light: spot, phase: i * Math.PI });
-    }
-
-    // drifting dust motes
-    const moteCount = 220;
-    const motePos = new Float32Array(moteCount * 3);
-    for (let i = 0; i < moteCount; i++)
-      motePos.set(
-        [(Math.random() - 0.5) * 30, Math.random() * 7 + 0.5, (Math.random() - 0.5) * 30],
-        i * 3,
-      );
-    const moteGeo = new THREE.BufferGeometry();
-    moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
-    const motes = new THREE.Points(
-      moteGeo,
-      new THREE.PointsMaterial({ color: 0xc4b5fd, size: 0.045, transparent: true, opacity: 0.5 }),
-    );
-    scene.add(motes);
-
-    // framed wall art
-    for (const [glyph, ang] of [
-      ['♛', 0.95],
-      ['♚', 2.2],
-      ['★', 4.1],
-    ] as const) {
-      const artCanvas = document.createElement('canvas');
-      artCanvas.width = 128;
-      artCanvas.height = 160;
-      const ac = artCanvas.getContext('2d')!;
-      ac.fillStyle = '#241245';
-      ac.fillRect(0, 0, 128, 160);
-      ac.fillStyle = '#c4b5fd';
-      ac.font = '84px system-ui';
-      ac.textAlign = 'center';
-      ac.fillText(glyph, 64, 110);
-      const artTex = new THREE.CanvasTexture(artCanvas);
-      artTex.colorSpace = THREE.SRGBColorSpace;
-      const art = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.6, 2),
-        new THREE.MeshStandardMaterial({
-          map: artTex,
-          emissive: 0x4c1d95,
-          emissiveIntensity: 0.35,
-        }),
-      );
-      const frame = new THREE.Mesh(
-        new THREE.BoxGeometry(1.85, 2.25, 0.08),
-        new THREE.MeshStandardMaterial({ color: 0x3b2168, metalness: 0.5, roughness: 0.4 }),
-      );
-      const artAngle = ang;
-      frame.position.set(Math.cos(artAngle) * (R - 0.35), 4.4, Math.sin(artAngle) * (R - 0.35));
-      frame.lookAt(0, 4.4, 0);
-      art.position
-        .copy(frame.position)
-        .addScaledVector(frame.position.clone().setY(0).normalize(), -0.06);
-      art.position.y = 4.4;
-      art.lookAt(0, 4.4, 0);
-      scene.add(frame);
-      scene.add(art);
-    }
-
-    // the bar cat, obviously
-    const cat = new THREE.Group();
-    const catMat = new THREE.MeshStandardMaterial({ color: 0x312244, roughness: 0.9 });
-    const catBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.3, 4, 10), catMat);
-    catBody.rotation.z = Math.PI / 2;
-    catBody.position.y = 0.13;
-    cat.add(catBody);
-    const catHead = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), catMat);
-    catHead.position.set(0.28, 0.22, 0);
-    cat.add(catHead);
-    for (const side of [-1, 1]) {
-      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.09, 6), catMat);
-      ear.position.set(0.28, 0.34, side * 0.06);
-      cat.add(ear);
-    }
-    const catEyes = new THREE.Mesh(
-      new THREE.BoxGeometry(0.02, 0.02, 0.14),
-      new THREE.MeshStandardMaterial({
-        color: 0xe879f9,
-        emissive: 0xe879f9,
-        emissiveIntensity: 1.6,
-      }),
-    );
-    catEyes.position.set(0.38, 0.24, 0);
-    cat.add(catEyes);
-    const catTail = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 0.4, 8), catMat);
-    catTail.position.set(-0.3, 0.28, 0);
-    catTail.rotation.z = -0.7;
-    cat.add(catTail);
-    cat.position.set(1.9, 1.16, R - 3.4);
-    cat.rotation.y = Math.PI * 0.8;
-    scene.add(cat);
-
-    /* the table: oval felt with a neon rim */
+    /* the table: teal wool felt, walnut base, leather rail */
     const felt = new THREE.Mesh(
       new THREE.CylinderGeometry(3, 3.15, 0.35, 48),
-      new THREE.MeshStandardMaterial({ color: 0x241245, roughness: 0.85 }),
+      new THREE.MeshStandardMaterial({ color: 0x163e3b, roughness: 0.85 }),
     );
     felt.scale.x = 1.55;
     felt.position.y = 0.85;
@@ -743,7 +388,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
     scene.add(felt);
     const rim = new THREE.Mesh(
       new THREE.TorusGeometry(3.04, 0.14, 12, 80),
-      new THREE.MeshStandardMaterial({ color: 0x1d132c, roughness: 0.45, metalness: 0.2 }),
+      new THREE.MeshStandardMaterial({ color: 0x382e28, roughness: 0.45, metalness: 0.2 }),
     );
     rim.rotation.x = Math.PI / 2;
     rim.scale.x = 1.55;
@@ -751,7 +396,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
     scene.add(rim);
     const leg = new THREE.Mesh(
       new THREE.CylinderGeometry(1.1, 1.5, 0.85, 24),
-      new THREE.MeshStandardMaterial({ color: 0x190d2e, roughness: 0.7 }),
+      new THREE.MeshStandardMaterial({ color: 0x30251f, roughness: 0.7 }),
     );
     leg.scale.x = 1.4;
     leg.position.y = 0.42;
@@ -762,21 +407,21 @@ function Table3DView({ table }: { table: TablePresentation }) {
     const feltCanvas = document.createElement('canvas');
     feltCanvas.width = feltCanvas.height = 1024;
     const feltInk = feltCanvas.getContext('2d')!;
-    feltInk.fillStyle = '#23183b';
+    feltInk.fillStyle = '#16413d';
     feltInk.fillRect(0, 0, 1024, 1024);
     for (const radius of [466, 453]) {
       feltInk.beginPath();
       feltInk.arc(512, 512, radius, 0, Math.PI * 2);
-      feltInk.strokeStyle = radius === 466 ? '#817052' : '#4f3a65';
+      feltInk.strokeStyle = radius === 466 ? '#817052' : '#497069';
       feltInk.lineWidth = 2;
       feltInk.stroke();
     }
     feltInk.textAlign = 'center';
-    feltInk.fillStyle = '#71607e';
+    feltInk.fillStyle = '#73928a';
     feltInk.font = '600 48px sans-serif';
     feltInk.fillText('4 A M', 512, 700);
     feltInk.font = '500 17px sans-serif';
-    feltInk.fillStyle = '#9885a5';
+    feltInk.fillStyle = '#8ca79b';
     feltInk.fillText('A SEAT AT YOUR TABLE', 512, 734);
     const feltMap = new THREE.CanvasTexture(feltCanvas);
     feltMap.colorSpace = THREE.SRGBColorSpace;
@@ -793,8 +438,8 @@ function Table3DView({ table }: { table: TablePresentation }) {
     const underglow = new THREE.Mesh(
       new THREE.TorusGeometry(3.025, 0.022, 8, 80),
       new THREE.MeshStandardMaterial({
-        color: 0xa78bfa,
-        emissive: 0xa78bfa,
+        color: 0xb99d65,
+        emissive: 0xb99d65,
         emissiveIntensity: 0.6,
       }),
     );
@@ -831,19 +476,13 @@ function Table3DView({ table }: { table: TablePresentation }) {
     scene.add(turnArrow);
 
     /* fun: pokes, fold slumps, bust-out blasts */
-    interface Anim {
-      kind: 'poke' | 'slap' | 'chip' | 'fold' | 'boom' | 'rocket' | 'sparks' | 'emote';
-      emote?: string;
-      seat: number;
-      t0: number;
-      fired?: boolean;
-    }
-    const anims: Anim[] = [];
+    const motions = new CharacterMotions();
+    const startMotion = (anim: CharacterMotion) => motions.start(anim, charBySeat.get(anim.seat));
     const charBySeat = new Map<number, THREE.Group>();
     const homeBySeat = new Map<number, THREE.Vector3>();
     const seen = new Set<string>();
-    // newly dealt cards drop onto the felt and flip from back to face; a
-    // rebuild mid-flip just snaps the fresh mesh to its landed pose
+    // Keep deal start times across room/bet updates, so an in-flight card never snaps.
+    const dealStarts = new Map<string, number>();
     const cardAnims: {
       mesh: THREE.Mesh;
       t0: number;
@@ -852,17 +491,22 @@ function Table3DView({ table }: { table: TablePresentation }) {
       baseRX: number;
     }[] = [];
     const spawnCard = (mesh: THREE.Mesh, key: string, delayMs: number) => {
-      if (motion.matches || !key || seen.has(key)) return;
-      seen.add(key);
+      if (!key || seen.has(key)) return;
+      if (motion.matches) {
+        seen.add(key);
+        return;
+      }
+      const t0 = dealStarts.get(key) ?? performance.now() + delayMs;
+      dealStarts.set(key, t0);
+      if (performance.now() - t0 >= 520) {
+        seen.add(key);
+        dealStarts.delete(key);
+        return;
+      }
       mesh.visible = false;
-      cardAnims.push({
-        mesh,
-        t0: performance.now() + delayMs,
-        dur: 520,
-        baseY: mesh.position.y,
-        baseRX: mesh.rotation.x,
-      });
+      cardAnims.push({ mesh, t0, dur: 520, baseY: mesh.position.y, baseRX: mesh.rotation.x });
     };
+
     const particles: { pts: THREE.Points; vel: Float32Array; t0: number; dur: number }[] = [];
 
     const burst = (at: THREE.Vector3, color: number, count: number, spread: number, up: number) => {
@@ -897,9 +541,11 @@ function Table3DView({ table }: { table: TablePresentation }) {
       sp.scale.set(1.3, 0.5, 1);
       sp.position.copy(at).add(new THREE.Vector3(0, 1.9, 0));
       scene.add(sp);
+      renderRequested = true;
       const timeout = setTimeout(() => {
         timeouts.delete(timeout);
         scene.remove(sp);
+        renderRequested = true;
         sp.material.map?.dispose();
         sp.material.dispose();
       }, 900);
@@ -907,10 +553,17 @@ function Table3DView({ table }: { table: TablePresentation }) {
     };
 
     const onPoke = (e: Event) => {
-      const detail = (e as CustomEvent<{ targetSeat: number }>).detail;
-      anims.push({ kind: 'poke', seat: detail.targetSeat, t0: performance.now() });
-      const home = homeBySeat.get(detail.targetSeat);
-      if (home) powSprite(home);
+      const detail = (e as CustomEvent<{ targetSeat: number; fromUserId: number }>).detail;
+      const fromSeat =
+        useStore.getState().room?.players.find((p) => p.userId === detail.fromUserId)?.seat ?? null;
+      if (fromSeat === null || !homeBySeat.has(fromSeat) || !homeBySeat.has(detail.targetSeat))
+        return;
+      e.preventDefault();
+      onEmote(
+        new CustomEvent('4am-emote', {
+          detail: { fromSeat, targetSeat: detail.targetSeat, kind: 'shove' },
+        }),
+      );
     };
     window.addEventListener('4am-poke', onPoke);
 
@@ -928,11 +581,13 @@ function Table3DView({ table }: { table: TablePresentation }) {
       sp.scale.set(0.9, 0.9, 1);
       sp.position.copy(at).add(new THREE.Vector3(0, 2.3, 0));
       scene.add(sp);
+      renderRequested = true;
       const born = performance.now();
       const rise = () => {
         const lifeP = (performance.now() - born) / 1400;
         if (lifeP >= 1) {
           scene.remove(sp);
+          renderRequested = true;
           tex.dispose();
           sp.material.dispose();
           return;
@@ -949,48 +604,90 @@ function Table3DView({ table }: { table: TablePresentation }) {
     const onEmote = (e: Event) => {
       const d = (e as CustomEvent<{ fromSeat: number | null; kind: string; targetSeat?: number }>)
         .detail;
-      if (d.kind in ATTACKS && d.targetSeat !== undefined) {
-        // wind-up on the attacker, impact on the target
-        if (d.fromSeat !== null)
-          anims.push({ kind: 'emote', emote: 'wave', seat: d.fromSeat, t0: performance.now() });
-        anims.push({ kind: d.kind as 'slap' | 'chip', seat: d.targetSeat, t0: performance.now() });
-        play(ATTACKS[d.kind]!.sound);
+      if (ATTACKS[d.kind] && d.targetSeat !== undefined) {
         const home = homeBySeat.get(d.targetSeat);
-        if (home) powSprite(home);
-        if (d.kind === 'chip' && d.fromSeat !== null && !motion.matches) {
-          const from = homeBySeat.get(d.fromSeat);
-          if (from && home) {
-            const chip = new THREE.Mesh(
-              new THREE.CylinderGeometry(0.13, 0.13, 0.05, 16),
-              new THREE.MeshStandardMaterial({
-                color: 0xfbbf24,
-                emissive: 0xb45309,
-                emissiveIntensity: 0.4,
-              }),
-            );
-            scene.add(chip);
-            const born = performance.now();
-            const flyChip = () => {
-              const fp = (performance.now() - born) / 500;
-              if (fp >= 1) {
-                scene.remove(chip);
-                chip.geometry.dispose();
-                (chip.material as THREE.Material).dispose();
-                return;
-              }
-              chip.position.lerpVectors(from, home, fp);
-              chip.position.y = 1.4 + Math.sin(Math.PI * fp) * 1.6;
-              chip.rotation.x += 0.4;
-              nextFrame(flyChip);
-            };
-            flyChip();
-          }
+        const from = d.fromSeat === null ? undefined : homeBySeat.get(d.fromSeat);
+        if (!home || !from || d.fromSeat === d.targetSeat) return;
+        if (motion.matches) {
+          powSprite(home);
+          play(ATTACKS[d.kind]!.sound);
+          return;
+        }
+        const attackerId = charBySeat.get(d.fromSeat!)!.userData.userId;
+        const targetId = charBySeat.get(d.targetSeat)!.userData.userId;
+        const born = performance.now();
+        startMotion({
+          kind: 'throw',
+          seat: d.fromSeat!,
+          t0: born,
+          direction: home.clone().sub(from).normalize(),
+        });
+        startMotion({
+          kind: d.kind as 'shove' | 'slap' | 'chip',
+          seat: d.targetSeat,
+          t0: born,
+          direction: home.clone().sub(from).normalize(),
+        });
+        if (!motion.matches) {
+          const icon = document.createElement('canvas');
+          icon.width = icon.height = 128;
+          const ink = icon.getContext('2d')!;
+          ink.font = '92px system-ui';
+          ink.textAlign = 'center';
+          ink.fillText(d.kind === 'slap' ? '✋' : '💨', 64, 98);
+          const chip =
+            d.kind === 'chip'
+              ? new THREE.Mesh(
+                  new THREE.CylinderGeometry(0.13, 0.13, 0.05, 16),
+                  new THREE.MeshStandardMaterial({
+                    color: 0xfbbf24,
+                    metalness: 0.45,
+                    roughness: 0.3,
+                  }),
+                )
+              : new THREE.Sprite(
+                  new THREE.SpriteMaterial({
+                    map: new THREE.CanvasTexture(icon),
+                    transparent: true,
+                  }),
+                );
+          chip.name = 'targeted-projectile';
+          if (chip instanceof THREE.Sprite) chip.scale.setScalar(0.65);
+          let launch: THREE.Vector3 | null = null;
+          const land = (
+            charBySeat.get(d.targetSeat)!.userData.head as THREE.Group
+          ).getWorldPosition(new THREE.Vector3());
+          scene.add(chip);
+          const flyChip = () => {
+            const fp = (performance.now() - born - 160) / (CONTACT_MS - 160);
+            chip.visible = fp >= 0;
+            if (
+              fp >= 1 ||
+              motion.matches ||
+              charBySeat.get(d.fromSeat!)?.userData.userId !== attackerId ||
+              charBySeat.get(d.targetSeat!)?.userData.userId !== targetId
+            ) {
+              scene.remove(chip);
+              renderRequested = true;
+              disposeObject(chip);
+              return;
+            }
+            if (fp >= 0 && !launch)
+              launch =
+                (
+                  charBySeat.get(d.fromSeat!)?.userData.handR as THREE.Mesh | undefined
+                )?.getWorldPosition(new THREE.Vector3()) ?? from.clone().setY(1.5);
+            chip.position.copy(chipPosition(launch ?? from, land, Math.max(0, fp)));
+            if (chip instanceof THREE.Mesh) chip.rotation.x = fp * Math.PI * 4;
+            nextFrame(flyChip);
+          };
+          flyChip();
         }
         return;
       }
       const def = EMOTES[d.kind as EmoteKind];
-      if (def && d.fromSeat !== null) {
-        anims.push({ kind: 'emote', emote: d.kind, seat: d.fromSeat, t0: performance.now() });
+      if (def && d.fromSeat !== null && charBySeat.has(d.fromSeat)) {
+        startMotion({ kind: 'emote', emote: d.kind, seat: d.fromSeat, t0: performance.now() });
         if (def.sound) play(def.sound);
         const home = homeBySeat.get(d.fromSeat);
         if (home) emoteSprite(home, def.sprite ?? def.emoji);
@@ -999,13 +696,18 @@ function Table3DView({ table }: { table: TablePresentation }) {
     window.addEventListener('4am-emote', onEmote);
     /* tap a player to shove them (a click, not an orbit-drag) */
     const ray = new THREE.Raycaster();
-    let downAt: [number, number] | null = null;
+    let downAt: { x: number; y: number; pointerId: number } | null = null;
     const onDown = (e: PointerEvent) => {
-      downAt = [e.clientX, e.clientY];
+      if (!e.isPrimary) {
+        downAt = null;
+        return;
+      }
+      if (e.button !== 0) return;
+      downAt = { x: e.clientX, y: e.clientY, pointerId: e.pointerId };
     };
     const onUp = (e: PointerEvent) => {
-      if (!downAt) return;
-      const moved = Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]);
+      if (!downAt || downAt.pointerId !== e.pointerId) return;
+      const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y);
       downAt = null;
       if (moved > 6) return;
       const rect = renderer.domElement.getBoundingClientRect();
@@ -1014,8 +716,12 @@ function Table3DView({ table }: { table: TablePresentation }) {
         -((e.clientY - rect.top) / rect.height) * 2 + 1,
       );
       ray.setFromCamera(ndc, camera);
-      const hits = ray.intersectObjects(dynamic.children, true);
+      const hits = ray.intersectObjects([dynamic, felt, rim, feltSurface], true);
       for (const hit of hits) {
+        let visible = true;
+        for (let ancestor: THREE.Object3D | null = hit.object; ancestor; ancestor = ancestor.parent)
+          if (!ancestor.visible) visible = false;
+        if (!visible) continue;
         let o: THREE.Object3D | null = hit.object;
         while (o) {
           if (o.userData.pokeSeat !== undefined) {
@@ -1029,15 +735,22 @@ function Table3DView({ table }: { table: TablePresentation }) {
           }
           o = o.parent;
         }
+        // Cards and the table surface block picking a player behind them.
+        if (hit.object instanceof THREE.Mesh) break;
       }
       targetMenuRef.current(null as never);
     };
+    const onCancel = () => {
+      downAt = null;
+    };
+    renderer.domElement.addEventListener('pointercancel', onCancel);
     renderer.domElement.addEventListener('pointerdown', onDown);
     renderer.domElement.addEventListener('pointerup', onUp);
 
     const disposeDeep = disposeObject;
 
     let dirty = true;
+    let viewAnchor: number | null = null;
     const rebuild = () => {
       dirty = false;
       renderer.shadowMap.needsUpdate = true;
@@ -1052,6 +765,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
       if (!r || r.room.id !== roomId) {
         charBySeat.forEach(disposeDeep);
         charBySeat.clear();
+        motions.active.clear();
         return;
       }
       const h = st.hand;
@@ -1059,43 +773,51 @@ function Table3DView({ table }: { table: TablePresentation }) {
       const myId = st.auth.userId;
 
       const seated = r.players.filter((p) => p.seat !== null).sort((a, b) => a.seat! - b.seat!);
-      let order = seated;
-      const meIdx = seated.findIndex((p) => p.userId === myId);
-      if (meIdx > 0) order = [...seated.slice(meIdx), ...seated.slice(0, meIdx)];
-      const n = Math.max(order.length, 1);
+      const myPhysicalSeat = seated.find((player) => player.userId === myId)?.seat;
+      if (viewAnchor === null) viewAnchor = myPhysicalSeat ?? 0;
+      const order = seated;
       const currentSeats = new Set(order.map((player) => player.seat!));
       for (const [seat, character] of charBySeat)
         if (!currentSeats.has(seat)) {
           disposeDeep(character);
           charBySeat.delete(seat);
+          motions.remove(seat);
         }
 
       turnRing.visible = false;
       turnArrow.visible = false;
+      turnArrow.userData.active = false;
       if (seen.size > 600) seen.clear();
-      order.forEach((p, i) => {
-        const a = Math.PI / 2 + (i / n) * Math.PI * 2;
-        const px = Math.cos(a) * 5.6;
-        const pz = Math.sin(a) * 4.1;
+      for (const [key, t0] of dealStarts)
+        if (performance.now() - t0 > 2000) {
+          dealStarts.delete(key);
+          seen.add(key);
+        }
+      order.forEach((p) => {
+        const { position, yaw } = seatPlacement(p.seat!, viewAnchor!);
+        const px = position.x,
+          pz = position.z;
         const engine = betting?.seats.find((s) => s.seat === p.seat);
         const inHand = h.handId !== null && !h.abort && h.seats.some((s) => s.seat === p.seat);
         const folded = !!engine?.folded;
 
         const cfg = parseAvatar(p.avatar3d);
-        const signature = JSON.stringify([cfg, folded, p.sittingOut]);
+        const signature = JSON.stringify([p.userId, cfg, folded, p.sittingOut]);
         let char = charBySeat.get(p.seat!);
         if (!char || char.userData.signature !== signature) {
-          if (char) disposeDeep(char);
+          const previousPose = char?.userData.userId === p.userId ? capturePose(char) : undefined;
+          if (char) {
+            if (char.userData.userId !== p.userId) motions.remove(p.seat!);
+            disposeDeep(char);
+          }
           char = buildCharacter(cfg, folded || !!p.sittingOut);
           char.userData.signature = signature;
+          char.userData.userId = p.userId;
+          char.position.copy(position);
+          char.rotation.set(0, yaw, 0);
+          idleCharacter(char, performance.now() / 1000, p.seat!, motion.matches, true);
+          if (previousPose) blendPose(char, previousPose, 0);
         }
-        const previousCards = char.getObjectByName('held-cards');
-        if (previousCards) {
-          char.remove(previousCards);
-          disposeDeep(previousCards);
-        }
-        char.position.set(px, 0, pz);
-        char.rotation.y = Math.atan2(px, pz) + Math.PI;
         delete char.userData.pokeSeat;
         delete char.userData.pokeName;
         if (p.userId !== myId) {
@@ -1105,26 +827,12 @@ function Table3DView({ table }: { table: TablePresentation }) {
         charBySeat.set(p.seat!, char);
         homeBySeat.set(p.seat!, new THREE.Vector3(px, 0, pz));
         dynamic.add(char);
-        const chair = new THREE.Group();
-        const upholstery = new THREE.MeshStandardMaterial({
-          color: 0x21172f,
-          metalness: 0.15,
-          roughness: 0.75,
-        });
-        const chairSeat = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.44, 0.4, 0.12, 24),
-          upholstery,
-        );
-        chairSeat.position.set(0, 0.38, -0.12);
-        const chairBack = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.27, 4, 16), upholstery);
-        chairBack.scale.z = 0.32;
-        chairBack.position.set(0, 0.76, -0.36);
-        const chairStem = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.06, 0.08, 0.33, 12),
-          new THREE.MeshStandardMaterial({ color: 0x554664, metalness: 0.8, roughness: 0.3 }),
-        );
-        chairStem.position.set(0, 0.18, -0.12);
-        chair.add(chairSeat, chairBack, chairStem);
+        const chair = buildChair();
+        char.userData.chair = chair;
+        if (p.userId !== myId) {
+          chair.userData.pokeSeat = p.seat;
+          chair.userData.pokeName = p.displayName;
+        }
         chair.position.set(px, 0, pz);
         chair.rotation.y = char.rotation.y;
         dynamic.add(chair);
@@ -1133,7 +841,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
         const foldKey = `${h.handId}:fold:${p.seat}`;
         if (folded && h.handId && !seen.has(foldKey)) {
           seen.add(foldKey);
-          anims.push({ kind: 'fold', seat: p.seat!, t0: performance.now() });
+          startMotion({ kind: 'fold', seat: p.seat!, t0: performance.now() });
         }
         // the winner celebrates for everyone
         if (h.result && h.handId) {
@@ -1141,7 +849,12 @@ function Table3DView({ table }: { table: TablePresentation }) {
           const winKey = `${h.handId}:win:${p.seat}`;
           if (winDelta > 0 && !seen.has(winKey)) {
             seen.add(winKey);
-            anims.push({ kind: 'emote', emote: 'celebrate', seat: p.seat!, t0: performance.now() });
+            startMotion({
+              kind: 'emote',
+              emote: 'celebrate',
+              seat: p.seat!,
+              t0: performance.now(),
+            });
             play('fanfare');
             burst(new THREE.Vector3(px, 1.6, pz), 0xfbbf24, 80, 3, 4);
           }
@@ -1152,7 +865,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
           const blastKey = `${h.handId}:blast:${p.seat}`;
           if (endStack === 0 && !seen.has(blastKey)) {
             seen.add(blastKey);
-            anims.push({ kind: cfg.fx, seat: p.seat!, t0: performance.now() });
+            startMotion({ kind: cfg.fx, seat: p.seat!, t0: performance.now() });
             play('boom');
             const at = new THREE.Vector3(px, 1, pz);
             if (cfg.fx === 'boom') burst(at, 0xfb923c, 90, 5, 3);
@@ -1166,6 +879,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
           turnRing.visible = true;
           turnRing.position.set(px, 0.06, pz);
           turnArrow.visible = p.userId !== myId;
+          turnArrow.userData.active = p.userId !== myId;
           turnArrow.position.set(px, 3.25, pz);
         }
         if (!betting || betting.toAct === null || h.result || h.abort) turnArrow.visible = false;
@@ -1177,12 +891,16 @@ function Table3DView({ table }: { table: TablePresentation }) {
               map: labelTexture(
                 p.userId === myId ? 'You' : p.displayName,
                 String(stackShown),
-                isToAct ? '#e879f9' : '#a78bfa',
+                isToAct ? '#eccf88' : '#bed6d0',
               ),
               transparent: true,
             }),
           );
-          label.scale.set(1.7, 0.64, 1);
+          label.userData.hideOverhead = true;
+          label.userData.screenLabel = true;
+          label.userData.pokeSeat = p.seat;
+          label.userData.pokeName = p.displayName;
+          label.scale.set(1.35, 0.51, 1);
           label.position.set(px, 2.65, pz);
           dynamic.add(label);
         }
@@ -1191,31 +909,41 @@ function Table3DView({ table }: { table: TablePresentation }) {
         const committed = engine?.committed ?? 0;
         if (committed > 0) {
           const chips = buildChips(committed, r.room.bb);
-          chips.position.set(Math.cos(a) * 3.4, 1.03, Math.sin(a) * 2.35);
+          chips.position.set(px * 0.53, 1.03, pz * 0.53);
+          if (p.userId === myId)
+            chips.position.add(
+              new THREE.Vector3(1.2, 0, 0).applyAxisAngle(
+                new THREE.Vector3(0, 1, 0),
+                yaw - Math.PI,
+              ),
+            );
           dynamic.add(chips);
         }
 
-        // players in the hand hold their two cards up like humans do
+        // Opponents' cards rest at their place on the felt. Only publicly revealed
+        // values may be face up; the private-card rail remains local to this player.
         const publicCards = publicCardsBySeat(h)[p.seat!];
-        if ((inHand && !folded) || publicCards) {
-          const held = new THREE.Group();
-          held.name = 'held-cards';
+        if (p.userId !== myId && ((inHand && !folded) || publicCards)) {
+          const pair = new THREE.Group();
           for (let ci = 0; ci < 2; ci++) {
-            const hc = makeCard(publicCards?.[ci] ?? null, publicCards ? 0.32 : 0.22, 0);
-            hc.rotation.set(-0.5, 0, (ci - 0.5) * 0.35);
-            hc.position.set((ci - 0.5) * 0.14, 0, 0.02 * ci);
-            held.add(hc);
+            const card = makeCard(publicCards?.[ci] ?? null, 0.36, 0);
+            card.name = `player-card-${p.seat}-${ci}`;
+            card.position.x = (ci - 0.5) * 0.41;
+            pair.add(card);
           }
-          held.position.set(0, 0.95, 0.4);
-          char.add(held);
+          pair.position.set(px * 0.68, 0, pz * 0.68);
+          pair.rotation.y = yaw - Math.PI;
+          dynamic.add(pair);
         }
       });
 
       /* board and my cards */
       h.board.forEach((cardId, i) => {
-        const cardMesh = makeCard(cardId, 0.62, 0.14);
-        cardMesh.position.x = (i - 2) * 0.72;
-        cardMesh.position.z = 0.1;
+        const cardMesh = makeCard(cardId, 0.62, 0);
+        cardMesh.name = `community-card-1-${i}`;
+        const placement = boardPlacement(i, false, h.board2.length > 0);
+        cardMesh.position.x = placement.x;
+        cardMesh.position.z = placement.z;
         dynamic.add(cardMesh);
         // the flop cascades left to right; turn and river flip on arrival
         spawnCard(
@@ -1226,28 +954,35 @@ function Table3DView({ table }: { table: TablePresentation }) {
       });
       // run it twice: the second board sits one row behind the first
       h.board2.forEach((cardId, i) => {
-        const cardMesh = makeCard(cardId, 0.5, 0.14);
-        cardMesh.position.x = (i - 2) * 0.6;
-        cardMesh.position.z = -0.62;
+        const cardMesh = makeCard(cardId, 0.62, 0);
+        cardMesh.name = `community-card-2-${i}`;
+        const placement = boardPlacement(i, true, true);
+        cardMesh.position.x = placement.x;
+        cardMesh.position.z = placement.z;
         dynamic.add(cardMesh);
         spawnCard(cardMesh, h.handId ? `${h.handId}:b2:${i}` : '', 0);
       });
       const mySeatNow = r.players.find((p) => p.userId === myId)?.seat ?? null;
       if (mySeatNow !== null && h.myCards.length > 0 && h.handId) {
+        const place = seatPlacement(mySeatNow, viewAnchor!);
+        const pair = new THREE.Group();
+        pair.position.copy(place.position).multiplyScalar(0.53);
+        pair.rotation.y = place.yaw - Math.PI;
         h.myCards.forEach((cardId, i) => {
-          const mine = makeCard(cardId, 0.72, 0.55);
+          const mine = makeCard(cardId, 0.72, 0);
+          mine.name = `private-card-${i}`;
           mine.position.x = (i - 0.5) * 0.8;
-          mine.position.z = 2.0;
-          dynamic.add(mine);
+          pair.add(mine);
           spawnCard(mine, `${h.handId}:mine:${i}`, i * 140);
         });
+        dynamic.add(pair);
       }
 
       /* the pot as a pile */
       const pot = betting ? betting.seats.reduce((sum, x) => sum + x.total, 0) : 0;
       if (pot > 0) {
         const pile = buildChips(pot, r.room.bb);
-        pile.position.set(0, 1.03, -1.15);
+        pile.position.set(2.7, 1.03, 0);
         pile.scale.setScalar(1.15);
         dynamic.add(pile);
         const potLabel = new THREE.Sprite(
@@ -1256,8 +991,9 @@ function Table3DView({ table }: { table: TablePresentation }) {
             transparent: true,
           }),
         );
+        potLabel.userData.hideOverhead = true;
         potLabel.scale.set(1.5, 0.56, 1);
-        potLabel.position.set(0, 1.85, -1.15);
+        potLabel.position.set(2.7, 1.85, 0);
         dynamic.add(potLabel);
       }
       dynamic.traverse((o) => {
@@ -1279,6 +1015,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
       const hgt = mount.clientHeight;
       if (!w || !hgt) return;
       renderer.setSize(w, hgt);
+      renderRequested = true;
       camera.aspect = w / hgt;
       camera.updateProjectionMatrix();
       fly(cameraPreset.pos, cameraPreset.look);
@@ -1289,9 +1026,11 @@ function Table3DView({ table }: { table: TablePresentation }) {
 
     let raf = 0;
     const clock = new THREE.Clock();
+    let previousReducedMotion = motion.matches;
     const loop = () => {
       raf = requestAnimationFrame(loop);
       if (document.hidden) return;
+      const wasDirty = dirty;
       if (dirty) rebuild();
       const dt = Math.min(clock.getDelta(), 0.05);
       const t = motion.matches ? 0 : clock.elapsedTime;
@@ -1305,25 +1044,25 @@ function Table3DView({ table }: { table: TablePresentation }) {
       }
 
       const nowMs = performance.now();
+      const motionWasActive = motions.active.size > 0;
       // every character starts each frame at its base pose, breathes a little,
       // then active animations write absolute offsets on top - nothing drifts
       for (const [seat, char] of charBySeat) {
         const home = homeBySeat.get(seat);
         if (!home) continue;
-        char.position.copy(home);
-        char.rotation.set(0, Math.atan2(home.x, home.z) + Math.PI, 0); // face center, stand upright
-        char.scale.setScalar(1);
-        idleCharacter(char, t, seat, motion.matches);
+        motions.frame(char, seat, home, nowMs, motion.matches);
+        const chair = char.userData.chair as THREE.Group;
+        if (chair) orientChair(chair, char);
       }
       // dealt cards: drop from above while flipping face-down → face-up
       for (let i = cardAnims.length - 1; i >= 0; i--) {
         const ca = cardAnims[i]!;
         const cp = (nowMs - ca.t0) / ca.dur;
-        if (cp < 0) {
+        if (cp < 0 && !motion.matches) {
           ca.mesh.visible = false;
           continue;
         }
-        if (cp >= 1 || !ca.mesh.parent) {
+        if (cp >= 1 || motion.matches || !ca.mesh.parent) {
           ca.mesh.visible = true;
           ca.mesh.position.y = ca.baseY;
           ca.mesh.rotation.x = ca.baseRX;
@@ -1331,76 +1070,33 @@ function Table3DView({ table }: { table: TablePresentation }) {
           continue;
         }
         ca.mesh.visible = true;
-        const ease = 1 - Math.pow(1 - cp, 3);
-        ca.mesh.position.y = ca.baseY + (1 - ease) * 0.8;
-        ca.mesh.rotation.x = ca.baseRX + (1 - ease) * Math.PI;
+        const pose = dealPose(ca.mesh.userData.cardWidth as number, cp);
+        ca.mesh.position.y = ca.baseY + pose.lift;
+        ca.mesh.rotation.x = ca.baseRX + pose.angle;
       }
-      for (let i = anims.length - 1; i >= 0; i--) {
-        const anim = anims[i]!;
-        const char = charBySeat.get(anim.seat);
+      for (const anim of motions.active.values()) {
         const home = homeBySeat.get(anim.seat);
-        const dur =
-          anim.kind === 'emote'
-            ? (EMOTES[(anim.emote ?? '') as EmoteKind]?.dur ?? 1600)
-            : anim.kind === 'poke'
-              ? 1100
-              : anim.kind === 'slap'
-                ? 1300
-                : anim.kind === 'chip'
-                  ? 1500
-                  : anim.kind === 'fold'
-                    ? 900
-                    : 1700;
-        const prog = (nowMs - anim.t0) / dur;
-        if (motion.matches || !char || !home || prog >= 1) {
-          anims.splice(i, 1);
-          continue;
-        }
-        const wave = Math.sin(Math.PI * prog);
-        const away = home.clone().normalize();
-        if (anim.kind === 'emote') {
-          const def = EMOTES[(anim.emote ?? '') as EmoteKind];
-          if (def) {
-            def.apply(char, prog, t);
-            if (def.burst && !anim.fired && prog > 0.4) {
-              anim.fired = true;
-              burst(home.clone().setY(1.4), def.burst, 40, 2.2, 3);
-            }
-          }
-        } else if (anim.kind === 'poke') {
-          char.position.copy(home).addScaledVector(away, wave * 2.1);
-          char.position.y = wave * 1.4;
-          char.rotation.y = prog * Math.PI * 4;
-          char.rotation.z = wave * 0.9;
-        } else if (anim.kind === 'slap') {
-          // a harder hit: long arc sideways with a full flat spin
-          char.position.copy(home).addScaledVector(away, wave * 3.1);
-          char.position.y = wave * 2.2;
-          char.rotation.z = prog * Math.PI * 6;
-        } else if (anim.kind === 'chip') {
-          if (prog > 0.35) {
-            const kp = (prog - 0.35) / 0.65;
-            const kw = Math.sin(Math.PI * kp);
-            char.position.copy(home).addScaledVector(away, kw * 0.9);
-            char.rotation.x = -kw * 0.5;
-          }
-        } else if (anim.kind === 'fold') {
-          char.rotation.x = wave * 0.65;
-          char.position.y = home.y - wave * 0.18;
-        } else if (anim.kind === 'rocket') {
-          char.position.y = home.y + prog * 9;
-          char.rotation.y = prog * Math.PI * 8;
-          if (Math.random() < 0.5) burst(char.position.clone(), 0xa78bfa, 3, 0.4, -1);
-        } else {
-          char.scale.setScalar(Math.max(0.05, 1 - prog * 1.1));
-          char.rotation.y = prog * Math.PI * (anim.kind === 'sparks' ? 3 : 7);
+        if (!home || anim.fired || motion.matches) continue;
+        const prog = (nowMs - anim.t0) / motionDuration(anim);
+        const def = anim.kind === 'emote' ? EMOTES[anim.emote as EmoteKind] : undefined;
+        if (def?.burst && prog > 0.4) {
+          anim.fired = true;
+          burst(home.clone().setY(1.6), def.burst, 40, 2.2, 3);
+        } else if (
+          ['poke', 'shove', 'slap', 'chip'].includes(anim.kind) &&
+          nowMs - anim.t0 >= CONTACT_MS
+        ) {
+          anim.fired = true;
+          powSprite(home);
+          play(ATTACKS[anim.kind]?.sound ?? 'thwack');
         }
       }
       for (let i = particles.length - 1; i >= 0; i--) {
         const pt = particles[i]!;
-        const life = (nowMs - pt.t0) / pt.dur;
+        const life = motion.matches ? 1 : (nowMs - pt.t0) / pt.dur;
         if (life >= 1) {
           scene.remove(pt.pts);
+          renderRequested = true;
           pt.pts.geometry.dispose();
           (pt.pts.material as THREE.Material).dispose();
           particles.splice(i, 1);
@@ -1419,23 +1115,6 @@ function Table3DView({ table }: { table: TablePresentation }) {
         (pt.pts.material as THREE.PointsMaterial).opacity = 1 - life;
       }
 
-      roulette.rotation.y = t * 0.7;
-      holoGroup.children.forEach((holo, hi) => {
-        const ph = (holo.userData.phase as number) + t * 0.6;
-        holo.position.set(Math.cos(ph) * 1.5, Math.sin(t * 1.2 + hi) * 0.25, Math.sin(ph) * 1.5);
-        holo.rotation.y = ph + Math.PI / 2;
-      });
-      jackpot.material.opacity = 0.86;
-      for (const sw of sweepers) {
-        sw.light.target.position.set(
-          Math.cos(t * 0.5 + sw.phase) * 9,
-          0,
-          Math.sin(t * 0.5 + sw.phase) * 9,
-        );
-        sw.light.target.updateMatrixWorld();
-      }
-      motes.rotation.y = t * 0.02;
-      catTail.rotation.x = Math.sin(t * 2.2) * 0.5;
       if (flyPos && flyLook) {
         camera.position.lerp(flyPos, 1 - Math.exp(-7 * dt));
         controls.target.lerp(flyLook, 1 - Math.exp(-7 * dt));
@@ -1444,9 +1123,34 @@ function Table3DView({ table }: { table: TablePresentation }) {
           flyLook = null;
         }
       }
-      if (anims.length > 0 && !motion.matches) renderer.shadowMap.needsUpdate = true;
-      controls.update();
-      renderer.render(scene, camera);
+      if (motionWasActive || previousReducedMotion !== motion.matches)
+        renderer.shadowMap.needsUpdate = true;
+      const cameraChanged = controls.update();
+      const overhead = camera.position.clone().sub(controls.target).normalize().y > 0.9;
+      dynamic.traverse((object) => {
+        if (object.userData.hideOverhead) object.visible = !overhead;
+        if (object.userData.screenLabel) {
+          const worldPerPixel =
+            (2 *
+              object.position.distanceTo(camera.position) *
+              Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) /
+            mount.clientHeight;
+          const width = Math.min(1.35, worldPerPixel * 72);
+          object.scale.set(width, width * 0.38, 1);
+        }
+      });
+      turnArrow.visible = !!turnArrow.userData.active && !overhead;
+      if (
+        !motion.matches ||
+        wasDirty ||
+        cameraChanged ||
+        renderRequested ||
+        previousReducedMotion !== motion.matches
+      ) {
+        renderer.render(scene, camera);
+        renderRequested = false;
+      }
+      previousReducedMotion = motion.matches;
     };
     loop();
 
@@ -1459,6 +1163,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
       renderer.domElement.removeEventListener('webglcontextlost', onContextLost);
       flyRef.current = null;
       window.removeEventListener('4am-poke', onPoke);
+      renderer.domElement.removeEventListener('pointercancel', onCancel);
       renderer.domElement.removeEventListener('pointerdown', onDown);
       renderer.domElement.removeEventListener('pointerup', onUp);
       unsub();
@@ -1881,8 +1586,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
                 disabled={!connected || mySeat === null}
                 key={kind}
                 onClick={() => {
-                  if (kind === 'shove') wsClient.send({ t: 'poke', targetSeat: targetMenu.seat });
-                  else wsClient.send({ t: 'emote', kind, targetSeat: targetMenu.seat });
+                  wsClient.send({ t: 'emote', kind, targetSeat: targetMenu.seat });
                   setTargetMenu(null);
                 }}
               >
