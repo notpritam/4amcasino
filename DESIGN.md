@@ -80,3 +80,20 @@ run-it-twice prompts, and private-card offers restore required controls. The
 canvas and camera never resize when these controls change. On phones, actions
 precede the card widget and the bounded overlay scrolls internally; account and
 table dialogs keep the full viewport available for focus and scrolling.
+
+The lounge perimeter uses a layered city skyline with instanced lit windows,
+walnut portal frames, upholstered wall alcoves, brass sconces, and illuminated
+bar shelves. Warm local lights distinguish seating and the drinks counter;
+cool city fill and a soft warm table key keep characters and cards readable.
+Only the main key casts realtime shadows. No new furniture enters the walking
+lanes or playing area.
+
+After taking a break, WASD and arrow keys steer relative to the camera while the
+world has focus. Releasing keys, focusing UI, opening a decision prompt, switching
+windows, or losing connection stops steering. Chair exits finish before direct
+movement takes over. Swept floor checks slide along obstacles; diagonal movement
+uses the same speed as forward movement. Reduced motion keeps direct steering
+continuous while disabling gait flourishes. Click destinations and return-to-seat
+hand control back to the path planner. Shared movement coalesces to four updates
+per second and includes the final stop; authoritative server corrections remain
+in charge of occupied arrival spots.

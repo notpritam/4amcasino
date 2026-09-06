@@ -8,6 +8,7 @@ import {
   type LoungePosition,
 } from '@4am/shared';
 import { smooth } from './pose.ts';
+import { stepLoungeWalk } from './navigation.ts';
 
 export interface TravelPose extends LoungePoint {
   yaw: number;
@@ -27,6 +28,7 @@ interface Traveller {
   request: string;
   lastSeat: number | null;
   pending?: { seat: number | null; target?: LoungePosition };
+  manual?: boolean;
 }
 const angleMix = (a: number, b: number, p: number) =>
   a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * p;
@@ -49,6 +51,7 @@ export class LoungeLocomotion {
     target: LoungePosition | undefined,
     now: number,
     reduced = false,
+    steering?: { direction: LoungePoint; dt: number; occupied: readonly LoungePoint[] },
   ): TravelPose {
     let actor = this.travellers.get(id);
     const requested = intent(seat, target);
@@ -72,7 +75,29 @@ export class LoungeLocomotion {
       };
       this.travellers.set(id, actor);
     }
-    this.sample(actor, now, reduced);
+    if (actor.manual && !steering) actor.request = ''; // Reconcile even when the last server revision is unchanged.
+    if (!actor.manual) this.sample(actor, now, reduced);
+    if (steering && actor.pose.sitting === 0 && isLoungeWalkable(actor.pose)) {
+      actor.manual = true;
+      actor.request = requested;
+      actor.pending = undefined;
+      actor.segments = [];
+      const point = stepLoungeWalk(actor.pose, steering.direction, steering.dt, steering.occupied);
+      const distance = Math.hypot(point.x - actor.pose.x, point.z - actor.pose.z);
+      const yaw =
+        distance > 0.0001
+          ? Math.atan2(point.x - actor.pose.x, point.z - actor.pose.z)
+          : actor.pose.yaw;
+      actor.pose = {
+        ...actor.pose,
+        ...point,
+        yaw: reduced ? yaw : angleMix(actor.pose.yaw, yaw, 1 - Math.exp(-16 * steering.dt)),
+        distance: actor.pose.distance + distance,
+        status: distance > 0.0001 ? 'walking' : 'standing',
+      };
+      return { ...actor.pose };
+    }
+    actor.manual = false;
     if (seat !== null && actor.pose.sitting === 1) {
       const home = loungeSeat(seat);
       if (Math.hypot(actor.pose.x - home.x, actor.pose.z - home.z) < 0.01) actor.lastSeat = seat;

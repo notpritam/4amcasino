@@ -79,6 +79,7 @@ import { Wardrobe } from './Wardrobe.tsx';
 import { LoungeTV } from './LoungeTV.tsx';
 import { LoungeLocomotion, type TravelPose } from './locomotion.ts';
 import { posture, walkPose } from './rigPose.ts';
+import { isWalkKey, walkDirection, LoungeMoveQueue } from './navigation.ts';
 import './table3d.css';
 import './glass-widgets.css';
 
@@ -276,6 +277,10 @@ function Table3DView({ table }: { table: TablePresentation }) {
   tvChannelRef.current = tvChannel;
   const videoRef = useRef<HTMLVideoElement>(null);
   const myPositionRef = useRef<TravelPose>();
+  const navigationRef = useRef({ walk: (_point: LoungePoint) => {}, clear: () => {} });
+  const keyboardAccessRef = useRef({ enabled: false, blocked: false, maySend: false });
+  const focusWorld = () =>
+    mountRef.current?.querySelector('canvas')?.focus({ preventScroll: true });
   const worldPositionsRef = useRef(new Map<number, LoungePoint>());
   const [travelStatus, setTravelStatus] = useState<TravelPose['status']>('seated');
   const [breakDestination, setBreakDestination] = useState<LoungePoint | null>(null);
@@ -348,6 +353,18 @@ function Table3DView({ table }: { table: TablePresentation }) {
         !hand.betting?.seats.find((s) => s.seat === mySeat)?.folded
       : !!activeRoom?.handActive);
   const away = !!loungePresence[auth.userId ?? 0] || mySeat === null;
+  keyboardAccessRef.current = {
+    enabled: connected && !!me && away && !contesting,
+    maySend: connected && !!me && (me.sittingOut || mySeat === null) && !contesting,
+    blocked:
+      needsResponse ||
+      tvOpen ||
+      customizeOpen ||
+      !!panel ||
+      emoteOpen ||
+      !!targetMenu ||
+      !!sceneError,
+  };
   const requestWalk = (point: LoungePoint) => {
     if (!connected || !me) return;
     if (!isLoungeWalkable(point)) {
@@ -359,10 +376,12 @@ function Table3DView({ table }: { table: TablePresentation }) {
     if (!away) {
       wsClient.send({ t: 'sit_out', sittingOut: true });
       setBreakDestination(point);
-    } else wsClient.send({ t: 'lounge_move', x: point.x, z: point.z });
+    } else navigationRef.current.walk(point);
     setChooseSeat(false);
+    requestAnimationFrame(focusWorld);
   };
   const returnToSeat = () => {
+    navigationRef.current.clear();
     setBreakDestination(null);
     if (mySeat === null) {
       setChooseSeat(true);
@@ -390,7 +409,9 @@ function Table3DView({ table }: { table: TablePresentation }) {
   };
   useEffect(() => {
     if (!breakDestination || !connected || !me?.sittingOut || contesting) return;
-    wsClient.send({ t: 'lounge_move', x: breakDestination.x, z: breakDestination.z });
+    navigationRef.current.walk(breakDestination);
+    setExploreOpen(false);
+    requestAnimationFrame(focusWorld);
     setCameraView('Lounge');
     flyRef.current?.([11, 10, 17], [0, 1, 0]);
     setBreakDestination(null);
@@ -434,8 +455,8 @@ function Table3DView({ table }: { table: TablePresentation }) {
     setSceneError('');
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x11272d);
-    scene.fog = new THREE.Fog(0x11272d, 24, 52);
+    scene.background = new THREE.Color(0x101e2c);
+    scene.fog = new THREE.Fog(0x101e2c, 32, 58);
 
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 60);
     camera.position.set(0, 5.2, 8.6);
@@ -479,10 +500,78 @@ function Table3DView({ table }: { table: TablePresentation }) {
     const environmentTarget = pmrem.fromScene(environmentScene, 0.04);
     environmentScene.dispose();
     scene.environment = environmentTarget.texture;
-    scene.environmentIntensity = 0.4;
+    scene.environmentIntensity = 0.55;
     mount.appendChild(renderer.domElement);
+    renderer.domElement.tabIndex = 0;
+    renderer.domElement.setAttribute(
+      'aria-label',
+      'Lounge world. After taking a break, use W A S D or arrow keys to walk. Drag to look around.',
+    );
+    renderer.domElement.setAttribute(
+      'aria-keyshortcuts',
+      'W A S D ArrowUp ArrowDown ArrowLeft ArrowRight',
+    );
+    const walkKeys = new Set<string>();
+    let keyboardOwnsWalk = false;
+    let lastOffered: LoungePoint | undefined;
+    const sentTargets: LoungePoint[] = [];
+    const moveQueue = new LoungeMoveQueue((point) => {
+      if (!keyboardAccessRef.current.maySend) return;
+      sentTargets.push(point);
+      if (sentTargets.length > 24) sentTargets.shift();
+      wsClient.send({ t: 'lounge_move', x: point.x, z: point.z });
+    });
+    const clearNavigation = () => {
+      walkKeys.clear();
+      keyboardOwnsWalk = false;
+      lastOffered = undefined;
+      moveQueue.clear();
+    };
+    navigationRef.current = {
+      walk: (point) => {
+        clearNavigation();
+        moveQueue.offer(point);
+      },
+      clear: clearNavigation,
+    };
+    const stopKeys = () => {
+      walkKeys.clear();
+    };
+    const keyboardBlocked = () =>
+      keyboardAccessRef.current.blocked ||
+      document.activeElement !== renderer.domElement ||
+      !!document.querySelector(
+        '[role="dialog"]:not([hidden]), [role="menu"]:not([hidden]), .lounge-panel:not([hidden])',
+      );
+    const onWalkDown = (event: KeyboardEvent) => {
+      if (
+        !isWalkKey(event.code) ||
+        event.defaultPrevented ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.isComposing
+      )
+        return;
+      if (!keyboardAccessRef.current.enabled || keyboardBlocked()) return;
+      event.preventDefault();
+      if (event.repeat) return;
+      walkKeys.add(event.code);
+      keyboardOwnsWalk = true;
+    };
+    const onWalkUp = (event: KeyboardEvent) => {
+      walkKeys.delete(event.code);
+    };
+    const onWorldVisibility = () => {
+      if (document.hidden) stopKeys();
+    };
+    window.addEventListener('keydown', onWalkDown);
+    window.addEventListener('keyup', onWalkUp);
+    window.addEventListener('blur', stopKeys);
+    document.addEventListener('visibilitychange', onWorldVisibility);
+    renderer.domElement.addEventListener('blur', stopKeys);
 
-    const sun = new THREE.DirectionalLight(0xffe3bf, 2.5);
+    const sun = new THREE.DirectionalLight(0xffe0b3, 2.1);
     sun.position.set(7, 12, 5);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
@@ -491,6 +580,8 @@ function Table3DView({ table }: { table: TablePresentation }) {
     sun.shadow.camera.top = 10;
     sun.shadow.camera.bottom = -10;
     sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.025;
+    sun.shadow.radius = 2;
     scene.add(sun);
 
     const shadowCatcher = new THREE.Mesh(
@@ -959,6 +1050,8 @@ function Table3DView({ table }: { table: TablePresentation }) {
         return;
       }
       if (e.button !== 0) return;
+      renderer.domElement.focus({ preventScroll: true });
+      stopKeys();
       downAt = { x: e.clientX, y: e.clientY, pointerId: e.pointerId };
     };
     const onUp = (e: PointerEvent) => {
@@ -1320,6 +1413,16 @@ function Table3DView({ table }: { table: TablePresentation }) {
 
     const unsub = useStore.subscribe((state, previous) => {
       if (state.lounge !== previous.lounge) {
+        const id = state.auth.userId;
+        const target = id === null ? undefined : state.lounge[id!];
+        const previousTarget = id === null ? undefined : previous.lounge[id!];
+        if (keyboardOwnsWalk && target !== previousTarget) {
+          // Self echoes must not pull the local rig backwards. A server-selected
+          // free spot or another session's move hands control back to the path planner.
+          const echo =
+            target && sentTargets.some((p) => Math.hypot(p.x - target.x, p.z - target.z) < 0.001);
+          if (!echo) clearNavigation();
+        }
         renderRequested = true;
         renderer.shadowMap.needsUpdate = true;
       }
@@ -1367,6 +1470,21 @@ function Table3DView({ table }: { table: TablePresentation }) {
       }
 
       const nowMs = performance.now();
+      if (!keyboardAccessRef.current.maySend) clearNavigation();
+      else if (walkKeys.size && (!keyboardAccessRef.current.enabled || keyboardBlocked()))
+        stopKeys();
+      const direction = walkDirection(walkKeys, {
+        x: controls.target.x - camera.position.x,
+        z: controls.target.z - camera.position.z,
+      });
+      const state = useStore.getState();
+      const occupied: LoungePoint[] = [];
+      for (const other of charBySeat.values()) {
+        const id = other.userData.userId as number;
+        if (id === state.auth.userId) continue;
+        occupied.push({ x: other.position.x, z: other.position.z });
+        if (state.lounge[id]) occupied.push(state.lounge[id]!);
+      }
       const motionWasActive = motions.active.size > 0;
       // every character starts each frame at its base pose, breathes a little,
       // then active animations write absolute offsets on top - nothing drifts
@@ -1380,7 +1498,19 @@ function Table3DView({ table }: { table: TablePresentation }) {
           useStore.getState().lounge[id],
           nowMs,
           motion.matches,
+          id === state.auth.userId && keyboardOwnsWalk ? { direction, dt, occupied } : undefined,
         );
+        if (
+          id === state.auth.userId &&
+          keyboardOwnsWalk &&
+          pose.sitting === 0 &&
+          isLoungeWalkable(pose)
+        ) {
+          if (!lastOffered || Math.hypot(pose.x - lastOffered.x, pose.z - lastOffered.z) > 0.001) {
+            lastOffered = { x: pose.x, z: pose.z };
+            moveQueue.offer(pose);
+          }
+        }
         char.position.set(pose.x, 0, pose.z);
         char.rotation.set(0, pose.yaw, 0);
         idleCharacter(char, nowMs / 1000, id, motion.matches, false);
@@ -1395,7 +1525,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
           myPositionRef.current = pose;
           const target = useStore.getState().lounge[id];
           destinationRing.visible =
-            !!target && Math.hypot(pose.x - target.x, pose.z - target.z) > 0.3;
+            !keyboardOwnsWalk && !!target && Math.hypot(pose.x - target.x, pose.z - target.z) > 0.3;
           if (target) destinationRing.position.set(target.x, 0.025, target.z);
           if (lastTravelStatus !== pose.status) {
             lastTravelStatus = pose.status;
@@ -1529,6 +1659,13 @@ function Table3DView({ table }: { table: TablePresentation }) {
 
     return () => {
       alive = false;
+      clearNavigation();
+      navigationRef.current = { walk: () => {}, clear: () => {} };
+      window.removeEventListener('keydown', onWalkDown);
+      window.removeEventListener('keyup', onWalkUp);
+      window.removeEventListener('blur', stopKeys);
+      document.removeEventListener('visibilitychange', onWorldVisibility);
+      renderer.domElement.removeEventListener('blur', stopKeys);
       cancelAnimationFrame(raf);
       auxiliaryFrames.forEach(cancelAnimationFrame);
       timeouts.forEach(clearTimeout);
@@ -1771,7 +1908,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
                   {breakDestination
                     ? 'Your break starts after this hand.'
                     : away
-                      ? 'Tap the floor to walk. Drag to look around.'
+                      ? 'Use WASD or arrow keys to walk. Drag to look around.'
                       : 'Take a break. Your seat and chips stay yours.'}
                 </p>
               </div>
@@ -1803,6 +1940,24 @@ function Table3DView({ table }: { table: TablePresentation }) {
                   </button>
                 ))}
             </div>
+            {away && (
+              <button
+                className="lounge-button keyboard-walk-trigger"
+                disabled={!connected}
+                onClick={() => {
+                  setExploreOpen(false);
+                  requestAnimationFrame(focusWorld);
+                }}
+              >
+                <span className="walk-keys" aria-hidden="true">
+                  <kbd>W</kbd>
+                  <kbd>A</kbd>
+                  <kbd>S</kbd>
+                  <kbd>D</kbd>
+                </span>
+                Walk with keyboard
+              </button>
+            )}
             <div className="lounge-break-actions">
               {!away && !breakDestination && (
                 <button
@@ -1833,8 +1988,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
                   disabled={!connected}
                   onClick={() => {
                     const point = myPositionRef.current;
-                    if (point && isLoungeWalkable(point))
-                      wsClient.send({ t: 'lounge_move', x: point.x, z: point.z });
+                    if (point && isLoungeWalkable(point)) navigationRef.current.walk(point);
                   }}
                 >
                   Stop walking
@@ -1922,7 +2076,9 @@ function Table3DView({ table }: { table: TablePresentation }) {
           </div>
         )}
         <span className="orbit-hint">
-          {away ? 'Tap clear floor to walk · Drag to orbit' : 'Drag to orbit · Scroll to zoom'}
+          {away
+            ? 'WASD / arrows to walk · Tap floor to go · Drag to orbit'
+            : 'Lounge to get up · Drag to orbit · Scroll to zoom'}
         </span>
         {customizeOpen && <Wardrobe initial={parseAvatar(me?.avatar3d)} onClose={closeStudio} />}
         {panel === 'players' && (
@@ -2053,6 +2209,11 @@ function Table3DView({ table }: { table: TablePresentation }) {
             <p>
               Drag to look around. Pinch or scroll to zoom. Camera presets bring you back to the
               action.
+            </p>
+            <p>
+              Take a break in Lounge, then click the world or choose Walk with keyboard. Use WASD or
+              arrow keys to steer relative to the camera. Release to stop. Chat, menus, and poker
+              decisions pause keyboard movement. Quick destinations work on every device.
             </p>
             <p>
               Tap a character or open Players to send a playful nudge. Reactions are shared with the

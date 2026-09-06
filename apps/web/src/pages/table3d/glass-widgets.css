@@ -763,3 +763,33 @@ html.cyber:has(.table3d-lounge) body::after {
     padding: 8px;
   }
 }
+
+/* Keyboard steering is an optional companion to the touch destinations. */
+.table3d-lounge .lounge-canvas canvas:focus-visible {
+  outline: 2px solid rgb(195 230 215 / 0.7);
+  outline-offset: -3px;
+}
+.table3d-lounge .keyboard-walk-trigger {
+  margin-top: 14px;
+  width: 100%;
+}
+.table3d-lounge .walk-keys {
+  display: inline-flex;
+  gap: 3px;
+}
+.table3d-lounge .walk-keys kbd {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 25px;
+  border: 1px solid rgb(225 235 230 / 0.3);
+  border-radius: 4px;
+  background: rgb(225 235 230 / 0.08);
+  font: inherit;
+  font-size: 11px;
+}
+@media (hover: none) and (pointer: coarse) {
+  .table3d-lounge .keyboard-walk-trigger {
+    display: none;
+  }
+}
