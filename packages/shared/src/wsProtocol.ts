@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { BettingState, PlayerAction, Street } from './betting.js';
 import type { CardId } from './cards.js';
+import type { LoungePosition } from './lounge.js';
 
 const hex = (len?: number) => (len ? z.string().length(len).regex(/^[0-9a-f]+$/) : z.string().regex(/^[0-9a-f]+$/));
 
@@ -40,6 +41,8 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('join_room'), roomId: z.string() }),
   z.object({ t: z.literal('sit'), seat: z.number().int().min(0).max(8) }),
   z.object({ t: z.literal('leave_seat') }),
+  z.object({ t: z.literal('lounge_move'), x: z.number().finite().min(-11.2).max(11.2), z: z.number().finite().min(-7.5).max(7.5) }),
+  z.object({ t: z.literal('lounge_return') }),
   z.object({ t: z.literal('start_hand') }),
   z.object({ t: z.literal('key_commit'), handId: z.string(), commit: hex(64), sig: hex(128) }),
   z.object({ t: z.literal('shuffle_deck'), handId: z.string(), deck: z.array(hex(64)).length(52), sig: hex(128) }),
@@ -171,7 +174,9 @@ export type ServerMsg =
       room: { id: string; name: string; joinCode: string; hostId: number; bankerId: number; sb: number; bb: number; auditMode: string; actionTimeoutMs: number; actionSecs: number | null; coBankerId: number | null; minSettleHands: number; sevenDeuceBonus: number; voided: boolean; meetLink: string | null; autoApproveBuys: boolean; tvReplays: boolean };
       players: RoomStatePlayer[];
       handActive: boolean;
+      lounge?: Record<number, LoungePosition>;
     }
+  | { t: 'lounge_presence'; roomId: string; userId: number; position: LoungePosition | null }
   | { t: 'error'; message: string }
   | { t: 'chat'; from: string; userId: number; text: string; kind: 'text' | 'sticker' | 'phrase'; ts: number }
   | { t: 'poke'; fromUserId: number; fromName: string; targetSeat: number }

@@ -31,6 +31,10 @@ import {
   type PlayerAction,
   type ServerMsg,
   signedBody,
+  isLoungeWalkable,
+  availableLoungePoint,
+  LOUNGE_DESTINATIONS,
+  type LoungePosition,
 } from '@4am/shared';
 import type { DB } from './db.js';
 import { appendLedger } from './ledger.js';
@@ -139,6 +143,9 @@ function verifySnapshotShares(
 
 export class GameRoom {
   private sockets = new Map<number, WebSocket>();
+  private lounge = new Map<number, LoungePosition>();
+  private loungeLastMove = new Map<number, number>();
+  private loungeRevision = 0;
   private hand: Hand | null = null;
   private lastButton: number | null = null;
   // voluntary card shows for the current (or most recently ended) hand
@@ -169,6 +176,11 @@ export class GameRoom {
     // and a player stuck in that loop answers no crypto requests, so every hand
     // they are dealt into stalls out. The orphan is cheap; the loop was not.
     this.sockets.set(userId, ws);
+    const member = this.db.prepare('SELECT seat FROM room_players WHERE room_id = ? AND user_id = ?').get(this.roomId, userId) as { seat: number | null } | undefined;
+    if (member?.seat === null && !this.lounge.has(userId)) {
+      const point = availableLoungePoint(LOUNGE_DESTINATIONS.entry, [...this.lounge.values()]);
+      if (point) this.lounge.set(userId, { ...point, revision: ++this.loungeRevision });
+    }
     this.broadcastRoomState();
     // late joiners and reconnects still get to see voluntarily shown cards
     if (this.shownHandId) {
@@ -184,6 +196,8 @@ export class GameRoom {
   leave(userId: number, ws: WebSocket): void {
     if (this.sockets.get(userId) === ws) {
       this.sockets.delete(userId);
+      this.lounge.delete(userId);
+      this.loungeLastMove.delete(userId);
       this.broadcastRoomState();
       // a folded player walking away must never strand the hand
       this.hand?.onPlayerGone(userId);
@@ -244,6 +258,8 @@ export class GameRoom {
   }
 
   shutdown(): void {
+    this.lounge.clear();
+    this.loungeLastMove.clear();
     if (this.hostHandover) clearTimeout(this.hostHandover);
     this.hostHandover = null;
     this.hand?.clearTimer();
@@ -389,6 +405,7 @@ export class GameRoom {
       },
       players,
       handActive: this.hand !== null,
+      lounge: Object.fromEntries(this.lounge),
     };
     // spectators watch the table but never see the join code
     const memberIds = new Set(players.map((p) => p.userId));
@@ -401,6 +418,37 @@ export class GameRoom {
 
   handleMessage(userId: number, msg: ClientMsg): void {
     switch (msg.t) {
+      case 'lounge_move': {
+        const player = this.db.prepare('SELECT seat, sitting_out FROM room_players WHERE room_id = ? AND user_id = ?')
+          .get(this.roomId, userId) as { seat: number | null; sitting_out: number } | undefined;
+        if (!player || !this.sockets.has(userId))
+          return this.send(userId, { t: 'error', message: 'Join this table as a member to explore the lounge.' });
+        if (player.seat !== null && !player.sitting_out)
+          return this.send(userId, { t: 'error', message: 'Take a break before leaving your chair.' });
+        if (this.hand?.isContesting(userId))
+          return this.send(userId, { t: 'error', message: 'Finish this hand before walking away. Your break is saved.' });
+        if (!isLoungeWalkable(msg))
+          return this.send(userId, { t: 'error', message: 'Choose a clear spot on the lounge floor.' });
+        const now = Date.now();
+        if (now - (this.loungeLastMove.get(userId) ?? -Infinity) < 180) return;
+        this.loungeLastMove.set(userId, now);
+        const point = availableLoungePoint(msg, [...this.lounge].filter(([id]) => id !== userId).map(([, position]) => position));
+        if (!point) return this.send(userId, { t: 'error', message: 'That part of the lounge is full. Choose another spot.' });
+        const position = { ...point, revision: ++this.loungeRevision };
+        this.lounge.set(userId, position);
+        this.broadcast({ t: 'lounge_presence', roomId: this.roomId, userId, position });
+        return;
+      }
+      case 'lounge_return': {
+        const player = this.db.prepare('SELECT seat FROM room_players WHERE room_id = ? AND user_id = ?')
+          .get(this.roomId, userId) as { seat: number | null } | undefined;
+        if (!player || player.seat === null)
+          return this.send(userId, { t: 'error', message: 'Choose an open seat to return to the table.' });
+        this.lounge.delete(userId);
+        this.db.prepare('UPDATE room_players SET sitting_out = 0 WHERE room_id = ? AND user_id = ?').run(this.roomId, userId);
+        this.broadcastRoomState();
+        return;
+      }
       case 'chat': {
         const user = this.db
           .prepare('SELECT COALESCE(display_name, username) as name FROM users WHERE id = ?')
@@ -464,14 +512,21 @@ export class GameRoom {
         this.db
           .prepare('UPDATE room_players SET seat = ?, sitting_out = 0 WHERE room_id = ? AND user_id = ?')
           .run(msg.seat, this.roomId, userId);
+        this.lounge.delete(userId);
         this.broadcastRoomState();
         return;
       }
       case 'leave_seat': {
         if (this.hand) return this.send(userId, { t: 'error', message: 'wait for the hand to end' });
+        if (!this.db.prepare('SELECT 1 FROM room_players WHERE room_id = ? AND user_id = ?').get(this.roomId, userId))
+          return this.send(userId, { t: 'error', message: 'Only table members have a seat to leave.' });
         this.db
           .prepare('UPDATE room_players SET seat = NULL WHERE room_id = ? AND user_id = ?')
           .run(this.roomId, userId);
+        if (!this.lounge.has(userId)) {
+          const point = availableLoungePoint(LOUNGE_DESTINATIONS.entry, [...this.lounge.values()]);
+          if (point) this.lounge.set(userId, { ...point, revision: ++this.loungeRevision });
+        }
         this.broadcastRoomState();
         return;
       }
@@ -512,6 +567,7 @@ export class GameRoom {
         return this.onPostHandShow(userId, msg);
       }
       case 'sit_out': {
+        if (!msg.sittingOut) this.lounge.delete(userId);
         this.db
           .prepare('UPDATE room_players SET sitting_out = ? WHERE room_id = ? AND user_id = ?')
           .run(msg.sittingOut ? 1 : 0, this.roomId, userId);
@@ -775,6 +831,11 @@ export class GameRoom {
 }
 
 class Hand {
+  /** Roaming never stops the crypto client or silently folds a live participant. */
+  isContesting(userId: number): boolean {
+    const player = this.seatOf(userId);
+    return this.phase !== 'done' && !!player && !this.betting?.seats.find(s => s.seat === player.seat)?.folded;
+  }
   readonly id = randomBytes(8).toString('hex');
   private phase: 'commit' | 'shuffle' | 'deal' | 'betting' | 'rit' | 'reveal' | 'audit' | 'done' = 'commit';
   private readonly n: number;

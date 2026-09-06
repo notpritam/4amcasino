@@ -31,9 +31,9 @@ export function CharacterPreview({ cfg }: { cfg: Avatar3D }) {
     mount.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 30);
-    camera.position.set(0, 1.8, 4.9);
+    camera.position.set(0, 2.1, 5.6);
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 1.08, 0);
+    controls.target.set(0, 1.3, 0);
     controls.enablePan = false;
     controls.enableZoom = false;
     controls.enableDamping = true;

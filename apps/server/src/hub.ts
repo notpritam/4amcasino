@@ -185,7 +185,9 @@ export function attachHub(
     });
 
     ws.on('close', () => {
-      current?.leave(userId, ws);
+      // Late close events can follow the database's onClose hook. Shutdown already
+      // clears the room timers; there is no hand or presence left to reconcile.
+      if (db.open) current?.leave(userId, ws);
       const left = (socketsPerUser.get(userId) ?? 1) - 1;
       if (left <= 0) socketsPerUser.delete(userId);
       else socketsPerUser.set(userId, left);

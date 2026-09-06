@@ -2,10 +2,11 @@
 // ABOUTME: program applied to a character rig (body + shoulder-pivoted arms),
 // ABOUTME: broadcast over the websocket so the whole table watches together.
 import * as THREE from 'three';
+import { blendPose, capturePose, envelope, smooth } from './pose.ts';
 import { EMOTE_KINDS } from '@4am/shared';
 import type { SoundName } from '../../shared/sounds.ts';
 
-/** Progress-driven pose program. `p` runs 0..1 over `dur`; `t` is wall time
+/** Progress-driven pose program. `p` runs 0..1 over `dur`; `t` is elapsed gesture time
  *  for oscillations. Characters are reset to their base pose every frame, so
  *  programs write absolute offsets and never accumulate. */
 export interface EmoteDef {
@@ -24,6 +25,8 @@ interface Rig {
   armL?: THREE.Group;
   armR?: THREE.Group;
   head?: THREE.Object3D;
+  elbowL?: THREE.Group;
+  elbowR?: THREE.Group;
 }
 
 const rig = (char: THREE.Group): Rig => char.userData as Rig;
@@ -42,7 +45,8 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
     apply(char, p, t) {
       const r = rig(char);
       if (r.armR) {
-        r.armR.rotation.z = -2.4;
+        r.armR.rotation.z = 2.15;
+        if (r.elbowR) r.elbowR.rotation.x = -0.15;
         r.armR.rotation.x = osc(t, 3) * 0.5;
       }
     },
@@ -56,8 +60,8 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
       char.position.y += Math.abs(osc(t, 2.4)) * 0.28;
       char.rotation.z = osc(t, 1.2) * 0.18;
       const r = rig(char);
-      if (r.armL) r.armL.rotation.z = 1.6 + osc(t, 2.4) * 0.9;
-      if (r.armR) r.armR.rotation.z = -1.6 + osc(t, 2.4) * 0.9;
+      if (r.armL) r.armL.rotation.set(0, 0, -1.3 - osc(t, 2.4) * 0.6);
+      if (r.armR) r.armR.rotation.set(0, 0, 1.3 - osc(t, 2.4) * 0.6);
     },
   },
   disco: {
@@ -68,8 +72,8 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
     apply(char, p, t) {
       const beat = Math.floor(t * 2.2) % 2;
       const r = rig(char);
-      if (r.armR) r.armR.rotation.z = beat ? -2.8 : -0.6;
-      if (r.armL) r.armL.rotation.z = beat ? 0.6 : 2.8;
+      if (r.armR) r.armR.rotation.set(0, 0, beat ? 2.4 : 0.7);
+      if (r.armL) r.armL.rotation.set(0, 0, beat ? -0.7 : -2.4);
       char.rotation.z = beat ? 0.14 : -0.14;
       char.position.y += Math.abs(osc(t, 2.2)) * 0.12;
     },
@@ -81,8 +85,8 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
     apply(char, p, t) {
       const step = Math.floor(t * 3) % 4;
       const r = rig(char);
-      if (r.armL) r.armL.rotation.set(step === 0 ? -1.2 : 0, 0, step === 1 ? 1.4 : 0.4);
-      if (r.armR) r.armR.rotation.set(step === 2 ? -1.2 : 0, 0, step === 3 ? -1.4 : -0.4);
+      if (r.armL) r.armL.rotation.set(step === 0 ? -1.2 : 0, 0, step === 1 ? -1.4 : -0.4);
+      if (r.armR) r.armR.rotation.set(step === 2 ? -1.2 : 0, 0, step === 3 ? 1.4 : 0.4);
       char.rotation.y += step * 0.05;
     },
   },
@@ -93,8 +97,8 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
     apply(char, p) {
       char.rotation.y += p * Math.PI * 4;
       const r = rig(char);
-      if (r.armL) r.armL.rotation.z = 1.5;
-      if (r.armR) r.armR.rotation.z = -1.5;
+      if (r.armL) r.armL.rotation.set(0, 0, -1.3);
+      if (r.armR) r.armR.rotation.set(0, 0, 1.3);
     },
   },
   jump: {
@@ -113,8 +117,8 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
     apply(char, p, t) {
       const closed = (osc(t, 3.4) + 1) / 2;
       const r = rig(char);
-      if (r.armL) r.armL.rotation.set(-1.3, 0, 0.5 - closed * 0.45);
-      if (r.armR) r.armR.rotation.set(-1.3, 0, -0.5 + closed * 0.45);
+      if (r.armL) r.armL.rotation.set(-1.3, 0, 0.05 + closed * 0.6);
+      if (r.armR) r.armR.rotation.set(-1.3, 0, -0.05 - closed * 0.6);
     },
   },
   bow: {
@@ -122,7 +126,7 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
     label: 'Bow',
     dur: 1800,
     apply(char, p) {
-      char.rotation.x = wave(p) * 0.7;
+      char.rotation.x = wave(p) * 0.4;
     },
   },
   flex: {
@@ -133,8 +137,10 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
     apply(char, p) {
       const r = rig(char);
       const up = Math.min(1, p * 3);
-      if (r.armL) r.armL.rotation.set(0, 0, 2.4 * up);
-      if (r.armR) r.armR.rotation.set(0, 0, -2.4 * up);
+      if (r.armL) r.armL.rotation.set(0, 0, -1.25 * up);
+      if (r.armR) r.armR.rotation.set(0, 0, 1.25 * up);
+      if (r.elbowL) r.elbowL.rotation.x = -2.1;
+      if (r.elbowR) r.elbowR.rotation.x = -2.1;
       char.scale.setScalar(1 + wave(p) * 0.07);
     },
   },
@@ -144,7 +150,7 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
     dur: 2000,
     apply(char, p, t) {
       const r = rig(char);
-      if (r.armR) r.armR.rotation.set(-2.6, 0, -0.3);
+      if (r.armR) r.armR.rotation.set(-2.3, 0, -0.3);
       if (r.head) r.head.rotation.z = osc(t, 1.4) * 0.12;
       char.rotation.x = 0.14;
     },
@@ -191,8 +197,10 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
     apply(char, p) {
       const r = rig(char);
       const up = wave(Math.min(1, p * 1.4));
-      if (r.armL) r.armL.rotation.set(0, 0.5, 1.1 * up);
-      if (r.armR) r.armR.rotation.set(0, -0.5, -1.1 * up);
+      if (r.armL) r.armL.rotation.set(0, 0.2, -1.1 * up);
+      if (r.armR) r.armR.rotation.set(0, -0.2, 1.1 * up);
+      if (r.elbowL) r.elbowL.rotation.x = -1.8;
+      if (r.elbowR) r.elbowR.rotation.x = -1.8;
       char.position.y += up * 0.06;
     },
   },
@@ -204,8 +212,10 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
     burst: 0xe879f9,
     apply(char, p) {
       const r = rig(char);
-      if (r.armL) r.armL.rotation.set(-2.9, 0, 0.7);
-      if (r.armR) r.armR.rotation.set(-2.9, 0, -0.7);
+      if (r.armL) r.armL.rotation.set(-1.75, 0, 0.6);
+      if (r.armR) r.armR.rotation.set(-1.75, 0, -0.6);
+      if (r.elbowL) r.elbowL.rotation.x = -0.7;
+      if (r.elbowR) r.elbowR.rotation.x = -0.7;
     },
   },
   thumbs: {
@@ -223,9 +233,9 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
     label: 'Headbang',
     dur: 2200,
     apply(char, p, t) {
-      char.rotation.x = Math.abs(osc(t, 3.4)) * 0.5;
+      char.rotation.x = Math.abs(osc(t, 3.4)) * 0.3;
       const r = rig(char);
-      if (r.armL) r.armL.rotation.z = 2.2;
+      if (r.armL) r.armL.rotation.set(0, 0, -1.9);
     },
   },
   moonwalk: {
@@ -261,7 +271,7 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
     dur: 1600,
     apply(char) {
       const r = rig(char);
-      if (r.armR) r.armR.rotation.set(-2.2, 0, -0.9);
+      if (r.armR) r.armR.rotation.set(-2.1, 0, -0.25);
       char.rotation.x = -0.05;
     },
   },
@@ -273,7 +283,7 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
       char.rotation.z = -0.15;
       const r = rig(char);
       if (r.armL) r.armL.rotation.set(-1.1, 0.5, 0.4);
-      if (r.armR) r.armR.rotation.set(-0.5 + osc(t, 4) * 0.4, 0, -0.3);
+      if (r.armR) r.armR.rotation.set(-0.9 + osc(t, 4) * 0.25, 0, -0.3);
     },
   },
   dab: {
@@ -285,7 +295,7 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
       const hit = Math.min(1, p * 4);
       const r = rig(char);
       if (r.armL) r.armL.rotation.set(-1.9 * hit, 0, 1.1 * hit);
-      if (r.armR) r.armR.rotation.set(-0.7 * hit, 0, -2.5 * hit);
+      if (r.armR) r.armR.rotation.set(-0.5 * hit, 0, 1.4 * hit);
       if (r.head) r.head.rotation.z = 0.5 * hit;
       char.rotation.z = -0.12 * hit;
     },
@@ -297,8 +307,10 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
     apply(char, p, t) {
       const flap = Math.abs(osc(t, 5));
       const r = rig(char);
-      if (r.armL) r.armL.rotation.z = 0.4 + flap * 0.9;
-      if (r.armR) r.armR.rotation.z = -0.4 - flap * 0.9;
+      if (r.armL) r.armL.rotation.set(0, 0, -0.4 - flap * 0.9);
+      if (r.armR) r.armR.rotation.set(0, 0, 0.4 + flap * 0.9);
+      if (r.elbowL) r.elbowL.rotation.x = -1.4;
+      if (r.elbowR) r.elbowR.rotation.x = -1.4;
       char.position.y += flap * 0.1;
       if (r.head) r.head.rotation.x = osc(t, 5) * 0.2;
     },
@@ -324,8 +336,8 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
       char.position.y += wave(p) * 1.1 + osc(t, 0.8) * 0.06;
       char.rotation.y += p * Math.PI * 2;
       const r = rig(char);
-      if (r.armL) r.armL.rotation.set(0, 0, 0.9);
-      if (r.armR) r.armR.rotation.set(0, 0, -0.9);
+      if (r.armL) r.armL.rotation.set(0, 0, -0.9);
+      if (r.armR) r.armR.rotation.set(0, 0, 0.9);
     },
   },
   celebrate: {
@@ -338,8 +350,8 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
     apply(char, p, t) {
       char.position.y += Math.abs(osc(t, 3)) * 0.5;
       const r = rig(char);
-      if (r.armL) r.armL.rotation.z = 2.6;
-      if (r.armR) r.armR.rotation.z = -2.6;
+      if (r.armL) r.armL.rotation.set(0, 0, -2.3);
+      if (r.armR) r.armR.rotation.set(0, 0, 2.3);
       char.rotation.y += osc(t, 1) * 0.3;
     },
   },
@@ -352,12 +364,64 @@ const EMOTE_DEFS: Partial<Record<EmoteKind, EmoteDef>> = {
  *  rejects unknown kinds too; this is the belt to that pair of braces. */
 export const EMOTES: Partial<Record<EmoteKind, EmoteDef>> = Object.assign(
   Object.create(null) as Partial<Record<EmoteKind, EmoteDef>>,
-  EMOTE_DEFS,
+  Object.fromEntries(
+    Object.entries(EMOTE_DEFS).map(([kind, def]) => [
+      kind,
+      {
+        ...def,
+        apply(char: THREE.Group, p: number) {
+          // A local clock makes every gesture reproducible, regardless of arrival time.
+          const base = capturePose(char);
+          const yaw = char.rotation.y;
+          const y = char.position.y;
+          def.apply(char, p, (p * def.dur) / 1000);
+          const body = char.userData.body as THREE.Group;
+          body.rotation.x += char.rotation.x;
+          body.rotation.z += char.rotation.z;
+          char.rotation.x = char.rotation.z = 0;
+          // Expressive poses lean at the hips; they never tip the entire chair rig.
+          body.scale.copy(char.scale);
+          char.scale.setScalar(1);
+          if (char.userData.seated) {
+            body.position.y += (char.position.y - y) * 0.04;
+            char.position.y = y;
+            if (kind === 'moonwalk') {
+              char.position.x = base[0]!.position.x;
+              char.position.z = base[0]!.position.z;
+              // Seated heel shuffle, without sliding through the table or another seat.
+              for (const [side, sign] of [
+                ['L', 1],
+                ['R', -1],
+              ] as const) {
+                const shuffle = Math.sin(p * Math.PI * 8) * 0.12 * sign;
+                (char.userData['knee' + side] as THREE.Group).rotation.x += shuffle;
+                (char.userData['foot' + side] as THREE.Group).rotation.x -= shuffle;
+              }
+            }
+          }
+          // Large rotations run once with eased endpoints, not a blended spin that unwinds.
+          const turns = kind === 'twirl' ? 2 : kind === 'spin' ? 3 : kind === 'levitate' ? 1 : 0;
+          const spin = turns * Math.PI * 2 * smooth(p);
+          if (turns) char.rotation.y = yaw;
+          blendPose(char, base, envelope(p));
+          if (turns && char.userData.seated)
+            body.rotation.y += Math.sin(p * Math.PI * 2) * 0.45 * envelope(p);
+          else if (turns)
+            char.quaternion
+              .copy(base[0]!.rotation)
+              .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), spin));
+        },
+      },
+    ]),
+  ),
 );
 
 /** Targeted mischief: applied to the TARGET character. */
-export const ATTACKS: Record<string, { dur: number; sound: SoundName }> = {
-  shove: { dur: 1100, sound: 'thwack' },
-  slap: { dur: 1300, sound: 'slap' },
-  chip: { dur: 1500, sound: 'boing' },
-};
+export const ATTACKS: Record<string, { dur: number; sound: SoundName }> = Object.assign(
+  Object.create(null),
+  {
+    shove: { dur: 1100, sound: 'thwack' },
+    slap: { dur: 1300, sound: 'slap' },
+    chip: { dur: 1500, sound: 'boing' },
+  },
+);

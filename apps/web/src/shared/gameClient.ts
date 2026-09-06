@@ -171,6 +171,9 @@ export function sendChat(text: string, kind: 'text' | 'sticker' | 'phrase' = 'te
 function handle(msg: ServerMsg): void {
   const store = useStore.getState();
   switch (msg.t) {
+    case 'lounge_presence':
+      store.setLoungePosition(msg.roomId, msg.userId, msg.position);
+      return;
     case 'room_state': {
       store.setRoom(msg);
       // after a reconnect (deploy or network drop): if the server no longer has
@@ -389,8 +392,9 @@ function handle(msg: ServerMsg): void {
     }
 
     case 'poke': {
-      play('thwack');
-      window.dispatchEvent(new CustomEvent('4am-poke', { detail: msg }));
+      const event = new CustomEvent('4am-poke', { detail: msg, cancelable: true });
+      // The 3D scene times its own contact sound; 2D keeps immediate feedback.
+      if (window.dispatchEvent(event)) play('thwack');
       return;
     }
 

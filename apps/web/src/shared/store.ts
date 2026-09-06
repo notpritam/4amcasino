@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { BettingState, CardId, PlayerAction, ServerMsg } from '@4am/shared';
+import type { BettingState, CardId, LoungePosition, PlayerAction, ServerMsg } from '@4am/shared';
 
 type RoomStateMsg = Extract<ServerMsg, { t: 'room_state' }>;
 type HandStartMsg = Extract<ServerMsg, { t: 'hand_start' }>;
@@ -137,6 +137,8 @@ interface Store {
   logout: () => void;
 
   room: RoomStateMsg | null;
+  lounge: Record<number, LoungePosition>;
+  setLoungePosition: (roomId: string, userId: number, position: LoungePosition | null) => void;
   setRoom: (r: RoomStateMsg | null) => void;
   chat: ChatMsg[];
   pushChat: (m: ChatMsg) => void;
@@ -161,7 +163,12 @@ interface Store {
   prefs: Prefs;
   setPrefs: (p: Partial<Prefs>) => void;
 
-  voice: { joined: boolean; muted: boolean; mutedByUser: Record<number, boolean>; speakingByUser: Record<number, boolean> };
+  voice: {
+    joined: boolean;
+    muted: boolean;
+    mutedByUser: Record<number, boolean>;
+    speakingByUser: Record<number, boolean>;
+  };
   patchVoice: (v: Partial<Store['voice']>) => void;
 }
 
@@ -174,12 +181,22 @@ export const useStore = create<Store>()(
         set({
           auth: { token: null, userId: null, username: null, identity: null },
           room: null,
+          lounge: {},
           chat: [],
           hand: emptyHand,
         }),
 
       room: null,
-      setRoom: (room) => set({ room }),
+      lounge: {},
+      setRoom: (room) => set({ room, lounge: room?.lounge ?? {} }),
+      setLoungePosition: (roomId, userId, position) =>
+        set((s) => {
+          if (s.room?.room.id !== roomId) return s;
+          const lounge = { ...s.lounge };
+          if (position) lounge[userId] = position;
+          else delete lounge[userId];
+          return { lounge, room: { ...s.room, lounge } };
+        }),
       chat: [],
       pushChat: (m) => set((s) => ({ chat: [...s.chat.slice(-199), m] })),
       setChat: (chat) => set({ chat }),
