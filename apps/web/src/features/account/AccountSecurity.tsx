@@ -41,7 +41,9 @@ function Note({ kind, children }: { kind: 'ok' | 'bad'; children: React.ReactNod
   return (
     <p
       className={`mt-2 text-xs ${
-        kind === 'ok' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+        kind === 'ok'
+          ? 'text-emerald-600 dark:text-emerald-400'
+          : 'text-rose-600 dark:text-rose-400'
       }`}
     >
       {children}
@@ -94,6 +96,7 @@ function ChangePassword() {
       <form onSubmit={submit} className="grid max-w-md gap-2">
         <Input
           type="password"
+          aria-label="Current password"
           placeholder="Current password"
           value={current}
           onChange={(e) => setCurrent(e.target.value)}
@@ -103,6 +106,7 @@ function ChangePassword() {
         />
         <Input
           type="password"
+          aria-label="New password"
           placeholder="New password"
           value={next}
           onChange={(e) => setNext(e.target.value)}
@@ -113,6 +117,7 @@ function ChangePassword() {
         />
         <Input
           type="password"
+          aria-label="Repeat new password"
           placeholder="Repeat new password"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
@@ -171,6 +176,7 @@ function ChangeUsername() {
     >
       <form onSubmit={submit} className="grid max-w-md gap-2">
         <Input
+          aria-label="New username"
           placeholder="New username"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -182,6 +188,7 @@ function ChangeUsername() {
         />
         <Input
           type="password"
+          aria-label="Your password"
           placeholder="Your password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -320,6 +327,7 @@ function RecoveryCode() {
           </p>
           <Input
             type="password"
+            aria-label="Your password"
             placeholder="Your password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -329,7 +337,13 @@ function RecoveryCode() {
           />
           <div className="flex gap-2">
             <Button type="submit" disabled={busy}>
-              {busy ? <Spinner label="Working…" /> : enabled ? 'Generate a new code' : 'Generate code'}
+              {busy ? (
+                <Spinner label="Working…" />
+              ) : enabled ? (
+                'Generate a new code'
+              ) : (
+                'Generate code'
+              )}
             </Button>
             {enabled && (
               <Button type="button" variant="danger" onClick={disable} disabled={busy}>
@@ -360,7 +374,9 @@ function Devices() {
           setBusy(true);
           try {
             const r = await api.revokeOtherSessions();
-            setMsg(r.revoked > 0 ? `Signed out ${r.revoked} other session(s).` : 'No other sessions.');
+            setMsg(
+              r.revoked > 0 ? `Signed out ${r.revoked} other session(s).` : 'No other sessions.',
+            );
           } catch {
             setMsg('could not do that');
           } finally {

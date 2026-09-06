@@ -133,6 +133,7 @@ export function ChatPanel({ chrome = true }: { chrome?: boolean }) {
           <Input
             value={text}
             onChange={(e) => setText(e.target.value)}
+            aria-label="Message…"
             placeholder="Message…"
             maxLength={500}
           />

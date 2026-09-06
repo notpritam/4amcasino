@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { useStore } from '../shared/store.ts';
-import { applyTheme, loadPrefs } from '../shared/prefs.ts';
+import { applyAppearance, loadPrefs } from '../shared/prefs.ts';
 import { peekPendingJoin } from '../shared/pendingJoin.ts';
 import { api } from '../shared/api.ts';
 import { LandingPage } from '../pages/landing/LandingPage.tsx';
@@ -80,10 +80,9 @@ export function App() {
   const token = useStore((s) => s.auth.token);
   const isPlatform = useStore((s) => s.auth.isPlatform);
   const setAuth = useStore((s) => s.setAuth);
-  const theme = useStore((s) => s.prefs.theme);
   useEffect(() => {
-    applyTheme(theme); // applies on load and every toggle
-  }, [theme]);
+    applyAppearance();
+  }, []);
   useEffect(() => {
     if (token) void loadPrefs(); // refresh prefs from the server
   }, [token]);
@@ -99,7 +98,11 @@ export function App() {
         // response would land after the token is cleared and re-populate a
         // logged-out auth object with stale isPlatform/leaderboardRank.
         if (!useStore.getState().auth.token) return;
-        setAuth({ ...useStore.getState().auth, isPlatform: me.isPlatform, leaderboardRank: me.leaderboardRank });
+        setAuth({
+          ...useStore.getState().auth,
+          isPlatform: me.isPlatform,
+          leaderboardRank: me.leaderboardRank,
+        });
       })
       .catch(() => {});
   }, [token, isPlatform, setAuth]);
@@ -248,11 +251,11 @@ export function App() {
 function RouteFallback() {
   return (
     <div
-      className="flex min-h-[100dvh] items-center justify-center bg-slate-950 text-slate-400"
+      className="flex min-h-[100dvh] items-center justify-center bg-background-primary-default text-text-secondary"
       role="status"
     >
       <span className="flex items-center gap-3 text-sm">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-indigo-400" /> Loading table…
+        <span className="h-2 w-2 animate-pulse rounded-full bg-indigo-400" /> Loading…
       </span>
     </div>
   );

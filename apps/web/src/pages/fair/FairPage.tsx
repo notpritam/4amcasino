@@ -30,15 +30,13 @@ const PLAYERS = [
 const spring = { type: 'spring', stiffness: 260, damping: 24 } as const;
 
 function Caption({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="max-w-md text-center text-sm leading-relaxed text-white/60">{children}</p>
-  );
+  return <p className="max-w-md text-center text-sm leading-relaxed text-white/60">{children}</p>;
 }
 
 /** The real crypto behind the picture, one quiet mono line. */
 function NerdNote({ children }: { children: React.ReactNode }) {
   return (
-    <p className="max-w-md text-center font-mono text-[0.66rem] leading-relaxed text-white/35">
+    <p className="max-w-md text-center font-mono text-[0.66rem] leading-relaxed text-white/60">
       {children}
     </p>
   );
@@ -61,7 +59,10 @@ function SealedCard({ locks, delay = 0 }: { locks: number; delay?: number }) {
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ ...spring, delay: delay + 0.25 + i * 0.18 }}
-            className={cn('flex h-4 w-4 items-center justify-center rounded-full text-white', p.color)}
+            className={cn(
+              'flex h-4 w-4 items-center justify-center rounded-full text-white',
+              p.color,
+            )}
           >
             <Lock size={9} weight="bold" />
           </motion.span>
@@ -113,8 +114,8 @@ function StepDeck() {
         transition={{ delay: 0.55 }}
         className="flex items-center gap-2 text-sm text-white/70"
       >
-        <ArrowRight size={16} className="text-white/40" /> 52 cards become 52 points on an
-        elliptic curve
+        <ArrowRight size={16} className="text-white/40" /> 52 cards become 52 points on an elliptic
+        curve
       </motion.p>
       <Caption>
         There is no physical deck and no dealer. Before every hand, each card is encoded as pure
@@ -178,7 +179,9 @@ function StepCommit() {
         this hand, pinned to the table for all to see. Nobody can quietly swap keys later: every
         unlock must match the promise made here.
       </Caption>
-      <NerdNote>under the hood: hash commitments to per-hand masking keys, sent before the shuffle</NerdNote>
+      <NerdNote>
+        under the hood: hash commitments to per-hand masking keys, sent before the shuffle
+      </NerdNote>
     </div>
   );
 }
@@ -291,7 +294,9 @@ function StepBlind() {
         The server only passes locked messages around. It never holds a single key, so even the
         person hosting the game (or anyone who hacks the server) sees exactly this: noise.
       </Caption>
-      <NerdNote>under the hood: the server is a relay for ciphertexts; keys never leave your device</NerdNote>
+      <NerdNote>
+        under the hood: the server is a relay for ciphertexts; keys never leave your device
+      </NerdNote>
     </div>
   );
 }
@@ -368,9 +373,9 @@ function StepDeal() {
       </div>
       <Caption>
         To deal you a card, everyone else removes their lock, and each removal carries a
-        mathematical proof it was done with the exact key promised in chapter two. A faked unlock
-        is rejected instantly and the cheater is named. Your own lock comes off last, on your
-        device, so only you ever see the card.
+        mathematical proof it was done with the exact key promised in chapter two. A faked unlock is
+        rejected instantly and the cheater is named. Your own lock comes off last, on your device,
+        so only you ever see the card.
       </Caption>
       <NerdNote>under the hood: a Chaum-Pedersen DLEQ proof rides along with every unmask</NerdNote>
     </div>
@@ -428,12 +433,14 @@ function StepBoard() {
         ))}
       </div>
       <Caption>
-        Community cards work the same way, just in the open: everyone removes their lock in front
-        of the whole table, proof attached, and the flop flips for all at once. The same
-        machinery covers showdowns, voluntary reveals, and paid peeks: a reveal is always a
-        proven unlock, never the server&apos;s word.
+        Community cards work the same way, just in the open: everyone removes their lock in front of
+        the whole table, proof attached, and the flop flips for all at once. The same machinery
+        covers showdowns, voluntary reveals, and paid peeks: a reveal is always a proven unlock,
+        never the server&apos;s word.
       </Caption>
-      <NerdNote>under the hood: identical DLEQ-proved unmasks, broadcast to the table instead of one player</NerdNote>
+      <NerdNote>
+        under the hood: identical DLEQ-proved unmasks, broadcast to the table instead of one player
+      </NerdNote>
     </div>
   );
 }
@@ -474,7 +481,10 @@ function StepChain() {
             {i < blocks.length - 1 && (
               <LinkSimple
                 size={16}
-                className={cn('mx-0.5 sm:mx-1', tampered && i >= 2 ? 'text-rose-400' : 'text-white/30')}
+                className={cn(
+                  'mx-0.5 sm:mx-1',
+                  tampered && i >= 2 ? 'text-rose-400' : 'text-white/30',
+                )}
               />
             )}
           </div>
@@ -482,12 +492,14 @@ function StepChain() {
       </div>
       <p className="text-xs text-white/40">tap any block to try tampering with it</p>
       <Caption>
-        Every move of every hand is signed by its player and chained by hashes. Change one bet
-        after the fact and every later link breaks, visibly, for everyone. Finished hands can be
-        replayed and re-verified in your own browser. The one thing math cannot stop: a friend
-        showing their screen to another friend. That part runs on friendship.
+        Every move of every hand is signed by its player and chained by hashes. Change one bet after
+        the fact and every later link breaks, visibly, for everyone. Finished hands can be replayed
+        and re-verified in your own browser. The one thing math cannot stop: a friend showing their
+        screen to another friend. That part runs on friendship.
       </Caption>
-      <NerdNote>under the hood: ed25519-signed actions in a hash chain, same scheme as the chip ledger</NerdNote>
+      <NerdNote>
+        under the hood: ed25519-signed actions in a hash chain, same scheme as the chip ledger
+      </NerdNote>
     </div>
   );
 }
@@ -507,19 +519,23 @@ export function FairPage() {
   const [run, setRun] = useState(0); // bump to replay the current chapter's animation
   const Current = STEPS[step]!.el;
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-slate-950 text-white">
+    <div className="flex min-h-[100dvh] flex-col bg-background-primary-default text-text-primary">
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-3 py-4 sm:px-4 sm:py-6">
         <div className="flex items-center gap-3">
-          <Link to="/login" className="rounded-full p-1.5 text-white/60 hover:bg-white/10">
+          <Link
+            to="/login"
+            aria-label="Back to poker"
+            className="rounded-lg p-2 text-text-secondary hover:bg-background-secondary-default"
+          >
             <CaretLeft size={18} weight="bold" />
           </Link>
           <h1 className="font-display text-lg font-bold">How can this be fair?</h1>
         </div>
-        <p className="mt-1 pl-10 text-sm text-white/50">
+        <p className="mt-1 pl-10 text-sm text-text-secondary">
           Mental poker, in seven chapters. No trust in the server required.
         </p>
 
-        <div className="mt-4 flex min-h-[560px] flex-col rounded-3xl bg-white/[0.03] p-4 ring-1 ring-white/10 sm:mt-6 sm:p-5">
+        <div className="mt-4 flex min-h-[560px] flex-col rounded-2xl bg-slate-950 p-4 text-white sm:mt-6 sm:p-5">
           <div className="flex items-center justify-between gap-2 sm:gap-3">
             <span className="w-12 font-display text-sm font-bold text-indigo-300">
               {step + 1} / {STEPS.length}

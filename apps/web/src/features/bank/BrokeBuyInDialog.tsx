@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../shared/api.ts';
 import { leaveSeat } from '../../shared/gameClient.ts';
 import { useStore } from '../../shared/store.ts';
 import { fmt } from '../../shared/lib/cn.ts';
 import { Button, Dialog, Input } from '../../shared/ui/index.tsx';
+import { useAsyncGuard } from '../../shared/lib/useAsyncGuard.ts';
 
 /** Shown automatically when you are seated with zero chips between hands:
  *  request a buy-in from the banker, or stand up and watch as a viewer. */
@@ -17,27 +18,38 @@ export function BrokeBuyInDialog({
   onClose: () => void;
 }) {
   const room = useStore((s) => s.room);
+  const userId = useStore((s) => s.auth.userId);
+  const pendingBuy = room?.players.find((p) => p.userId === userId)?.pendingBuy ?? 0;
   const pushError = useStore((s) => s.pushError);
   const [amount, setAmount] = useState(() => (room?.room.bb ?? 20) * 50);
   const [sent, setSent] = useState(false);
+  const guard = useAsyncGuard();
+  useEffect(() => {
+    if (!open) setSent(false);
+  }, [open]);
 
-  async function buy(e: React.FormEvent) {
+  function buy(e: React.FormEvent) {
     e.preventDefault();
-    try {
-      await api.buy(roomId, amount);
-      setSent(true);
-    } catch (err) {
-      pushError(err instanceof Error ? err.message : 'buy request failed');
-    }
+    guard.run(async () => {
+      try {
+        await api.buy(roomId, amount);
+        setSent(true);
+      } catch (err) {
+        pushError(err instanceof Error ? err.message : 'buy request failed');
+      }
+    });
   }
 
   return (
     <Dialog open={open} onClose={onClose} title="You are out of chips">
-      {sent ? (
+      {sent || pendingBuy > 0 ? (
         <div className="space-y-3">
           <p className="text-sm text-emerald-600">
-            Buy-in request sent. As soon as the banker approves it, the points land on your stack
-            and you are back in the next hand.
+            {pendingBuy > 0
+              ? `${fmt(pendingBuy)} points are awaiting approval. `
+              : 'Buy-in request sent. '}
+            As soon as the banker approves it, the points land on your stack and you are back in the
+            next hand.
           </p>
           <Button variant="secondary" className="w-full" onClick={onClose}>
             Got it
@@ -59,8 +71,8 @@ export function BrokeBuyInDialog({
                 onChange={(e) => setAmount(+e.target.value)}
               />
             </label>
-            <Button type="submit" className="w-full">
-              Request {fmt(amount)} points
+            <Button type="submit" className="w-full" disabled={guard.busy}>
+              {guard.busy ? 'Requesting…' : `Request ${fmt(amount)} points`}
             </Button>
           </form>
           <Button

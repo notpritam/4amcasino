@@ -1,7 +1,13 @@
+import { RiUser3Line, RiPokerClubsLine } from '@remixicon/react';
 import { useRef, useState } from 'react';
 import { api } from '../../shared/api.ts';
-import { applyTheme } from '../../shared/prefs.ts';
-import { play, setSoundVolume, setSoundsEnabled, soundVolume, soundsEnabled } from '../../shared/sounds.ts';
+import {
+  play,
+  setSoundVolume,
+  setSoundsEnabled,
+  soundVolume,
+  soundsEnabled,
+} from '../../shared/sounds.ts';
 import { useStore, type Prefs } from '../../shared/store.ts';
 import { cn } from '../../shared/lib/cn.ts';
 import { Button, Input } from '../../shared/ui/index.tsx';
@@ -19,7 +25,17 @@ async function toAvatarDataUrl(file: File): Promise<string> {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 256;
   const g = canvas.getContext('2d')!;
-  g.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, 256, 256);
+  g.drawImage(
+    bitmap,
+    (bitmap.width - side) / 2,
+    (bitmap.height - side) / 2,
+    side,
+    side,
+    0,
+    0,
+    256,
+    256,
+  );
   return canvas.toDataURL('image/jpeg', 0.85);
 }
 
@@ -78,7 +94,6 @@ export function ProfileEditor({
         privateMode: prefs.privateMode,
         autoJoinInvites: prefs.autoJoinInvites,
         autoReady: prefs.autoReady,
-        theme: prefs.theme,
         quickPhrases,
       });
       setPrefs({ displayName: displayName.trim() || (auth.username ?? ''), bio, quickPhrases });
@@ -99,7 +114,12 @@ export function ProfileEditor({
   const identity = (
     <>
       <div className="flex items-center gap-4">
-        <Avatar userId={auth.userId ?? 0} name={displayName || '?'} version={prefs.avatarVersion} size="xl" />
+        <Avatar
+          userId={auth.userId ?? 0}
+          name={displayName || '?'}
+          version={prefs.avatarVersion}
+          size="xl"
+        />
         <div className="space-y-2">
           <input
             ref={fileRef}
@@ -115,9 +135,11 @@ export function ProfileEditor({
             <Button
               variant="ghost"
               onClick={() =>
-                api.deleteAvatar().then(() =>
-                  setPrefs({ hasAvatar: false, avatarVersion: prefs.avatarVersion + 1 }),
-                )
+                api
+                  .deleteAvatar()
+                  .then(() =>
+                    setPrefs({ hasAvatar: false, avatarVersion: prefs.avatarVersion + 1 }),
+                  )
               }
             >
               Remove
@@ -128,11 +150,16 @@ export function ProfileEditor({
 
       <label className="block text-sm">
         <span className="mb-1 block text-slate-500">Display name</span>
-        <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={24} />
+        <Input
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          maxLength={24}
+        />
       </label>
       <label className="block text-sm">
         <span className="mb-1 block text-slate-500">Bio</span>
         <textarea
+          aria-label="Bio"
           value={bio}
           onChange={(e) => setBio(e.target.value)}
           maxLength={280}
@@ -143,8 +170,11 @@ export function ProfileEditor({
       </label>
 
       <label className="block text-sm">
-        <span className="mb-1 block text-slate-500">Your quick chat phrases (one per line, max 8)</span>
+        <span className="mb-1 block text-slate-500">
+          Your quick chat phrases (one per line, max 8)
+        </span>
         <textarea
+          aria-label="Your quick chat phrases"
           value={phrasesText}
           onChange={(e) => setPhrasesText(e.target.value)}
           rows={3}
@@ -165,7 +195,10 @@ export function ProfileEditor({
               key={b}
               onClick={() => setPrefs({ cardBack: b })}
               aria-label={`${b} card back`}
-              className={cn('rounded-lg p-0.5 ring-2 ring-transparent', prefs.cardBack === b && 'ring-indigo-500')}
+              className={cn(
+                'rounded-lg p-0.5 ring-2 ring-transparent',
+                prefs.cardBack === b && 'ring-indigo-500',
+              )}
             >
               <div className={cn('card-back h-14 w-10 rounded-lg', `card-back-${b}`)} />
             </button>
@@ -221,28 +254,6 @@ export function ProfileEditor({
       </label>
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
-        <div className="flex items-center gap-2" role="radiogroup" aria-label="Theme">
-          <span className="text-slate-500 dark:text-slate-400">Theme</span>
-          {(['light', 'dark', 'cyber'] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              role="radio"
-              aria-checked={prefs.theme === t}
-              onClick={() => {
-                setPrefs({ theme: t });
-                applyTheme(t);
-              }}
-              className={`rounded-full px-3 py-1 capitalize transition-colors ${
-                prefs.theme === t
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-slate-600 ring-1 ring-slate-300 hover:bg-slate-100 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-800'
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
         <label className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
           <input
             type="checkbox"
@@ -289,7 +300,7 @@ export function ProfileEditor({
         <SettingsCard
           id="profile"
           title="Profile"
-          icon="👤"
+          icon={<RiUser3Line className="size-4" aria-hidden />}
           desc="Your face and name at the table, and the phrases you can fire into chat in one tap."
         >
           <div className="space-y-4">{identity}</div>
@@ -298,7 +309,7 @@ export function ProfileEditor({
         <SettingsCard
           id="table"
           title="Table & play"
-          icon="🎴"
+          icon={<RiPokerClubsLine className="size-4" aria-hidden />}
           desc="How the felt looks and sounds for you, and what other players get to see."
         >
           <div className="space-y-4">{tableStyle}</div>
@@ -313,7 +324,7 @@ export function ProfileEditor({
           {error && <p className="text-sm text-rose-600">{error}</p>}
           {saved && <p className="text-sm text-emerald-600">✓ Saved.</p>}
           {!error && !saved && (
-            <p className="text-xs text-slate-400">Deck, theme and sound apply instantly.</p>
+            <p className="text-xs text-slate-400">Deck and sound apply instantly.</p>
           )}
         </div>
       </div>
@@ -327,7 +338,11 @@ export function ProfileEditor({
       <div className={cn('space-y-3', wide && 'md:col-span-2')}>
         {error && <p className="text-sm text-rose-600">{error}</p>}
         {saved && <p className="text-sm text-emerald-600">Saved.</p>}
-        <Button className={wide ? 'w-full sm:w-auto' : 'w-full'} onClick={() => void save()} disabled={saving}>
+        <Button
+          className={wide ? 'w-full sm:w-auto' : 'w-full'}
+          onClick={() => void save()}
+          disabled={saving}
+        >
           {saving ? 'Saving…' : 'Save profile'}
         </Button>
       </div>

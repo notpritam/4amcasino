@@ -1,3 +1,10 @@
+import {
+  RiUser3Line,
+  RiPokerClubsLine,
+  RiShieldKeyholeLine,
+  RiLinksLine,
+  RiLogoutBoxLine,
+} from '@remixicon/react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../shared/api.ts';
@@ -14,11 +21,11 @@ import { SettingsCard } from '../../features/settings/SettingsCard.tsx';
  *  undifferentiated form (requested by notpritam, docs/FEATURES.md). */
 
 const SECTIONS = [
-  { id: 'profile', label: 'Profile', icon: '👤' },
-  { id: 'table', label: 'Table & play', icon: '🎴' },
-  { id: 'account', label: 'Account & security', icon: '🔐' },
-  { id: 'merge', label: 'Merge accounts', icon: '🔗' },
-  { id: 'session', label: 'Session', icon: '🚪' },
+  { id: 'profile', label: 'Profile', icon: RiUser3Line },
+  { id: 'table', label: 'Table & play', icon: RiPokerClubsLine },
+  { id: 'account', label: 'Account & security', icon: RiShieldKeyholeLine },
+  { id: 'merge', label: 'Merge accounts', icon: RiLinksLine },
+  { id: 'session', label: 'Session', icon: RiLogoutBoxLine },
 ] as const;
 
 /** Asks the platform to fold one account into another. Nothing changes until
@@ -45,7 +52,10 @@ function MergeAccountsForm() {
       setIntoUsername('');
       setNote('');
     } catch (err) {
-      setMsg({ kind: 'bad', text: err instanceof Error ? err.message : 'Could not send that request.' });
+      setMsg({
+        kind: 'bad',
+        text: err instanceof Error ? err.message : 'Could not send that request.',
+      });
     } finally {
       setBusy(false);
     }
@@ -54,9 +64,9 @@ function MergeAccountsForm() {
   return (
     <form onSubmit={(e) => void submit(e)} className="space-y-3">
       <p className="text-sm text-slate-500">
-        Moves everything the first account owns to the second, then retires the first. Use this
-        when the same person ended up with two accounts. A platform admin reviews every request
-        before anything happens.
+        Moves everything the first account owns to the second, then retires the first. Use this when
+        the same person ended up with two accounts. A platform admin reviews every request before
+        anything happens.
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="text-sm">
@@ -133,9 +143,12 @@ function SectionRail() {
           <li key={s.id}>
             <a
               href={`#${s.id}`}
+              aria-current={active === s.id ? 'location' : undefined}
               onClick={(e) => {
                 e.preventDefault();
-                document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                document
+                  .getElementById(s.id)
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 history.replaceState(null, '', `#${s.id}`);
               }}
               className={cn(
@@ -145,7 +158,7 @@ function SectionRail() {
                   : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800',
               )}
             >
-              <span aria-hidden>{s.icon}</span>
+              <s.icon className="size-4" aria-hidden />
               {s.label}
             </a>
           </li>
@@ -190,7 +203,8 @@ export function SettingsPage() {
       <header className="mb-6">
         <h1 className="font-display text-2xl font-bold">Settings</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Signed in as <span className="font-medium text-slate-700 dark:text-slate-300">{auth.username}</span>.
+          Signed in as{' '}
+          <span className="font-medium text-slate-700 dark:text-slate-300">{auth.username}</span>.
           Who you are at the table, and how the table behaves for you.
         </p>
       </header>
@@ -204,7 +218,7 @@ export function SettingsPage() {
           <SettingsCard
             id="account"
             title="Account & security"
-            icon="🔐"
+            icon={<RiShieldKeyholeLine className="size-4" aria-hidden />}
             desc="Your password derives the key that signs your cards, right here in this browser. Nothing on this card is ever sent to the server in the clear."
           >
             <AccountSecurity />
@@ -213,7 +227,7 @@ export function SettingsPage() {
           <SettingsCard
             id="merge"
             title="Merge accounts"
-            icon="🔗"
+            icon={<RiLinksLine className="size-4" aria-hidden />}
             desc="Combine two accounts that belong to the same person. Once a platform admin approves it, everything moves to the account you keep."
           >
             <MergeAccountsForm />
@@ -222,7 +236,7 @@ export function SettingsPage() {
           <SettingsCard
             id="session"
             title="Session"
-            icon="🚪"
+            icon={<RiLogoutBoxLine className="size-4" aria-hidden />}
             desc="Signing out clears your keys from this browser. You get them back by logging in again with the same password."
           >
             <Button

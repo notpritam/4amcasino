@@ -101,7 +101,9 @@ export function offerPeek(targetSeat: number, amount: number): void {
 export function answerPeek(offerId: string, accept: boolean): void {
   const { hand } = useStore.getState();
   if (!hand.handId) return;
-  useStore.getState().patchHand({ peekOffers: hand.peekOffers.filter((o) => o.offerId !== offerId) });
+  useStore
+    .getState()
+    .patchHand({ peekOffers: hand.peekOffers.filter((o) => o.offerId !== offerId) });
   if (!accept) {
     wsClient.send({ t: 'peek_decline', handId: hand.handId, offerId });
     return;
@@ -137,7 +139,12 @@ export function showMyCards(): void {
     const { out, proof } = proveUnmask(k, pointFromHex(point));
     return { deckIndex, out: pointHex(out), proof };
   });
-  wsClient.send({ t: 'show_cards', handId: hand.handId, shares, sig: signed(hand.handId, 'show_cards', { shares }) });
+  wsClient.send({
+    t: 'show_cards',
+    handId: hand.handId,
+    shares,
+    sig: signed(hand.handId, 'show_cards', { shares }),
+  });
 }
 
 export function sit(seat: number): void {
@@ -161,7 +168,12 @@ export function ritVote(yes: boolean): void {
   const h = useStore.getState().hand;
   if (!h.handId || !h.ritOffer) return;
   useStore.getState().patchHand({ ritOffer: { ...h.ritOffer, voted: true } });
-  wsClient.send({ t: 'rit_vote', handId: h.handId, yes, sig: signed(h.handId, 'rit_vote', { yes }) });
+  wsClient.send({
+    t: 'rit_vote',
+    handId: h.handId,
+    yes,
+    sig: signed(h.handId, 'rit_vote', { yes }),
+  });
 }
 
 export function sendChat(text: string, kind: 'text' | 'sticker' | 'phrase' = 'text'): void {
@@ -185,7 +197,8 @@ function handle(msg: ServerMsg): void {
             abort: {
               t: 'hand_abort',
               handId: h.handId,
-              reason: 'The server restarted during this hand. Bets were returned; the host can deal again.',
+              reason:
+                'The server restarted during this hand. Bets were returned; the host can deal again.',
               blamedSeat: null,
             },
             deadline: null,
@@ -202,7 +215,13 @@ function handle(msg: ServerMsg): void {
       return;
     }
     case 'chat':
-      store.pushChat({ from: msg.from, userId: msg.userId, text: msg.text, kind: msg.kind, ts: msg.ts });
+      store.pushChat({
+        from: msg.from,
+        userId: msg.userId,
+        text: msg.text,
+        kind: msg.kind,
+        ts: msg.ts,
+      });
       return;
     case 'rtc':
       void voice.handleRtc(msg.from, msg.data);
@@ -254,7 +273,12 @@ function handle(msg: ServerMsg): void {
       const k = handKeyFor(msg.handId);
       if (k === null) return;
       const deck = maskAndShuffle(msg.deck.map(pointFromHex), k, randomPerm(52)).map(pointHex);
-      wsClient.send({ t: 'shuffle_deck', handId: msg.handId, deck, sig: signed(msg.handId, 'shuffle_deck', { deck }) });
+      wsClient.send({
+        t: 'shuffle_deck',
+        handId: msg.handId,
+        deck,
+        sig: signed(msg.handId, 'shuffle_deck', { deck }),
+      });
       return;
     }
 
@@ -282,7 +306,12 @@ function handle(msg: ServerMsg): void {
       if (k === null) return;
       const { out, proof } = proveUnmask(k, pointFromHex(msg.point));
       const body = { deckIndex: msg.deckIndex, out: pointHex(out), proof };
-      wsClient.send({ t: 'unmask_share', handId: msg.handId, ...body, sig: signed(msg.handId, 'unmask_share', body) });
+      wsClient.send({
+        t: 'unmask_share',
+        handId: msg.handId,
+        ...body,
+        sig: signed(msg.handId, 'unmask_share', body),
+      });
       return;
     }
 
@@ -368,7 +397,13 @@ function handle(msg: ServerMsg): void {
 
     case 'action_applied': {
       const { hand } = useStore.getState();
-      const soundFor = { fold: 'muck', check: 'knock', call: 'chip', bet: 'chips-slide', raise: 'chips-slide' } as const;
+      const soundFor = {
+        fold: 'muck',
+        check: 'knock',
+        call: 'chip',
+        bet: 'chips-slide',
+        raise: 'chips-slide',
+      } as const;
       play(soundFor[msg.action.type]);
       // my fold escrows my hand key with the server, so the hand can carry on
       // without me if I disappear (requested by notpritam, docs/FEATURES.md)
@@ -379,11 +414,20 @@ function handle(msg: ServerMsg): void {
         msg.action.type === 'fold' &&
         hand.handId === msg.handId &&
         msg.seat === mySeatIn(hand.seats) &&
-        foldedByMe.has(msg.handId)
+        foldedByMe.has(msg.handId) &&
+        // The last fold settles synchronously on the server. There is no
+        // remaining hand to escrow for; replying would arrive after hand_end.
+        (hand.betting?.seats.filter((seat) => !seat.folded && seat.seat !== msg.seat).length ?? 0) >
+          1
       ) {
         const key = handKeyFor(msg.handId)?.toString(16);
         if (key === undefined) return;
-        wsClient.send({ t: 'fold_key', handId: msg.handId, key, sig: signed(msg.handId, 'fold_key', { key }) });
+        wsClient.send({
+          t: 'fold_key',
+          handId: msg.handId,
+          key,
+          sig: signed(msg.handId, 'fold_key', { key }),
+        });
       }
       store.patchHand({
         lastActions: { ...hand.lastActions, [msg.seat]: { ...msg.action, auto: msg.auto } },
@@ -464,7 +508,12 @@ function handle(msg: ServerMsg): void {
       store.patchHand({
         peekOffers: [
           ...h.peekOffers,
-          { offerId: msg.offerId, fromUserId: msg.fromUserId, fromName: msg.fromName, amount: msg.amount },
+          {
+            offerId: msg.offerId,
+            fromUserId: msg.fromUserId,
+            fromName: msg.fromName,
+            amount: msg.amount,
+          },
         ],
       });
       return;
@@ -557,7 +606,12 @@ function handle(msg: ServerMsg): void {
       const k = handKeyFor(msg.handId);
       if (k === null) return;
       const key = k.toString(16);
-      wsClient.send({ t: 'reveal_key', handId: msg.handId, key, sig: signed(msg.handId, 'reveal_key', { key }) });
+      wsClient.send({
+        t: 'reveal_key',
+        handId: msg.handId,
+        key,
+        sig: signed(msg.handId, 'reveal_key', { key }),
+      });
       return;
     }
 

@@ -19,7 +19,10 @@ function OnlineDot({ online }: { online: boolean }) {
   return (
     <span
       title={online ? 'online' : 'offline'}
-      className={cn('h-2.5 w-2.5 shrink-0 rounded-full', online ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600')}
+      className={cn(
+        'h-2.5 w-2.5 shrink-0 rounded-full',
+        online ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600',
+      )}
     />
   );
 }
@@ -75,26 +78,41 @@ export function FriendsPanel() {
       <h2 className="mb-3 font-display font-semibold">Friends</h2>
       <form onSubmit={add} className="mb-3 flex gap-2">
         <Input
+          aria-label="Add by username"
           placeholder="Add by username"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <Button type="submit" variant="secondary" disabled={name.trim().length < 2} aria-label="Send friend request">
+        <Button
+          type="submit"
+          variant="secondary"
+          disabled={name.trim().length < 2}
+          aria-label="Send friend request"
+        >
           <UserPlus size={16} />
         </Button>
       </form>
       {note && <p className="mb-3 text-xs text-slate-500">{note}</p>}
 
       {incoming.map((f) => (
-        <div key={f.userId} className="mb-2 flex items-center gap-2 rounded-xl bg-indigo-50 p-2.5 dark:bg-indigo-950/40">
+        <div
+          key={f.userId}
+          className="mb-2 flex items-center gap-2 rounded-xl bg-indigo-50 p-2.5 dark:bg-indigo-950/40"
+        >
           <Avatar userId={f.userId} name={f.displayName} version={f.avatarVersion} size="sm" />
           <span className="min-w-0 flex-1 truncate text-sm">
             <b>{f.displayName}</b> wants to be friends
           </span>
-          <Button variant="success" onClick={() => void api.respondFriend(f.userId, true).then(load)}>
+          <Button
+            variant="success"
+            onClick={() => void api.respondFriend(f.userId, true).then(load)}
+          >
             Accept
           </Button>
-          <Button variant="ghost" onClick={() => void api.respondFriend(f.userId, false).then(load)}>
+          <Button
+            variant="ghost"
+            onClick={() => void api.respondFriend(f.userId, false).then(load)}
+          >
             No
           </Button>
         </div>
@@ -114,7 +132,9 @@ export function FriendsPanel() {
             >
               <Avatar userId={f.userId} name={f.displayName} version={f.avatarVersion} size="sm" />
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{f.displayName}</span>
-              <span className="text-xs text-slate-400">{f.online ? 'online' : lastSeenLabel(f.lastSeen)}</span>
+              <span className="text-xs text-slate-400">
+                {f.online ? 'online' : lastSeenLabel(f.lastSeen)}
+              </span>
               <OnlineDot online={f.online} />
             </Link>
           ))}
@@ -143,7 +163,11 @@ interface Invite {
 /** Pending table invites, shown at the top of the lobby. */
 export function InvitesPanel({ onJoined }: { onJoined: (roomId: string) => void }) {
   const [invites, setInvites] = useState<Invite[]>([]);
-  const load = () => api.invites().then((r) => setInvites(r.invites)).catch(() => {});
+  const load = () =>
+    api
+      .invites()
+      .then((r) => setInvites(r.invites))
+      .catch(() => {});
   useEffect(() => {
     load();
     const iv = setInterval(load, 15_000);
@@ -187,11 +211,20 @@ export function InvitesPanel({ onJoined }: { onJoined: (roomId: string) => void 
 }
 
 /** Invite online friends into the current room (used from the table). */
-export function InviteFriendsDialogBody({ roomId, memberIds }: { roomId: string; memberIds: number[] }) {
+export function InviteFriendsDialogBody({
+  roomId,
+  memberIds,
+}: {
+  roomId: string;
+  memberIds: number[];
+}) {
   const [friends, setFriends] = useState<FriendRow[]>([]);
   const [sent, setSent] = useState<Record<number, string>>({});
   useEffect(() => {
-    api.friends().then((r) => setFriends(r.friends)).catch(() => {});
+    api
+      .friends()
+      .then((r) => setFriends(r.friends))
+      .catch(() => {});
   }, []);
 
   const candidates = friends.filter((f) => !memberIds.includes(f.userId));
@@ -218,8 +251,15 @@ export function InviteFriendsDialogBody({ roomId, memberIds }: { roomId: string;
               onClick={() =>
                 void api
                   .inviteFriend(roomId, f.userId)
-                  .then((r) => setSent((m) => ({ ...m, [f.userId]: r.autoJoined ? 'joined!' : 'invited' })))
-                  .catch((e) => setSent((m) => ({ ...m, [f.userId]: e instanceof Error ? e.message : 'failed' })))
+                  .then((r) =>
+                    setSent((m) => ({ ...m, [f.userId]: r.autoJoined ? 'joined!' : 'invited' })),
+                  )
+                  .catch((e) =>
+                    setSent((m) => ({
+                      ...m,
+                      [f.userId]: e instanceof Error ? e.message : 'failed',
+                    })),
+                  )
               }
             >
               {sent[f.userId] ?? 'Invite'}

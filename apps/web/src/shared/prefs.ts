@@ -1,15 +1,12 @@
 import { api } from './api.ts';
 import { useStore } from './store.ts';
 
-export type Theme = 'light' | 'dark' | 'cyber';
-
-export function applyTheme(theme: Theme): void {
-  // cyber layers on dark so every dark: variant participates in the reskin
-  document.documentElement.classList.toggle('dark', theme !== 'light');
-  document.documentElement.classList.toggle('cyber', theme === 'cyber');
+export function applyAppearance(): void {
+  document.documentElement.classList.remove('dark', 'cyber');
+  document.documentElement.classList.add('zeus');
 }
 
-/** Pull profile prefs from the server into the store (and apply the theme). */
+/** Pull profile prefs from the server into the store (and apply the Zeus appearance). */
 export async function loadPrefs(): Promise<void> {
   try {
     const p = await api.profile();
@@ -20,13 +17,12 @@ export async function loadPrefs(): Promise<void> {
       avatarVersion: p.avatarVersion,
       cardBack: p.cardBack,
       fourColor: p.fourColor,
-      theme: p.theme,
       quickPhrases: p.quickPhrases ?? [],
       privateMode: !!p.privateMode,
       autoJoinInvites: !!p.autoJoinInvites,
       autoReady: !!p.autoReady,
     });
-    applyTheme(p.theme);
+    applyAppearance();
   } catch {
     /* not logged in yet */
   }

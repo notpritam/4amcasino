@@ -1148,7 +1148,7 @@
   background: #554163;
   color: #f0e8ff;
 }
-/* The global cyber theme uses dark ink on green fills. This lounge uses dark fills. */
+/* The night lounge keeps light text on its dark surfaces. */
 .table3d-lounge .poker-actions > div,
 .table3d-lounge
   .poker-actions

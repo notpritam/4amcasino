@@ -23,7 +23,6 @@ export interface Prefs {
   avatarVersion: number;
   cardBack: 'indigo' | 'crimson' | 'emerald' | 'slate';
   fourColor: boolean;
-  theme: 'light' | 'dark' | 'cyber';
   quickPhrases: string[];
   /** Hide my winnings from other players (leaderboards, session report, crown). */
   privateMode: boolean;
@@ -40,7 +39,6 @@ export const defaultPrefs: Prefs = {
   avatarVersion: 0,
   cardBack: 'indigo',
   fourColor: false,
-  theme: 'cyber',
   quickPhrases: [],
   privateMode: false,
   autoJoinInvites: false,
@@ -229,7 +227,12 @@ export const useStore = create<Store>()(
           ...current,
           ...(p ?? {}),
           // new pref fields must survive rehydration from an older stored shape
-          prefs: { ...defaultPrefs, ...(p?.prefs ?? {}) },
+          prefs: Object.fromEntries(
+            Object.entries(defaultPrefs).map(([key, fallback]) => [
+              key,
+              p?.prefs?.[key as keyof Prefs] ?? fallback,
+            ]),
+          ) as unknown as Prefs,
         };
       },
     },

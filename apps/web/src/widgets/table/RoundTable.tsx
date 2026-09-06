@@ -173,9 +173,7 @@ export function RoundTable({
               {committed > 0 && (
                 <motion.div
                   exit={
-                    reduce
-                      ? { opacity: 0 }
-                      : { left: '50%', top: '44%', opacity: 0, scale: 0.5 }
+                    reduce ? { opacity: 0 } : { left: '50%', top: '44%', opacity: 0, scale: 0.5 }
                   }
                   transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
                   className="absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1"
@@ -209,215 +207,225 @@ export function RoundTable({
               style={{ left: `${x}%`, top: `${y}%` }}
             >
               <div
-              className={cn(
-                'flex w-32 flex-col items-center gap-1 rounded-2xl bg-white/90 p-2 text-center ring-1 ring-slate-200/80 transition-all dark:bg-slate-900/90 dark:ring-slate-700/70',
-                isMe && 'w-36 bg-white ring-indigo-300/70 shadow-md dark:bg-slate-900 dark:ring-indigo-500/40',
-                p.isToAct && 'turn-glow scale-[1.06] ring-2 ring-indigo-500',
-                p.isToAct && urgent && 'turn-glow-rose ring-rose-500',
-                p.isLeader && !p.isToAct && 'ring-2 ring-amber-400/70',
-                p.won && 'animate-winner',
-                (p.folded || !p.connected) && 'opacity-55',
-                p.sittingOut && 'opacity-60 saturate-50',
-              )}
-            >
-              {p.isToAct && (
-                <span
-                  className={cn(
-                    'absolute -top-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wide text-white shadow-md',
-                    urgent ? 'bg-rose-600' : 'bg-indigo-600',
-                  )}
-                >
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white motion-reduce:animate-none" />
-                  playing
-                </span>
-              )}
-              {readyCheck && readyCheck.eligible.includes(p.userId) && (
-                <span
-                  className={cn(
-                    'absolute -top-3 left-1/2 z-30 -translate-x-1/2 rounded-full px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wide text-white shadow-md',
-                    readyCheck.ready.includes(p.userId)
-                      ? 'bg-emerald-500'
-                      : 'animate-pulse bg-slate-500 motion-reduce:animate-none',
-                  )}
-                >
-                  {readyCheck.ready.includes(p.userId) ? '✓ ready' : 'ready?'}
-                </span>
-              )}
-              {/* my hole cards ride above my pod; opponents show backs or reveals */}
-              {p.inHand && (isMe ? myCards.length > 0 || !p.folded : !p.folded || p.revealed) && (
-                <div
-                  className={cn('flex', isMe ? 'cursor-pointer gap-1' : '-space-x-2')}
-                  onClick={isMe ? onMyCardsClick : undefined}
-                  title={isMe ? 'Show big cards' : undefined}
-                >
-                  {isMe && myCards.length > 0 ? (
-                    myCards.map((c) => <PlayingCard key={c} card={c} size="sm" deal />)
-                  ) : p.revealed ? (
-                    p.revealed.map((c) => <PlayingCard key={c} card={c} size="xs" deal />)
-                  ) : (
-                    <>
-                      <PlayingCard faceDown size="xs" />
-                      <PlayingCard faceDown size="xs" />
-                    </>
-                  )}
-                </div>
-              )}
-              <div className="relative">
-                <Link to={`/players/${p.userId}`} aria-label={`${p.displayName}'s profile`}>
-                  <Avatar
-                    userId={p.userId}
-                    name={p.displayName}
-                    version={p.avatarVersion}
-                    size="sm"
-                    speaking={p.speaking}
-                  />
-                </Link>
-                {p.isLeader && (
-                  <span
-                    title="Chip leader"
-                    className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white"
-                  >
-                    <Crown size={9} weight="fill" />
-                  </span>
+                className={cn(
+                  'flex w-32 flex-col items-center gap-1 rounded-2xl bg-white/90 p-2 text-center ring-1 ring-slate-200/80 transition-all dark:bg-slate-900/90 dark:ring-slate-700/70',
+                  isMe &&
+                    'w-36 bg-white ring-indigo-300/70 shadow-md dark:bg-slate-900 dark:ring-indigo-500/40',
+                  p.isToAct && 'turn-glow scale-[1.06] ring-2 ring-indigo-500',
+                  p.isToAct && urgent && 'turn-glow-rose ring-rose-500',
+                  p.isLeader && !p.isToAct && 'ring-2 ring-amber-400/70',
+                  p.won && 'animate-winner',
+                  (p.folded || !p.connected) && 'opacity-55',
+                  p.sittingOut && 'opacity-60 saturate-50',
                 )}
-                {isHost && (
+              >
+                {p.isToAct && (
                   <span
-                    title="Host - deals the hands"
-                    className="absolute -top-1 -left-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-white"
-                  >
-                    <Play size={8} weight="fill" />
-                  </span>
-                )}
-                {(isBanker || isCoBanker) && (
-                  <span
-                    title={isBanker ? 'Banker' : 'Backup banker'}
                     className={cn(
-                      'absolute -bottom-1 -left-1.5 flex h-4 w-4 items-center justify-center rounded-full text-white',
-                      isBanker ? 'bg-indigo-600' : 'bg-slate-500',
+                      'absolute -top-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wide text-white shadow-md',
+                      urgent ? 'bg-rose-600' : 'bg-indigo-600',
                     )}
                   >
-                    <Coins size={9} weight="fill" />
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white motion-reduce:animate-none" />
+                    playing
                   </span>
                 )}
-                {/* position, unmissable: D / SB / BB discs on the avatar
-                    (requested by notpritam, docs/FEATURES.md) */}
-                {p.isButton && (
+                {readyCheck && readyCheck.eligible.includes(p.userId) && (
                   <span
-                    title="Dealer button"
-                    className="absolute -bottom-1.5 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[0.6rem] font-black text-slate-900 shadow-md ring-2 ring-slate-900/20 dark:ring-white/30"
+                    className={cn(
+                      'absolute -top-3 left-1/2 z-30 -translate-x-1/2 rounded-full px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wide text-white shadow-md',
+                      readyCheck.ready.includes(p.userId)
+                        ? 'bg-emerald-500'
+                        : 'animate-pulse bg-slate-500 motion-reduce:animate-none',
+                    )}
                   >
-                    D
+                    {readyCheck.ready.includes(p.userId) ? '✓ ready' : 'ready?'}
                   </span>
                 )}
-                {p.isSB && !p.isButton && (
-                  <span
-                    title="Small blind"
-                    className="absolute -bottom-1.5 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500 px-0.5 text-[0.55rem] font-black text-white shadow-md ring-2 ring-sky-300/40"
+                {/* my hole cards ride above my pod; opponents show backs or reveals */}
+                {p.inHand && (isMe ? myCards.length > 0 || !p.folded : !p.folded || p.revealed) && (
+                  <div
+                    className={cn('flex', isMe ? 'cursor-pointer gap-1' : '-space-x-2')}
+                    onClick={isMe ? onMyCardsClick : undefined}
+                    title={isMe ? 'Show big cards' : undefined}
                   >
-                    SB
-                  </span>
+                    {isMe && myCards.length > 0 ? (
+                      myCards.map((c) => <PlayingCard key={c} card={c} size="sm" deal />)
+                    ) : p.revealed ? (
+                      p.revealed.map((c) => <PlayingCard key={c} card={c} size="xs" deal />)
+                    ) : (
+                      <>
+                        <PlayingCard faceDown size="xs" />
+                        <PlayingCard faceDown size="xs" />
+                      </>
+                    )}
+                  </div>
                 )}
-                {p.isBB && (
-                  <span
-                    title="Big blind"
-                    className="absolute -bottom-1.5 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[0.55rem] font-black text-white shadow-md ring-2 ring-amber-300/40"
-                  >
-                    BB
-                  </span>
-                )}
-                {p.isSB && p.isButton && (
-                  <span
-                    title="Small blind (button)"
-                    className="absolute -bottom-1.5 -left-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500 px-0.5 text-[0.55rem] font-black text-white shadow-md ring-2 ring-sky-300/40"
-                  >
-                    SB
-                  </span>
-                )}
-                {p.voiceMuted && (
-                  <span
-                    title="muted"
-                    className="absolute -left-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-slate-700 text-white"
-                  >
-                    <MicrophoneSlash size={9} weight="fill" />
-                  </span>
-                )}
-              </div>
-              <div className="w-full truncate px-1 text-xs font-semibold leading-tight" title={p.displayName}>
-                {isMe ? 'You' : p.displayName}
-              </div>
-              <div
-                className={cn(
-                  'font-display text-[0.7rem] leading-none',
-                  p.broke ? 'font-bold text-rose-500' : 'text-slate-500 dark:text-slate-400',
-                )}
-              >
-                <NumberFlow value={p.stack} />
-              </div>
-              {p.pendingBuy > 0 && (
-                <div
-                  title="Buy waiting for banker approval"
-                  className="rounded-full bg-amber-400/15 px-1.5 py-px font-display text-[0.62rem] font-bold text-amber-500"
-                >
-                  +{fmt(p.pendingBuy)} soon
-                </div>
-              )}
-              {p.broke || !p.connected || p.sittingOut ? (
-                <div
-                  className={cn(
-                    'text-[0.6rem] font-semibold uppercase tracking-wide',
-                    p.broke ? 'text-rose-500' : !p.connected ? 'text-amber-500' : 'text-slate-400',
+                <div className="relative">
+                  <Link to={`/players/${p.userId}`} aria-label={`${p.displayName}'s profile`}>
+                    <Avatar
+                      userId={p.userId}
+                      name={p.displayName}
+                      version={p.avatarVersion}
+                      size="sm"
+                      speaking={p.speaking}
+                    />
+                  </Link>
+                  {p.isLeader && (
+                    <span
+                      title="Chip leader"
+                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white"
+                    >
+                      <Crown size={9} weight="fill" />
+                    </span>
                   )}
-                >
-                  {p.broke ? 'out of chips' : !p.connected ? 'offline' : 'sitting out'}
-                </div>
-              ) : p.lastAction || p.allIn ? (
-                (() => {
-                  const a = p.lastAction;
-                  const aggressive = a && (a.type === 'raise' || a.type === 'bet');
-                  const folded = a?.type === 'fold';
-                  return (
-                    <motion.div
-                      key={a ? `${a.type}-${a.amount ?? 0}` : 'all-in'}
-                      initial={reduce ? false : { scale: 1.45, y: -3 }}
-                      animate={{ scale: 1, y: 0 }}
-                      transition={{ type: 'spring', stiffness: 380, damping: 17 }}
+                  {isHost && (
+                    <span
+                      title="Host - deals the hands"
+                      className="absolute -top-1 -left-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-white"
+                    >
+                      <Play size={8} weight="fill" />
+                    </span>
+                  )}
+                  {(isBanker || isCoBanker) && (
+                    <span
+                      title={isBanker ? 'Banker' : 'Backup banker'}
                       className={cn(
-                        'rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide',
-                        !a || aggressive
-                          ? 'bg-amber-400 text-amber-950 shadow-[0_0_14px_rgba(251,191,36,0.55)]'
-                          : folded
-                            ? 'bg-rose-500/15 text-rose-500'
-                            : 'bg-slate-200/80 text-slate-600 dark:bg-slate-700/80 dark:text-slate-200',
+                        'absolute -bottom-1 -left-1.5 flex h-4 w-4 items-center justify-center rounded-full text-white',
+                        isBanker ? 'bg-indigo-600' : 'bg-slate-500',
                       )}
                     >
-                      {a ? actionLabel(a) : 'all-in'}
-                    </motion.div>
-                  );
-                })()
-              ) : null}
-            </div>
-            {canKick && !isMe && (
-              <button
-                onClick={() => {
-                  if (kickArmed === p.userId) {
-                    setKickArmed(null);
-                    onKick(p.userId);
-                  } else {
-                    setKickArmed(p.userId);
-                    setTimeout(() => setKickArmed((v) => (v === p.userId ? null : v)), 3500);
-                  }
-                }}
-                title={kickArmed === p.userId ? 'Tap again to stand them up' : 'Stand this player up'}
-                className={cn(
-                  'absolute -right-2 -top-2 z-30 flex items-center justify-center rounded-full text-white shadow-sm transition-all',
-                  kickArmed === p.userId
-                    ? 'h-auto w-auto bg-rose-600 px-2 py-0.5 text-[0.62rem] font-bold'
-                    : 'h-5 w-5 bg-slate-400 hover:bg-rose-500 dark:bg-slate-600',
+                      <Coins size={9} weight="fill" />
+                    </span>
+                  )}
+                  {/* position, unmissable: D / SB / BB discs on the avatar
+                    (requested by notpritam, docs/FEATURES.md) */}
+                  {p.isButton && (
+                    <span
+                      title="Dealer button"
+                      className="absolute -bottom-1.5 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[0.6rem] font-black text-slate-900 shadow-md ring-2 ring-slate-900/20 dark:ring-white/30"
+                    >
+                      D
+                    </span>
+                  )}
+                  {p.isSB && !p.isButton && (
+                    <span
+                      title="Small blind"
+                      className="absolute -bottom-1.5 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500 px-0.5 text-[0.55rem] font-black text-white shadow-md ring-2 ring-sky-300/40"
+                    >
+                      SB
+                    </span>
+                  )}
+                  {p.isBB && (
+                    <span
+                      title="Big blind"
+                      className="absolute -bottom-1.5 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[0.55rem] font-black text-amber-950 shadow-md ring-2 ring-amber-300/40"
+                    >
+                      BB
+                    </span>
+                  )}
+                  {p.isSB && p.isButton && (
+                    <span
+                      title="Small blind (button)"
+                      className="absolute -bottom-1.5 -left-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500 px-0.5 text-[0.55rem] font-black text-sky-950 shadow-md ring-2 ring-sky-300/40"
+                    >
+                      SB
+                    </span>
+                  )}
+                  {p.voiceMuted && (
+                    <span
+                      title="muted"
+                      className="absolute -left-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-slate-700 text-white"
+                    >
+                      <MicrophoneSlash size={9} weight="fill" />
+                    </span>
+                  )}
+                </div>
+                <div
+                  className="w-full truncate px-1 text-xs font-semibold leading-tight"
+                  title={p.displayName}
+                >
+                  {isMe ? 'You' : p.displayName}
+                </div>
+                <div
+                  className={cn(
+                    'font-display text-[0.7rem] leading-none',
+                    p.broke ? 'font-bold text-rose-500' : 'text-slate-500 dark:text-slate-400',
+                  )}
+                >
+                  <NumberFlow value={p.stack} />
+                </div>
+                {p.pendingBuy > 0 && (
+                  <div
+                    title="Buy waiting for banker approval"
+                    className="rounded-full bg-amber-400/15 px-1.5 py-px font-display text-[0.62rem] font-bold text-amber-500"
+                  >
+                    +{fmt(p.pendingBuy)} soon
+                  </div>
                 )}
-              >
-                {kickArmed === p.userId ? 'stand up?' : <X size={11} weight="bold" />}
-              </button>
-            )}
+                {p.broke || !p.connected || p.sittingOut ? (
+                  <div
+                    className={cn(
+                      'text-[0.6rem] font-semibold uppercase tracking-wide',
+                      p.broke
+                        ? 'text-rose-500'
+                        : !p.connected
+                          ? 'text-amber-500'
+                          : 'text-slate-400',
+                    )}
+                  >
+                    {p.broke ? 'out of chips' : !p.connected ? 'offline' : 'sitting out'}
+                  </div>
+                ) : p.lastAction || p.allIn ? (
+                  (() => {
+                    const a = p.lastAction;
+                    const aggressive = a && (a.type === 'raise' || a.type === 'bet');
+                    const folded = a?.type === 'fold';
+                    return (
+                      <motion.div
+                        key={a ? `${a.type}-${a.amount ?? 0}` : 'all-in'}
+                        initial={reduce ? false : { scale: 1.45, y: -3 }}
+                        animate={{ scale: 1, y: 0 }}
+                        transition={{ type: 'spring', stiffness: 380, damping: 17 }}
+                        className={cn(
+                          'rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide',
+                          !a || aggressive
+                            ? 'bg-amber-400 text-amber-950 shadow-[0_0_14px_rgba(251,191,36,0.55)]'
+                            : folded
+                              ? 'bg-rose-500/15 text-rose-500'
+                              : 'bg-slate-200/80 text-slate-600 dark:bg-slate-700/80 dark:text-slate-200',
+                        )}
+                      >
+                        {a ? actionLabel(a) : 'all-in'}
+                      </motion.div>
+                    );
+                  })()
+                ) : null}
+              </div>
+              {canKick && !isMe && (
+                <button
+                  onClick={() => {
+                    if (kickArmed === p.userId) {
+                      setKickArmed(null);
+                      onKick(p.userId);
+                    } else {
+                      setKickArmed(p.userId);
+                      setTimeout(() => setKickArmed((v) => (v === p.userId ? null : v)), 3500);
+                    }
+                  }}
+                  title={
+                    kickArmed === p.userId ? 'Tap again to stand them up' : 'Stand this player up'
+                  }
+                  className={cn(
+                    'absolute -right-2 -top-2 z-30 flex items-center justify-center rounded-full text-white shadow-sm transition-all',
+                    kickArmed === p.userId
+                      ? 'h-auto w-auto bg-rose-600 px-2 py-0.5 text-[0.62rem] font-bold'
+                      : 'h-5 w-5 bg-slate-400 hover:bg-rose-500 dark:bg-slate-600',
+                  )}
+                >
+                  {kickArmed === p.userId ? 'stand up?' : <X size={11} weight="bold" />}
+                </button>
+              )}
             </div>
           </div>
         );

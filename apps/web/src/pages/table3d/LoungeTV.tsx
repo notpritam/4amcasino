@@ -36,6 +36,8 @@ export function LoungeTV({
   const resumeAfterChannel = useRef(false);
   const channelRef = useRef(channel);
   channelRef.current = channel;
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
   const reduced = useRef(matchMedia('(prefers-reduced-motion: reduce)').matches);
   const formatTime = (seconds: number) =>
     `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
@@ -48,6 +50,15 @@ export function LoungeTV({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+    // StrictMode runs setup again after cleanup without reapplying unchanged
+    // JSX attributes. Restore the source that cleanup released before loading.
+    if (!video.getAttribute('src')) {
+      video.src = sourceRef.current;
+      video.load();
+      if (!reduced.current && channelRef.current === 'film' && !document.hidden) {
+        void video.play().catch(() => {});
+      }
+    }
     const visibility = () => {
       if (document.hidden) {
         resumeAfterHidden.current = !video.paused;

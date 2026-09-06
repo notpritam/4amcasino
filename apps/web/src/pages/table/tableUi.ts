@@ -9,7 +9,15 @@ export function unreadChatCount(
 
 export type TableUtilityGroupId = 'people' | 'records' | 'table' | 'preferences';
 export type TableUtilityAction =
-  'invite' | 'watch' | 'video' | 'standings' | 'ledger' | 'hands' | 'sit-out' | 'timer' | 'theme';
+  | 'invite'
+  | 'watch'
+  | 'video'
+  | 'standings'
+  | 'ledger'
+  | 'hands'
+  | 'sit-out'
+  | 'timer'
+  | 'preferences';
 
 export interface TableUtilityGroup {
   id: TableUtilityGroupId;
@@ -42,6 +50,6 @@ export function tableUtilityGroups({
     ...(people.length > 0 ? [{ id: 'people' as const, actions: people }] : []),
     { id: 'records', actions: ['standings', 'ledger', 'hands'] },
     ...(table.length > 0 ? [{ id: 'table' as const, actions: table }] : []),
-    { id: 'preferences', actions: ['theme'] },
+    { id: 'preferences', actions: ['preferences'] },
   ];
 }

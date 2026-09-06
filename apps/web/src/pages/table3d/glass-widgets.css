@@ -1,7 +1,4 @@
 /* The renderer owns the viewport. HUD groups float above it; gaps stay interactive. */
-html.cyber:has(.table3d-lounge) body::after {
-  display: none;
-}
 .table3d-lounge {
   --hud-inset: 16px;
   --hud-top: max(var(--hud-inset), env(safe-area-inset-top));
@@ -52,15 +49,15 @@ html.cyber:has(.table3d-lounge) body::after {
   background: rgb(228 239 244 / 12%);
 }
 .table3d-lounge :is(.lounge-button, .lounge-icon)[aria-expanded='true'] {
-  background: rgb(214 204 255 / 18%);
-  color: #f4efff;
+  background: rgb(195 220 255 / 18%);
+  color: #eef6ff;
 }
 .table3d-lounge .lounge-button.primary {
-  background: #d6cafa;
-  color: #211636;
+  background: #c3dcff;
+  color: #082950;
 }
 .table3d-lounge .lounge-button.primary:hover:not(:disabled) {
-  background: #ede6ff;
+  background: #e2efff;
 }
 .table3d-lounge .lounge-button:disabled {
   opacity: 0.52;

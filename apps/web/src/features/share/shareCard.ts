@@ -18,7 +18,7 @@ export interface ShareData {
 
 const SUIT_GLYPHS = ['♣', '♦', '♥', '♠'] as const;
 const SUIT_COLORS = ['#1e293b', '#e11d48', '#e11d48', '#1e293b'] as const;
-const GOLD = '#5cff72';
+const ACCENT = '#2563eb';
 
 function rankLabel(id: CardId): string {
   const r = RANKS[rankOf(id)]!;
@@ -48,13 +48,13 @@ export function drawCardFace(
 ): void {
   const r = w * 0.14;
   ctx.save();
-  // the theme's magenta offset shadow instead of a soft drop
-  ctx.shadowColor = 'rgba(255,60,142,0.5)';
-  ctx.shadowBlur = 0;
-  ctx.shadowOffsetX = w * 0.05;
+  // A soft contact shadow matches the Zeus card surfaces.
+  ctx.shadowColor = 'rgba(24,42,66,0.14)';
+  ctx.shadowBlur = w * 0.12;
+  ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = w * 0.055;
   roundRect(ctx, x, y, w, h, r);
-  ctx.fillStyle = id === null ? '#0e4d20' : '#ffffff';
+  ctx.fillStyle = id === null ? '#2563eb' : '#ffffff';
   ctx.fill();
   ctx.restore();
   if (id === null) {
@@ -77,7 +77,7 @@ export function drawCardFace(
     ctx.fillStyle = color;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.font = `700 ${w * 0.34}px "Unbounded", system-ui, sans-serif`;
+    ctx.font = `700 ${w * 0.34}px "Inter", system-ui, sans-serif`;
     ctx.fillText(rankLabel(id), x + w * 0.11, y + w * 0.42);
     ctx.textAlign = 'center';
     ctx.font = `${w * 0.52}px system-ui, sans-serif`;
@@ -86,7 +86,7 @@ export function drawCardFace(
   }
   if (highlight) {
     roundRect(ctx, x - 3, y - 3, w + 6, h + 6, r + 3);
-    ctx.strokeStyle = GOLD;
+    ctx.strokeStyle = ACCENT;
     ctx.lineWidth = 5;
     ctx.stroke();
   }
@@ -153,14 +153,14 @@ function drawColumn(
   // avatar
   ctx.beginPath();
   ctx.arc(cx, 178, 28, 0, Math.PI * 2);
-  ctx.fillStyle = winner ? '#5cff72' : 'rgba(255,255,255,0.10)';
+  ctx.fillStyle = winner ? '#2563eb' : 'rgba(0,0,0,0.04)';
   ctx.fill();
-  ctx.fillStyle = winner ? '#041007' : '#ffffff';
+  ctx.fillStyle = winner ? '#ffffff' : '#171717';
   ctx.textAlign = 'center';
-  ctx.font = '700 26px "Unbounded", system-ui, sans-serif';
+  ctx.font = '700 26px "Inter", system-ui, sans-serif';
   ctx.fillText(row.name.slice(0, 1).toUpperCase(), cx, 188);
   // name
-  ctx.font = '600 27px "JetBrains Mono", system-ui, monospace';
+  ctx.font = '600 27px "Inter", system-ui, sans-serif';
   ctx.fillText(ellipsize(ctx, row.name, 320), cx, 243);
   // cards
   const cw = 96;
@@ -172,16 +172,17 @@ function drawColumn(
       drawCardFace(ctx, startX + j * (cw + gap), 262, cw, ch, c, five.has(c)),
     );
   } else {
-    for (let j = 0; j < 2; j++) drawCardFace(ctx, startX + j * (cw + gap), 262, cw, ch, null, false);
+    for (let j = 0; j < 2; j++)
+      drawCardFace(ctx, startX + j * (cw + gap), 262, cw, ch, null, false);
   }
   // hand label
   ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.font = '21px "JetBrains Mono", system-ui, monospace';
+  ctx.fillStyle = '#666666';
+  ctx.font = '21px "Inter", system-ui, sans-serif';
   ctx.fillText(row.label ?? (row.cards ? '' : 'never shown'), cx, 428);
   // hero delta
-  ctx.fillStyle = winner ? '#5cff72' : '#ff5aa6';
-  ctx.font = '700 54px "Unbounded", system-ui, sans-serif';
+  ctx.fillStyle = winner ? '#2563eb' : '#be123c';
+  ctx.font = '700 54px "Inter", system-ui, sans-serif';
   ctx.fillText(`${winner ? '+' : '\u2212'}${fmtChips(Math.abs(row.delta))}`, cx, 492);
   ctx.restore();
 }
@@ -196,30 +197,30 @@ export function drawHandCard(canvas: HTMLCanvasElement, data: ShareData): void {
   const five = new Set(data.winningFive ?? []);
 
   // background: near-black with a faint indigo glow behind the duel
-  ctx.fillStyle = '#050a07';
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
   const glow = ctx.createRadialGradient(W / 2, 300, 60, W / 2, 300, 560);
-  glow.addColorStop(0, 'rgba(92,255,114,0.12)');
-  glow.addColorStop(1, 'rgba(92,255,114,0)');
+  glow.addColorStop(0, 'rgba(37,99,235,0.04)');
+  glow.addColorStop(1, 'rgba(37,99,235,0)');
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, W, H);
 
   // quiet brand row
-  ctx.fillStyle = '#5cff72';
+  ctx.fillStyle = '#2563eb';
   roundRect(ctx, 48, 38, 34, 34, 8);
   ctx.fill();
-  ctx.fillStyle = '#041007';
+  ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.font = '20px system-ui, sans-serif';
   ctx.fillText('\u2660', 65, 62);
   ctx.textAlign = 'left';
-  ctx.font = '700 19px "Unbounded", system-ui, sans-serif';
+  ctx.font = '700 19px "Inter", system-ui, sans-serif';
   try {
     (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = '4px';
   } catch {
     /* older browsers */
   }
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillStyle = '#171717';
   ctx.fillText('4AM CASINO', 96, 61);
   try {
     (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = '0px';
@@ -227,14 +228,14 @@ export function drawHandCard(canvas: HTMLCanvasElement, data: ShareData): void {
     /* older browsers */
   }
   ctx.textAlign = 'right';
-  ctx.fillStyle = 'rgba(255,255,255,0.38)';
-  ctx.font = '18px "JetBrains Mono", system-ui, monospace';
+  ctx.fillStyle = '#737373';
+  ctx.font = '18px "Inter", system-ui, sans-serif';
   ctx.fillText(ellipsize(ctx, data.roomName, 360), W - 48, 61);
 
   // headline, one quiet line
   ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(255,255,255,0.72)';
-  ctx.font = '500 23px "JetBrains Mono", system-ui, monospace';
+  ctx.fillStyle = '#525252';
+  ctx.font = '500 23px "Inter", system-ui, sans-serif';
   ctx.fillText(ellipsize(ctx, data.headline, W - 140), W / 2, 112);
 
   // the duel: winner vs the biggest loser
@@ -243,7 +244,7 @@ export function drawHandCard(canvas: HTMLCanvasElement, data: ShareData): void {
   const loserRow = rows.length > 1 ? rows[rows.length - 1] : null;
   if (winnerRow && loserRow) {
     // center divider
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.strokeStyle = '#ebebeb';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(W / 2, 160);
@@ -251,13 +252,13 @@ export function drawHandCard(canvas: HTMLCanvasElement, data: ShareData): void {
     ctx.stroke();
     ctx.beginPath();
     ctx.arc(W / 2, 320, 26, 0, Math.PI * 2);
-    ctx.fillStyle = '#0a130e';
+    ctx.fillStyle = '#f7f7f7';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+    ctx.strokeStyle = '#ebebeb';
     ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillStyle = '#666666';
     ctx.textAlign = 'center';
-    ctx.font = '600 19px "JetBrains Mono", system-ui, monospace';
+    ctx.font = '600 19px "Inter", system-ui, sans-serif';
     ctx.fillText('vs', W / 2, 327);
     drawColumn(ctx, W * 0.27, winnerRow, five, false);
     drawColumn(ctx, W * 0.73, loserRow, five, true);
@@ -277,7 +278,7 @@ export function drawHandCard(canvas: HTMLCanvasElement, data: ShareData): void {
     } else {
       roundRect(ctx, startX + i * (bw + gap), 516, bw, bh, 9);
       ctx.setLineDash([6, 6]);
-      ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+      ctx.strokeStyle = '#ebebeb';
       ctx.lineWidth = 2;
       ctx.stroke();
       ctx.setLineDash([]);
@@ -287,8 +288,8 @@ export function drawHandCard(canvas: HTMLCanvasElement, data: ShareData): void {
   // quiet footer: everyone else, and the promise
   const others = rows.slice(1, -1);
   ctx.textAlign = 'left';
-  ctx.fillStyle = 'rgba(255,255,255,0.30)';
-  ctx.font = '15px "JetBrains Mono", system-ui, monospace';
+  ctx.fillStyle = '#737373';
+  ctx.font = '15px "Inter", system-ui, sans-serif';
   if (others.length > 0) {
     const line = others
       .map((o) => `${o.name} ${o.delta > 0 ? '+' : '\u2212'}${fmtChips(Math.abs(o.delta))}`)

@@ -1,36 +1,131 @@
-# 4AM Casino design language
+---
+name: 4AM Casino — Zeus
+description: Private poker tables with a Zeus account interface and an immersive lounge.
+colors:
+  primary: 'oklch(62.3% 0.214 259.815)'
+  primary-deep: 'oklch(54.6% 0.245 262.881)'
+  canvas: '#ffffff'
+  surface: '#f7f7f7'
+  border: '#ebebeb'
+  ink: '#171717'
+  muted: '#707070'
+typography:
+  body:
+    fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif'
+    fontSize: '14px'
+    lineHeight: '20px'
+  title:
+    fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif'
+    fontSize: '24px'
+    fontWeight: 600
+rounded:
+  control: '10px'
+  panel: '16px'
+  sidebar: '24px'
+spacing:
+  small: '8px'
+  medium: '12px'
+  panel: '20px'
+  section: '24px'
+components:
+  sidebar:
+    backgroundColor: '{colors.surface}'
+    rounded: '{rounded.sidebar}'
+    padding: '12px'
+    width: '260px'
+  panel:
+    backgroundColor: '{colors.surface}'
+    textColor: '{colors.ink}'
+    rounded: '{rounded.panel}'
+    padding: '20px'
+---
 
-- **Canvas:** light slate-100 app with full dark mode; the landing page and phone
-  table are always night (slate-950) - it is called 4AM.
-- **Accent:** indigo-600 (actions, pots, brand). Emerald = winning/positive,
-  rose = losing/negative/fold, amber = committed chips, bounties, and the
-  chip-leader crown. Never purple-to-blue gradients.
-- **Type:** Bricolage Grotesque for display and every number (NumberFlow
-  animates chips); Onest for sentences. Amounts always use the display face.
-- **Cards:** the real `PlayingCard` component everywhere, including marketing
-  visuals; card backs are the user-picked colorway; face-down "encrypted" cards
-  use indigo hatching.
-- **Signature moves:** barber-pole stripes on whoever is acting; gold ring on the
-  winning five; grainy near-black share cards; ciphertext as texture.
-- **Motion:** springs for emphasis, ease-out for entrances, no bounce easing;
-  everything respects prefers-reduced-motion.
-- **Copy rules:** no em dashes in UI copy, active voice, buttons say exactly what
-  happens, errors say what to do next.
-- **Tools:** `npx impeccable detect apps/web/src` must stay clean.
+# Design System: 4AM Casino
 
-## Cypherpunk theme ('cyber')
+## Overview
 
-The default theme (Settings offers Light / Dark / Cyber). Terminal green on
-green-black, "encrypted by design": accent #5cff72 with ink #041007 on neon
-fills, surfaces #050a07 to #0a130e, danger is magenta #ff2e88, borders are
-rgb(92 255 114 / .2-.3). Display type Unbounded, body JetBrains Mono, corners
-squared (2-4px). Implemented as a `.cyber` scope in index.css that remaps the
-slate and indigo Tailwind variables, so components keep writing plain
-slate/indigo utilities - never hardcode the green in components. The table
-plays on a wireframe grid, not felt. Magenta appears only as flourish
-(// comments, card offset shadows, chroma text) - never for primary actions.
+**Creative North Star: "Zeus around the table"**
 
-## 3D midnight lounge
+Use the official Zeus UI design system selected by the user at myzeusui.com:
+white canvas, neutral panels, Inter typography, blue actions, and a floating icon
+sidebar. Poker remains the content. The immersive 3D lounge uses the same action
+language in transparent widgets over its night scene.
+
+**Key Characteristics:**
+
+- One account appearance, with no light, dark, or cyber selector.
+- Compact navigation that expands to show names and real tables.
+- Actual account data, honest empty states, readable gains and losses.
+- A full viewport for the 3D world, independent of the control state.
+
+## Colors
+
+The normative palette comes from `@zeus/tokens` 0.2.3. `zeus.css` bridges existing
+slate and indigo utility names to the neutral and blue palette. Primary colors in
+the frontmatter retain the source OKLCH values. Emerald means positive results,
+rose means losses or a fold, and amber means committed chips or blind positions.
+Small text on neutral panels uses the darker muted tone for contrast.
+
+Night colors are scoped to the 3D environment and its glass controls. They are
+part of that scene, not a second user-selectable application theme. Card-back
+colorways and four-color suits remain player preferences.
+
+## Typography
+
+Inter is self-hosted and used for both headings and body copy. The official Zeus
+SDK supplies control metrics; use tabular numbers for chips, timestamps, and
+charts. Keep labels in normal sentence case. Card ranks and cryptographic hashes
+retain their appropriate card and monospace treatments.
+
+## Layout
+
+The desktop sidebar floats twelve pixels from the viewport edges. It is sixty
+pixels wide as an icon rail and expands to the width recorded above. Its width is
+persisted. Below 768 pixels, a keyboard-accessible navigation drawer replaces the
+rail. Search uses the same destination list, including settlement and settings.
+
+Account panels use a responsive grid with zero minimum column widths to prevent
+long content from pushing the viewport wider. The lobby is checked down to 320
+pixels. The 3D world always occupies the dynamic viewport; its floating controls
+never reserve a page track or resize the canvas.
+
+## Elevation & Depth
+
+Use Zeus tonal surfaces with restrained shadows on navigation and raised
+controls. Selected navigation uses the official blue gradient and inset highlight.
+Keep ordinary account panels quiet. Glass controls use a translucent dark backing,
+a subtle border, and a stronger fallback for reduced transparency.
+
+## Shapes
+
+Controls are softly rounded; panels have broader corners, and the floating
+sidebar has the broadest corners. Preserve actual playing-card proportions and
+round status chips only where their meaning calls for a badge.
+
+## Components
+
+### Shared controls and navigation
+
+Use `Button` and `InputBase` from `@zeus/ui/base` through the shared adapters.
+Preserve native form submission, disabled state, keyboard focus, and accessible
+names. Icons in the shared sidebar and settings navigation use Remix Icon.
+The navigation supports collapse, search, active routes, account status, and a
+mobile focus trap. Links from a live table open account destinations separately.
+
+### Charts
+
+Use the actual Zeus `ChartCard` and `ChartLegend` around the existing Recharts
+plots. Winnings are cumulative chips with a visible zero line and a domain that
+includes losses. Never substitute sample history. Include period filters,
+explicit empty states, and an accessible data table. Respect reduced motion.
+
+### Playing cards
+
+Use `PlayingCard` everywhere, including marketing. Face-up and face-down cards
+have image roles and accessible names; invisible spacing slots stay out of the
+accessibility tree. Use dark text on bright blind badges.
+
+### 3D midnight lounge
 
 The 3D table uses teal wool felt, a walnut floor, brass window frames, warm perimeter
 lamps, and a quiet city backdrop. Keep the space above the entire playing surface
@@ -97,3 +192,13 @@ continuous while disabling gait flourishes. Click destinations and return-to-sea
 hand control back to the path planner. Shared movement coalesces to four updates
 per second and includes the final stop; authoritative server corrections remain
 in charge of occupied arrival spots.
+
+## Do's and Don'ts
+
+- Do use the installed Zeus SDK and tokens for shared application controls.
+- Do preserve native forms and all existing poker actions during visual changes.
+- Do show real account data and readable negative chart values.
+- Do keep the world canvas stable when controls appear, collapse, or hide.
+- Don't restore old theme selectors or global cyber overrides.
+- Don't let UI typing steer the character.
+- Don't put scenery or HUD labels across the overhead card area.

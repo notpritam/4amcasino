@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../shared/api.ts';
-import { setPendingJoin } from '../../shared/pendingJoin.ts';
+import { setPendingJoin, takePendingJoin } from '../../shared/pendingJoin.ts';
 import { useStore } from '../../shared/store.ts';
 import { Button, Panel, Spinner } from '../../shared/ui/index.tsx';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
@@ -36,7 +36,10 @@ export function JoinPage() {
     }
     api
       .joinRoom(clean)
-      .then((room) => nav(`/room/${room.id}`, { replace: true }))
+      .then((room) => {
+        takePendingJoin();
+        nav(`/room/${room.id}`, { replace: true });
+      })
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : 'could not join that table'),
       );

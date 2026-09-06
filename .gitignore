@@ -5,3 +5,6 @@ dist/
 .DS_Store
 *.db-shm
 *.db-wal
+
+# Temporary visual-review captures; curated evidence lives in docs/qa.
+.impeccable/review/

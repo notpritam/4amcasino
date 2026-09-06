@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../shared/api.ts';
 import {
@@ -29,6 +29,15 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const setAuth = useStore((s) => s.setAuth);
   const nav = useNavigate();
+  const onwardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      // The auth guard can navigate before the success animation finishes.
+      // Its old timer must not pull someone out of their newly joined table.
+      if (onwardTimer.current !== null) clearTimeout(onwardTimer.current);
+    },
+    [],
+  );
 
   /** Land the user wherever they were actually headed: into the shared table if
    *  a /j/CODE link brought them here, otherwise the lobby. */
@@ -77,9 +86,10 @@ export function LoginPage() {
             : await api.login(username, authKey);
       setAuth({ token: res.token, userId: res.userId, username, identity });
       setPhase('success');
-      setTimeout(() => void goOnwards(), 650);
+      onwardTimer.current = setTimeout(() => void goOnwards(), 650);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'something went wrong');
+      const message = err instanceof Error ? err.message : 'Could not sign in. Try again.';
+      setError(message === 'bad credentials' ? 'Username or password is incorrect.' : message);
       setPhase('idle');
     }
   }
@@ -92,7 +102,12 @@ export function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-end justify-center gap-1.5">
           {['As', 'Kh'].map((n, i) => (
-            <PlayingCard key={n} card={cardFromName(n)} size="sm" className={i ? 'rotate-6' : '-rotate-6'} />
+            <PlayingCard
+              key={n}
+              card={cardFromName(n)}
+              size="sm"
+              className={i ? 'rotate-6' : '-rotate-6'}
+            />
           ))}
         </div>
         <h1 className="mb-1 text-center font-display text-2xl font-bold">4AM Casino</h1>
@@ -107,8 +122,8 @@ export function LoginPage() {
         )}
         {expired && (
           <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
-            The server restarted and reset its data, so your login is gone. Sessions here never
-            time out on their own. Register again with the same name and you are back in.
+            The server restarted and reset its data, so your login is gone. Sessions here never time
+            out on their own. Register again with the same name and you are back in.
           </div>
         )}
         <Panel>
@@ -138,6 +153,7 @@ export function LoginPage() {
 
           <form onSubmit={submit} className="space-y-3">
             <Input
+              aria-label="Username"
               placeholder="Username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -149,6 +165,7 @@ export function LoginPage() {
             />
             {mode === 'recover' && (
               <Input
+                aria-label="Recovery code (XXXXXX-XXXXXX-…)"
                 placeholder="Recovery code (XXXXXX-XXXXXX-…)"
                 value={recoveryCode}
                 onChange={(e) => setRecoveryCode(e.target.value)}
@@ -158,6 +175,7 @@ export function LoginPage() {
               />
             )}
             <Input
+              aria-label={mode === 'recover' ? 'New password' : 'Password'}
               placeholder={mode === 'recover' ? 'New password' : 'Password'}
               type="password"
               value={password}
@@ -169,6 +187,7 @@ export function LoginPage() {
             />
             {mode === 'recover' && (
               <Input
+                aria-label="Repeat new password"
                 placeholder="Repeat new password"
                 type="password"
                 value={confirm}
@@ -179,10 +198,16 @@ export function LoginPage() {
                 minLength={6}
               />
             )}
-            {error && <p className="text-sm text-rose-600">{error}</p>}
+            {error && (
+              <p role="alert" className="text-sm text-rose-600">
+                {error}
+              </p>
+            )}
             <Button
               type="submit"
-              className={phase === 'success' ? 'w-full bg-emerald-500 hover:bg-emerald-500' : 'w-full'}
+              className={
+                phase === 'success' ? 'w-full bg-emerald-500 hover:bg-emerald-500' : 'w-full'
+              }
               disabled={busy}
             >
               {phase === 'deriving' ? (
@@ -225,8 +250,8 @@ export function LoginPage() {
           </button>
 
           <p className="mt-3 text-xs leading-relaxed text-slate-400">
-            Your password also derives your card-signing key in this browser. It is never sent to the
-            server.
+            Your password also derives your card-signing key in this browser. It is never sent to
+            the server.
           </p>
         </Panel>
         <Link

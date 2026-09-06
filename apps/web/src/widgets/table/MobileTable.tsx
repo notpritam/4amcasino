@@ -31,7 +31,9 @@ function strengthLabel(myCards: CardId[], board: CardId[]): string | null {
   let best = 0;
   if (all.length === 7) best = evaluate7(all);
   else if (all.length === 5) best = evaluate5(all);
-  else for (let skip = 0; skip < all.length; skip++) best = Math.max(best, evaluate5(all.filter((_, i) => i !== skip)));
+  else
+    for (let skip = 0; skip < all.length; skip++)
+      best = Math.max(best, evaluate5(all.filter((_, i) => i !== skip)));
   return HAND_CATEGORY_NAMES[handCategory(best)] ?? null;
 }
 
@@ -45,8 +47,6 @@ function OpponentColumn({ p, urgent }: { p: SeatView; urgent: boolean }) {
         'flex w-16 shrink-0 flex-col items-center gap-1 rounded-2xl px-1 pt-1.5',
         p.isToAct && 'turn-stripes-dark bg-indigo-500/10 ring-1 ring-indigo-400/50',
         p.isToAct && urgent && 'turn-stripes-dark-rose bg-rose-500/10 ring-rose-400/60',
-        (p.folded || !p.connected) && 'opacity-40',
-        p.broke && 'opacity-50 saturate-50',
       )}
     >
       <div className="relative">
@@ -60,6 +60,7 @@ function OpponentColumn({ p, urgent }: { p: SeatView; urgent: boolean }) {
             p.isToAct && 'ring-2 ring-indigo-400',
             p.isToAct && urgent && 'ring-rose-500 animate-urgent',
             p.won && 'animate-winner',
+            (p.folded || !p.connected || p.broke) && 'opacity-50 saturate-50',
           )}
         />
         {p.isButton && (
@@ -89,7 +90,9 @@ function OpponentColumn({ p, urgent }: { p: SeatView; urgent: boolean }) {
         )}
       </div>
       <div className="max-w-full truncate text-xs font-medium text-white/80">{p.displayName}</div>
-      <div className={cn('font-display text-sm font-bold', p.broke ? 'text-rose-400' : 'text-white')}>
+      <div
+        className={cn('font-display text-sm font-bold', p.broke ? 'text-rose-400' : 'text-white')}
+      >
         <NumberFlow value={p.stack} />
       </div>
       <div className="h-6">
@@ -113,7 +116,15 @@ function OpponentColumn({ p, urgent }: { p: SeatView; urgent: boolean }) {
   );
 }
 
-function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; isHost: boolean; statusText: string | null }) {
+function MobileActions({
+  mySeat,
+  isHost,
+  statusText,
+}: {
+  mySeat: number | null;
+  isHost: boolean;
+  statusText: string | null;
+}) {
   const hand = useStore((s) => s.hand);
   const room = useStore((s) => s.room);
   const [raiseOpen, setRaiseOpen] = useState(false);
@@ -168,7 +179,8 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
 
   // voluntary card show: available once you folded, or when the hand is over
   const iFolded = !!st?.seats.find((s) => s.seat === mySeat)?.folded;
-  const dealtIn = mySeat !== null && hand.seats.some((s) => s.seat === mySeat) && hand.myCards.length > 0;
+  const dealtIn =
+    mySeat !== null && hand.seats.some((s) => s.seat === mySeat) && hand.myCards.length > 0;
   const alreadyPublic =
     mySeat !== null &&
     (!!hand.shown[mySeat] || !!hand.showdown?.reveals.some((r) => r.seat === mySeat));
@@ -223,8 +235,8 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
             </button>
           ) : (
             <p className="py-2 text-center text-sm text-emerald-300">
-              {amReady ? '✓ You are ready' : 'Ready check'} · {rc.ready.length}/
-              {rc.eligible.length} — dealing without the rest shortly
+              {amReady ? '✓ You are ready' : 'Ready check'} · {rc.ready.length}/{rc.eligible.length}{' '}
+              — dealing without the rest shortly
             </p>
           )
         ) : mySeat !== null && myStack === 0 ? (
@@ -236,7 +248,10 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
             Next hand deals itself in a moment. Menu → sit out if you need a break.
           </p>
         ) : isHost ? (
-          <button onClick={startHand} className="w-full rounded-full bg-white py-3 text-sm font-bold text-slate-900 active:scale-[0.98]">
+          <button
+            onClick={startHand}
+            className="w-full rounded-full bg-white py-3 text-sm font-bold text-slate-900 active:scale-[0.98]"
+          >
             Start hand
           </button>
         ) : (
@@ -295,7 +310,11 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
                 key={q.label}
                 disabled={pending}
                 onClick={() =>
-                  send(st.currentBet === 0 ? { type: 'bet', amount: q.value } : { type: 'raise', amount: q.value })
+                  send(
+                    st.currentBet === 0
+                      ? { type: 'bet', amount: q.value }
+                      : { type: 'raise', amount: q.value },
+                  )
                 }
                 className="flex-1 rounded-full bg-white/10 px-2 py-1.5 text-xs font-semibold text-white/80 active:bg-white active:text-slate-900 disabled:opacity-50"
               >
@@ -315,7 +334,13 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
           />
           <button
             disabled={pending}
-            onClick={() => send(st.currentBet === 0 ? { type: 'bet', amount: raiseTo } : { type: 'raise', amount: raiseTo })}
+            onClick={() =>
+              send(
+                st.currentBet === 0
+                  ? { type: 'bet', amount: raiseTo }
+                  : { type: 'raise', amount: raiseTo },
+              )
+            }
             className="w-full rounded-full bg-white py-2.5 text-sm font-bold text-slate-900 active:scale-[0.98] disabled:opacity-50"
           >
             {st.currentBet === 0 ? `Bet ${fmt(raiseTo)}` : `Raise to ${fmt(raiseTo)}`}
@@ -329,10 +354,16 @@ function MobileActions({ mySeat, isHost, statusText }: { mySeat: number | null; 
         </p>
       )}
       <div className={cn('flex gap-2', (pending || settling) && 'pointer-events-none opacity-50')}>
-        <button onClick={() => send({ type: 'fold' })} className={cn(ghost, 'border-rose-500/40 text-rose-300')}>
+        <button
+          onClick={() => send({ type: 'fold' })}
+          className={cn(ghost, 'border-rose-500/40 text-rose-300')}
+        >
           Fold
         </button>
-        <button onClick={() => send(la.canCheck ? { type: 'check' } : { type: 'call' })} className={ghost}>
+        <button
+          onClick={() => send(la.canCheck ? { type: 'check' } : { type: 'call' })}
+          className={ghost}
+        >
           {la.canCheck ? 'Check' : `Call ${fmt(la.callAmount)}`}
         </button>
         {la.canRaise && (
@@ -392,11 +423,22 @@ export function MobileTable({
       </div>
 
       {/* board */}
-      <div className={cn('flex flex-1 flex-col items-center justify-center gap-3', dimBoard && 'opacity-40 saturate-50')}>
+      <div
+        className={cn(
+          'flex flex-1 flex-col items-center justify-center gap-3',
+          dimBoard && 'opacity-40 saturate-50',
+        )}
+      >
         <div className="flex gap-1.5">
           {[0, 1, 2, 3, 4].map((i) =>
             board[i] !== undefined ? (
-              <PlayingCard key={`${i}-${board[i]}`} card={board[i]} size="md" deal className="shadow-lg" />
+              <PlayingCard
+                key={`${i}-${board[i]}`}
+                card={board[i]}
+                size="md"
+                deal
+                className="shadow-lg"
+              />
             ) : (
               <div key={i} className="card-hatch h-24 w-[4.2rem] rounded-xl shadow-lg" />
             ),
@@ -413,7 +455,7 @@ export function MobileTable({
           </div>
         )}
         <div className="flex w-full items-baseline justify-end gap-2 pr-2">
-          <span className="text-xs uppercase tracking-wide text-white/40">pot</span>
+          <span className="text-xs uppercase tracking-wide text-white/60">pot</span>
           <span className="font-display text-3xl font-bold">
             <NumberFlow value={pot} />
           </span>
@@ -438,7 +480,13 @@ export function MobileTable({
           {me && me.inHand && (myCards.length > 0 || !me.folded) ? (
             myCards.length ? (
               myCards.map((c, i) => (
-                <PlayingCard key={c} card={c} size="xl" deal className={cn('shadow-2xl', i === 1 && '-ml-7')} />
+                <PlayingCard
+                  key={c}
+                  card={c}
+                  size="xl"
+                  deal
+                  className={cn('shadow-2xl', i === 1 && '-ml-7')}
+                />
               ))
             ) : (
               <>
@@ -453,14 +501,22 @@ export function MobileTable({
             className={cn(
               'flex min-w-28 flex-col items-center gap-1 rounded-2xl border border-white/20 px-4 py-3',
               me.isToAct && 'turn-stripes-dark border-indigo-400 bg-indigo-500/10',
-              me.isToAct && urgent && 'turn-stripes-dark-rose border-rose-500 bg-rose-500/10 animate-urgent',
+              me.isToAct &&
+                urgent &&
+                'turn-stripes-dark-rose border-rose-500 bg-rose-500/10 animate-urgent',
               me.isLeader && !me.isToAct && 'border-amber-400/80',
               me.won && 'animate-winner',
             )}
           >
             {strength && <span className="text-xs font-semibold text-white/80">{strength}</span>}
             <span className="relative">
-              <Avatar userId={me.userId} name={me.displayName} version={me.avatarVersion} size="sm" speaking={me.speaking} />
+              <Avatar
+                userId={me.userId}
+                name={me.displayName}
+                version={me.avatarVersion}
+                size="sm"
+                speaking={me.speaking}
+              />
               {me.isLeader && (
                 <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white">
                   <Crown size={9} weight="fill" />

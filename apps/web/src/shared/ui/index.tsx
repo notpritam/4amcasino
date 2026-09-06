@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from 'react';
 import { cn } from '../lib/cn.ts';
+import { Button as ZeusButton, InputBase } from '@zeus/ui/base';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success';
 
@@ -14,23 +15,13 @@ export function Button({
   className,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
-  const styles: Record<ButtonVariant, string> = {
-    primary: 'bg-indigo-600 text-white hover:bg-indigo-700',
-    secondary:
-      'bg-white text-slate-900 border border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 dark:hover:bg-slate-700',
-    ghost:
-      'bg-transparent text-slate-600 hover:bg-slate-200/60 dark:text-slate-300 dark:hover:bg-slate-800',
-    danger:
-      'bg-white text-rose-600 border border-rose-200 hover:bg-rose-50 dark:bg-slate-800 dark:text-rose-400 dark:border-rose-900 dark:hover:bg-rose-950',
-    success: 'bg-emerald-500 text-white hover:bg-emerald-600',
-  };
   return (
-    <button
+    <ZeusButton
+      variant={variant === 'success' ? 'primary' : variant}
+      type={props.type ?? 'submit'}
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors',
-        'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600',
-        'disabled:pointer-events-none disabled:opacity-50',
-        styles[variant],
+        'zeus-button min-h-10 h-auto shrink-0 whitespace-normal',
+        variant === 'success' && 'bg-emerald-600 hover:bg-emerald-700',
         className,
       )}
       {...props}
@@ -38,14 +29,11 @@ export function Button({
   );
 }
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className, size: _size, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return (
-    <input
-      className={cn(
-        'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100',
-        'placeholder:text-slate-400 focus:border-indigo-400 focus:outline focus:outline-2 focus:outline-indigo-100',
-        className,
-      )}
+    <InputBase
+      fieldClassName={cn('zeus-field min-h-10 min-w-0', className)}
+      className="text-sm"
       {...props}
     />
   );
@@ -55,7 +43,7 @@ export function Panel({ className, children }: { className?: string; children: R
   return (
     <div
       className={cn(
-        'rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-900 dark:ring-slate-700/70',
+        'zeus-panel rounded-2xl bg-background-secondary-default p-5 text-text-primary',
         className,
       )}
     >

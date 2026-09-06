@@ -22,12 +22,9 @@ export function SettingsCard({
     <section
       id={id}
       // scroll-mt keeps the heading clear of the sticky page header on jump
-      className={cn(
-        'scroll-mt-24 rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-900 dark:ring-slate-700/70',
-        className,
-      )}
+      className={cn('scroll-mt-24 rounded-2xl bg-background-secondary-default', className)}
     >
-      <header className="flex items-start gap-3 border-b border-slate-200/70 px-6 py-4 dark:border-slate-700/70">
+      <header className="flex items-start gap-3 border-b border-border-button-default px-6 py-4 dark:border-slate-700/70">
         {icon && (
           <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-100 text-base dark:bg-slate-800">
             {icon}

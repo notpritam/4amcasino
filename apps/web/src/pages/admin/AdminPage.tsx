@@ -12,7 +12,13 @@ const netStr = (n: number) => `${n > 0 ? '+' : ''}${fmt(n)}`;
 
 function Note({ kind, children }: { kind: 'ok' | 'bad'; children: ReactNode }) {
   return (
-    <p className={kind === 'ok' ? 'mt-2 text-xs text-emerald-600 dark:text-emerald-400' : 'mt-2 text-xs text-rose-600 dark:text-rose-400'}>
+    <p
+      className={
+        kind === 'ok'
+          ? 'mt-2 text-xs text-emerald-600 dark:text-emerald-400'
+          : 'mt-2 text-xs text-rose-600 dark:text-rose-400'
+      }
+    >
       {children}
     </p>
   );
@@ -57,8 +63,12 @@ function LifecycleSection() {
 
   return (
     <Panel>
-      <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">Room requests</h2>
-      <p className="mt-1 text-sm text-slate-500">Hosts asking to archive, restore, or delete a table.</p>
+      <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">
+        Room requests
+      </h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Hosts asking to archive, restore, or delete a table.
+      </p>
 
       {requests === null ? (
         <div className="mt-4">
@@ -81,10 +91,18 @@ function LifecycleSection() {
                 </div>
               </div>
               <div className="flex shrink-0 gap-2">
-                <Button variant="success" disabled={busyId === r.id} onClick={() => void decide(r.id, true)}>
+                <Button
+                  variant="success"
+                  disabled={busyId === r.id}
+                  onClick={() => void decide(r.id, true)}
+                >
                   {busyId === r.id ? <Spinner label="Working…" /> : 'Approve'}
                 </Button>
-                <Button variant="danger" disabled={busyId === r.id} onClick={() => void decide(r.id, false)}>
+                <Button
+                  variant="danger"
+                  disabled={busyId === r.id}
+                  onClick={() => void decide(r.id, false)}
+                >
                   Reject
                 </Button>
               </div>
@@ -170,7 +188,10 @@ function MergeSection() {
       setDirectConfirm(false);
       load();
     } catch (e) {
-      setDirectMsg({ kind: 'bad', text: e instanceof Error ? e.message : 'could not merge those accounts' });
+      setDirectMsg({
+        kind: 'bad',
+        text: e instanceof Error ? e.message : 'could not merge those accounts',
+      });
     } finally {
       setDirectBusy(false);
     }
@@ -178,8 +199,12 @@ function MergeSection() {
 
   return (
     <Panel>
-      <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">Merge requests</h2>
-      <p className="mt-1 text-sm text-slate-500">Folding one account into another. Approving cannot be undone.</p>
+      <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">
+        Merge requests
+      </h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Folding one account into another. Approving cannot be undone.
+      </p>
 
       {requests === null ? (
         <div className="mt-4">
@@ -202,18 +227,28 @@ function MergeSection() {
                   {r.note && <div className="text-xs text-slate-400">note: {r.note}</div>}
                   <div className="mt-1.5 grid grid-cols-1 gap-1 text-xs text-slate-500 sm:grid-cols-2">
                     <div>
-                      @{r.fromUsername}: {netStr(r.fromBalance)} net, {r.fromRooms} room{r.fromRooms === 1 ? '' : 's'}
+                      @{r.fromUsername}: {netStr(r.fromBalance)} net, {r.fromRooms} room
+                      {r.fromRooms === 1 ? '' : 's'}
                     </div>
                     <div>
-                      @{r.intoUsername}: {netStr(r.intoBalance)} net, {r.intoRooms} room{r.intoRooms === 1 ? '' : 's'}
+                      @{r.intoUsername}: {netStr(r.intoBalance)} net, {r.intoRooms} room
+                      {r.intoRooms === 1 ? '' : 's'}
                     </div>
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  <Button variant="success" disabled={busyId === r.id} onClick={() => setConfirmTarget(r)}>
+                  <Button
+                    variant="success"
+                    disabled={busyId === r.id}
+                    onClick={() => setConfirmTarget(r)}
+                  >
                     Approve
                   </Button>
-                  <Button variant="danger" disabled={busyId === r.id} onClick={() => void decide(r.id, false)}>
+                  <Button
+                    variant="danger"
+                    disabled={busyId === r.id}
+                    onClick={() => void decide(r.id, false)}
+                  >
                     Reject
                   </Button>
                 </div>
@@ -228,18 +263,23 @@ function MergeSection() {
         onSubmit={openDirectConfirm}
         className="mt-5 border-t border-slate-200/70 pt-4 dark:border-slate-700/70"
       >
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Merge accounts directly</h3>
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+          Merge accounts directly
+        </h3>
         <p className="mt-0.5 text-xs text-slate-500">
-          Skips the request queue and folds one account into another immediately. Approving cannot be undone.
+          Skips the request queue and folds one account into another immediately. Approving cannot
+          be undone.
         </p>
         <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
           <Input
+            aria-label="From username"
             placeholder="From username"
             value={directFrom}
             onChange={(e) => setDirectFrom(e.target.value)}
             disabled={directBusy}
           />
           <Input
+            aria-label="Into username"
             placeholder="Into username"
             value={directInto}
             onChange={(e) => setDirectInto(e.target.value)}
@@ -248,6 +288,7 @@ function MergeSection() {
         </div>
         <div className="mt-2">
           <Input
+            aria-label="Note (optional)"
             placeholder="Note (optional)"
             value={directNote}
             onChange={(e) => setDirectNote(e.target.value)}
@@ -262,18 +303,30 @@ function MergeSection() {
         {directMsg && <Note kind={directMsg.kind}>{directMsg.text}</Note>}
       </form>
 
-      <Dialog open={confirmTarget !== null} onClose={() => setConfirmTarget(null)} title="Approve this merge?">
+      <Dialog
+        open={confirmTarget !== null}
+        onClose={() => setConfirmTarget(null)}
+        title="Approve this merge?"
+      >
         {confirmTarget && (
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-300">
-              Everything @{confirmTarget.fromUsername} owns moves to @{confirmTarget.intoUsername}, and @{confirmTarget.fromUsername} is
-              retired. This cannot be undone.
+              Everything @{confirmTarget.fromUsername} owns moves to @{confirmTarget.intoUsername},
+              and @{confirmTarget.fromUsername} is retired. This cannot be undone.
             </p>
             <div className="mt-4 flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setConfirmTarget(null)} disabled={busyId === confirmTarget.id}>
+              <Button
+                variant="ghost"
+                onClick={() => setConfirmTarget(null)}
+                disabled={busyId === confirmTarget.id}
+              >
                 Cancel
               </Button>
-              <Button variant="danger" onClick={() => void decide(confirmTarget.id, true)} disabled={busyId === confirmTarget.id}>
+              <Button
+                variant="danger"
+                onClick={() => void decide(confirmTarget.id, true)}
+                disabled={busyId === confirmTarget.id}
+              >
                 {busyId === confirmTarget.id ? <Spinner label="Merging…" /> : 'Merge accounts'}
               </Button>
             </div>
@@ -281,10 +334,14 @@ function MergeSection() {
         )}
       </Dialog>
 
-      <Dialog open={directConfirm} onClose={() => setDirectConfirm(false)} title="Merge these accounts now?">
+      <Dialog
+        open={directConfirm}
+        onClose={() => setDirectConfirm(false)}
+        title="Merge these accounts now?"
+      >
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          Everything @{directFrom} owns moves to @{directInto}, and @{directFrom} is retired. This takes effect immediately and cannot
-          be undone.
+          Everything @{directFrom} owns moves to @{directInto}, and @{directFrom} is retired. This
+          takes effect immediately and cannot be undone.
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setDirectConfirm(false)} disabled={directBusy}>
@@ -334,7 +391,12 @@ function UserAdminSection() {
     setLookupBusy(true);
     try {
       const p = await api.userProfile(id);
-      setTarget({ userId: p.userId, username: p.username, displayName: p.displayName, isPlatform: p.isPlatform });
+      setTarget({
+        userId: p.userId,
+        username: p.username,
+        displayName: p.displayName,
+        isPlatform: p.isPlatform,
+      });
     } catch (e2) {
       setLookupErr(e2 instanceof Error ? e2.message : 'could not find that user');
     } finally {
@@ -348,10 +410,16 @@ function UserAdminSection() {
     setDisableMsg(null);
     try {
       await api.adminDisableUser(target.userId);
-      setDisableMsg({ kind: 'ok', text: `@${target.username} is disabled and signed out everywhere.` });
+      setDisableMsg({
+        kind: 'ok',
+        text: `@${target.username} is disabled and signed out everywhere.`,
+      });
       setDisableConfirm(false);
     } catch (e) {
-      setDisableMsg({ kind: 'bad', text: e instanceof Error ? e.message : 'could not disable that account' });
+      setDisableMsg({
+        kind: 'bad',
+        text: e instanceof Error ? e.message : 'could not disable that account',
+      });
     } finally {
       setDisableBusy(false);
     }
@@ -372,9 +440,15 @@ function UserAdminSection() {
       const identity = deriveIdentity(target.username, newPassword);
       await api.adminSetUserPassword(target.userId, newAuthKey, identity.publicKey);
       setNewPassword('');
-      setPwMsg({ kind: 'ok', text: `Password reset for @${target.username}. Tell them the new password directly, they were signed out everywhere.` });
+      setPwMsg({
+        kind: 'ok',
+        text: `Password reset for @${target.username}. Tell them the new password directly, they were signed out everywhere.`,
+      });
     } catch (e2) {
-      setPwMsg({ kind: 'bad', text: e2 instanceof Error ? e2.message : 'could not reset that password' });
+      setPwMsg({
+        kind: 'bad',
+        text: e2 instanceof Error ? e2.message : 'could not reset that password',
+      });
     } finally {
       setPwBusy(false);
     }
@@ -382,15 +456,19 @@ function UserAdminSection() {
 
   return (
     <Panel>
-      <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">User admin</h2>
+      <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">
+        User admin
+      </h2>
       <p className="mt-1 text-sm text-slate-500">
-        Look a player up by their user ID. It's visible in the URL of their profile page, /players/ID.
+        Look a player up by their user ID. It's visible in the URL of their profile page,
+        /players/ID.
       </p>
 
       <form onSubmit={(e) => void lookup(e)} className="mt-4 flex max-w-sm gap-2">
         <Input
           type="number"
           min={1}
+          aria-label="User ID"
           placeholder="User ID"
           value={idInput}
           onChange={(e) => setIdInput(e.target.value)}
@@ -411,28 +489,45 @@ function UserAdminSection() {
           </div>
 
           {target.isPlatform ? (
-            <p className="mt-2 text-xs text-slate-400">The house account can't be disabled or reset from here.</p>
+            <p className="mt-2 text-xs text-slate-400">
+              The house account can't be disabled or reset from here.
+            </p>
           ) : (
             <>
               <div className="mt-3 border-t border-slate-200/70 pt-3 dark:border-slate-700/70">
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Disable account</h3>
-                <p className="mt-0.5 text-xs text-slate-500">Signs them out everywhere and blocks further logins. Nothing is deleted.</p>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Disable account
+                </h3>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Signs them out everywhere and blocks further logins. Nothing is deleted.
+                </p>
                 <div className="mt-2">
-                  <Button variant="danger" onClick={() => setDisableConfirm(true)} disabled={disableBusy}>
+                  <Button
+                    variant="danger"
+                    onClick={() => setDisableConfirm(true)}
+                    disabled={disableBusy}
+                  >
                     Disable @{target.username}
                   </Button>
                 </div>
                 {disableMsg && <Note kind={disableMsg.kind}>{disableMsg.text}</Note>}
               </div>
 
-              <form onSubmit={(e) => void resetPassword(e)} className="mt-3 border-t border-slate-200/70 pt-3 dark:border-slate-700/70">
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Reset password</h3>
+              <form
+                onSubmit={(e) => void resetPassword(e)}
+                className="mt-3 border-t border-slate-200/70 pt-3 dark:border-slate-700/70"
+              >
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Reset password
+                </h3>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Sets a new password and signing key for @{target.username}. They must not be seated at a table when you do this.
+                  Sets a new password and signing key for @{target.username}. They must not be
+                  seated at a table when you do this.
                 </p>
                 <div className="mt-2 flex max-w-sm gap-2">
                   <Input
                     type="password"
+                    aria-label="New password"
                     placeholder="New password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
@@ -450,9 +545,14 @@ function UserAdminSection() {
         </div>
       )}
 
-      <Dialog open={disableConfirm} onClose={() => setDisableConfirm(false)} title={`Disable @${target?.username ?? ''}?`}>
+      <Dialog
+        open={disableConfirm}
+        onClose={() => setDisableConfirm(false)}
+        title={`Disable @${target?.username ?? ''}?`}
+      >
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          They're signed out everywhere and can't log back in until re-enabled. Nothing they own is deleted.
+          They're signed out everywhere and can't log back in until re-enabled. Nothing they own is
+          deleted.
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setDisableConfirm(false)} disabled={disableBusy}>
@@ -525,11 +625,20 @@ const RoomsSection = memo(function RoomsSection() {
 
   return (
     <Panel>
-      <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">Rooms</h2>
-      <p className="mt-1 text-sm text-slate-500">Archive or delete any table directly. Delete cannot be undone.</p>
+      <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">
+        Rooms
+      </h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Archive or delete any table directly. Delete cannot be undone.
+      </p>
 
       <form onSubmit={onSearch} className="mt-4 flex max-w-sm gap-2">
-        <Input placeholder="Search by name" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <Input
+          aria-label="Search by name"
+          placeholder="Search by name"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
         <Button type="submit" variant="secondary">
           Search
         </Button>
@@ -554,14 +663,29 @@ const RoomsSection = memo(function RoomsSection() {
                   {!!r.archived && <Badge tone="amber">Archived</Badge>}
                 </div>
                 <div className="text-xs text-slate-400">
-                  Hosted by {r.hostName} &middot; {r.playerCount} player{r.playerCount === 1 ? '' : 's'}
+                  Hosted by {r.hostName} &middot; {r.playerCount} player
+                  {r.playerCount === 1 ? '' : 's'}
                 </div>
               </div>
               <div className="flex shrink-0 gap-2">
-                <Button variant="secondary" disabled={busyId === r.id} onClick={() => void toggleArchive(r)}>
-                  {busyId === r.id ? <Spinner label="Working…" /> : r.archived ? 'Unarchive' : 'Archive'}
+                <Button
+                  variant="secondary"
+                  disabled={busyId === r.id}
+                  onClick={() => void toggleArchive(r)}
+                >
+                  {busyId === r.id ? (
+                    <Spinner label="Working…" />
+                  ) : r.archived ? (
+                    'Unarchive'
+                  ) : (
+                    'Archive'
+                  )}
                 </Button>
-                <Button variant="danger" disabled={busyId === r.id} onClick={() => setDeleteTarget(r)}>
+                <Button
+                  variant="danger"
+                  disabled={busyId === r.id}
+                  onClick={() => setDeleteTarget(r)}
+                >
                   Delete
                 </Button>
               </div>
@@ -571,17 +695,29 @@ const RoomsSection = memo(function RoomsSection() {
       )}
       {err && <Note kind="bad">{err}</Note>}
 
-      <Dialog open={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="Delete this room?">
+      <Dialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete this room?"
+      >
         {deleteTarget && (
           <div>
             <p className="text-sm text-slate-600 dark:text-slate-300">
               "{deleteTarget.name}" will be removed from every list. This cannot be undone.
             </p>
             <div className="mt-4 flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={busyId === deleteTarget.id}>
+              <Button
+                variant="ghost"
+                onClick={() => setDeleteTarget(null)}
+                disabled={busyId === deleteTarget.id}
+              >
                 Cancel
               </Button>
-              <Button variant="danger" onClick={() => void doDelete()} disabled={busyId === deleteTarget.id}>
+              <Button
+                variant="danger"
+                onClick={() => void doDelete()}
+                disabled={busyId === deleteTarget.id}
+              >
                 {busyId === deleteTarget.id ? <Spinner label="Deleting…" /> : 'Delete room'}
               </Button>
             </div>
@@ -618,8 +754,12 @@ export function AdminPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6">
       <header>
-        <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-100">Admin</h1>
-        <p className="mt-1 text-sm text-slate-500">Platform-only. Room requests, account merges, and user accounts.</p>
+        <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-100">
+          Admin
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Platform-only. Room requests, account merges, and user accounts.
+        </p>
       </header>
       <LifecycleSection />
       <MergeSection />

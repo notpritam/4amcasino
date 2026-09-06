@@ -58,7 +58,9 @@ export function PlayingCard({
           !faceDown && 'opacity-0', // placeholder slot keeps layout stable
           className,
         )}
-        aria-label={faceDown ? 'face-down card' : 'empty card slot'}
+        role={faceDown ? 'img' : undefined}
+        aria-hidden={!faceDown || undefined}
+        aria-label={faceDown ? 'face-down card' : undefined}
       />
     );
   }
@@ -77,6 +79,7 @@ export function PlayingCard({
       style={{ perspective: 640 }}
       className={cn(sizes[size], 'relative shrink-0 select-none', className)}
       aria-label={`${rank}${SUITS[suitIdx]}`}
+      role="img"
     >
       <motion.div
         initial={flip ? { rotateY: 180 } : false}

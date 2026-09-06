@@ -31,9 +31,21 @@ export function LobbyPage() {
   const [meetLink, setMeetLink] = useState('');
   const [visibility, setVisibility] = useState<'private' | 'public'>('private');
   const [timeline, setTimeline] = useState<{ ts: number; net: number }[]>([]);
-  const [myStats, setMyStats] = useState<{ net: number; handsPlayed: number; biggestWin: number } | null>(null);
+  const [myStats, setMyStats] = useState<{
+    net: number;
+    handsPlayed: number;
+    biggestWin: number;
+  } | null>(null);
   const [publicRooms, setPublicRooms] = useState<
-    { id: string; name: string; sb: number; bb: number; playerCount: number; hostName: string; meetLink: string | null }[]
+    {
+      id: string;
+      name: string;
+      sb: number;
+      bb: number;
+      playerCount: number;
+      hostName: string;
+      meetLink: string | null;
+    }[]
   >([]);
   const [strictAudit, setStrictAudit] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,19 +58,39 @@ export function LobbyPage() {
   const nav = useNavigate();
 
   useEffect(() => {
-    api.myRooms().then((r) => setRooms(r.rooms)).catch(() => {});
-    api.publicRooms().then((r) => setPublicRooms(r.rooms)).catch(() => {});
-    api.timeline().then((r) => setTimeline(r.points)).catch(() => {});
+    api
+      .myRooms()
+      .then((r) => setRooms(r.rooms))
+      .catch(() => {});
+    api
+      .publicRooms()
+      .then((r) => setPublicRooms(r.rooms))
+      .catch(() => {});
+    api
+      .timeline()
+      .then((r) => setTimeline(r.points))
+      .catch(() => {});
   }, []);
   const userId = useStore((s) => s.auth.userId);
   useEffect(() => {
-    if (userId) api.userProfile(userId).then((r) => setMyStats(r.stats)).catch(() => {});
+    if (userId)
+      api
+        .userProfile(userId)
+        .then((r) => setMyStats(r.stats))
+        .catch(() => {});
   }, [userId]);
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const room = await api.createRoom(name, sb, bb, strictAudit ? 'strict-audit' : undefined, actionSecs, minSettleHands);
+      const room = await api.createRoom(
+        name,
+        sb,
+        bb,
+        strictAudit ? 'strict-audit' : undefined,
+        actionSecs,
+        minSettleHands,
+      );
       const extras: Record<string, unknown> = {};
       if (meetLink.trim()) extras.meetLink = meetLink.trim();
       if (visibility === 'public') extras.visibility = 'public';
@@ -95,175 +127,173 @@ export function LobbyPage() {
   return (
     <div className="mx-auto max-w-[1600px] p-4 md:p-6">
       <div className="mb-6">
-        <h1 className="font-display text-2xl font-bold">Good evening, {prefs.displayName || username}</h1>
+        <h1 className="font-display text-2xl font-bold">
+          Your lobby, {prefs.displayName || username}
+        </h1>
         <p className="mt-1 text-sm text-slate-500">Start a table or join one with a code.</p>
       </div>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_360px]">
-      <div className="space-y-4">
-        <Panel>
-          <h2 className="mb-1 font-display font-semibold">Start a table</h2>
-          <p className="mb-4 text-sm text-slate-500">You become host and banker.</p>
-          <Button className="w-full" onClick={() => setCreateOpen(true)}>Create room</Button>
-        </Panel>
-        <Panel>
-          <h2 className="mb-1 font-display font-semibold">Join a table</h2>
-          <p className="mb-4 text-sm text-slate-500">Ask the host for the 6-letter code.</p>
-          <form onSubmit={join} className="flex gap-2">
-            <Input
-              placeholder="ABC123"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-              maxLength={6}
-              className="font-display uppercase tracking-widest"
-            />
-            <Button type="submit" variant="secondary" disabled={joinCode.length !== 6}>
-              Join
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_300px]">
+        <div className="min-w-0 space-y-4">
+          <Panel>
+            <h2 className="mb-1 font-display font-semibold">Start a table</h2>
+            <p className="mb-4 text-sm text-slate-500">You become host and banker.</p>
+            <Button className="w-full" onClick={() => setCreateOpen(true)}>
+              Create room
             </Button>
-          </form>
-        </Panel>
-        {error && <p className="text-sm text-rose-600">{error}</p>}
-      </div>
+          </Panel>
+          <Panel>
+            <h2 className="mb-1 font-display font-semibold">Join a table</h2>
+            <p className="mb-4 text-sm text-slate-500">Ask the host for the 6-letter code.</p>
+            <form onSubmit={join} className="flex gap-2">
+              <Input
+                aria-label="Room code"
+                placeholder="ABC123"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                maxLength={6}
+                className="font-display uppercase tracking-widest"
+              />
+              <Button type="submit" variant="secondary" disabled={joinCode.length !== 6}>
+                Join
+              </Button>
+            </form>
+          </Panel>
+          {error && <p className="text-sm text-rose-600">{error}</p>}
+        </div>
 
-      <div className="min-w-0 space-y-5">
-      {timeline.length >= 2 && myStats && (
-        <Panel>
-          <div className="mb-4 flex flex-wrap items-baseline gap-x-6 gap-y-2">
-            <h2 className="font-display font-semibold">Your game so far</h2>
-            <span
-              className={
-                myStats.net > 0
-                  ? 'font-display text-lg font-bold text-emerald-600'
-                  : myStats.net < 0
-                    ? 'font-display text-lg font-bold text-rose-600'
-                    : 'font-display text-lg font-bold text-slate-400'
-              }
-            >
-              {myStats.net > 0 ? '+' : ''}
-              {fmt(myStats.net)}
-            </span>
-            <span className="text-sm text-slate-500">
-              {fmt(myStats.handsPlayed)} hands · best pot +{fmt(myStats.biggestWin)}
-            </span>
-          </div>
-          <NetAreaChart points={timeline} />
-        </Panel>
-      )}
+        <div className="min-w-0 space-y-5">
+          <NetAreaChart points={timeline} hands={myStats?.handsPlayed} />
 
-      <div>
-          <h2 className="mb-3 font-display font-semibold">Your rooms</h2>
-          {rooms.length === 0 ? (
-            <p className="text-sm text-slate-500">No rooms yet. Create one and share the code.</p>
-          ) : (
-            <div className="grid gap-2 xl:grid-cols-2">
-              {rooms.filter((r) => !r.archived).map((r) => (
-                // the whole card is the link, but the share control has to sit
-                // above it - an interactive element cannot nest inside an anchor
-                <div
-                  key={r.id}
-                  className="relative flex items-center justify-between rounded-xl bg-white p-4 ring-1 ring-slate-200/70 transition-shadow hover:shadow-md dark:bg-slate-900 dark:ring-slate-700/70"
-                >
-                  <Link to={`/room/${r.id}`} className="absolute inset-0 rounded-xl" aria-label={`Open ${r.name}`} />
-                  <div className="min-w-0">
-                    <div className="font-medium">{r.name}</div>
-                    <div className="text-xs text-slate-500">
-                      Blinds {r.sb}/{r.bb} · Code {r.joinCode}
-                    </div>
-                  </div>
-                  <div className="relative z-10 flex items-center gap-2">
-                    <CopyInvite joinCode={r.joinCode} roomName={r.name} />
-                    <Badge tone="indigo">{r.playerCount} players</Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {rooms.some((r) => r.archived) && (
-            <details className="mt-6">
-              <summary className="cursor-pointer text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
-                Archived tables ({rooms.filter((r) => r.archived).length})
-              </summary>
-              <p className="mt-1.5 text-xs text-slate-400">
-                Retired, not deleted. The ledger and every hand stay readable, and anything still
-                owed is still owed — they just stop counting towards your stats.
-              </p>
-              <div className="mt-2 space-y-1.5">
+          <div>
+            <h2 className="mb-3 font-display font-semibold">Your rooms</h2>
+            {rooms.length === 0 ? (
+              <p className="text-sm text-slate-500">No rooms yet. Create one and share the code.</p>
+            ) : (
+              <div className="grid gap-2 xl:grid-cols-2">
                 {rooms
-                  .filter((r) => r.archived)
+                  .filter((r) => !r.archived)
                   .map((r) => (
+                    // the whole card is the link, but the share control has to sit
+                    // above it - an interactive element cannot nest inside an anchor
                     <div
                       key={r.id}
-                      className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-sm ring-1 ring-slate-200/70 dark:bg-slate-900/60 dark:ring-slate-700/70"
+                      className="relative flex items-center justify-between rounded-xl bg-white p-4 ring-1 ring-slate-200/70 transition-shadow hover:shadow-md dark:bg-slate-900 dark:ring-slate-700/70"
                     >
-                      <Link to={`/room/${r.id}/ledger`} className="min-w-0 flex-1 truncate hover:underline">
-                        {r.name}
-                      </Link>
-                      {restorePending.has(r.id) ? (
-                        <span className="px-2 py-1 text-xs font-medium text-slate-400">
-                          Restore requested
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => void requestRestore(r.id)}
-                          className="rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950"
-                        >
-                          Request restore
-                        </button>
-                      )}
+                      <Link
+                        to={`/room/${r.id}`}
+                        className="absolute inset-0 rounded-xl"
+                        aria-label={`Open ${r.name}`}
+                      />
+                      <div className="min-w-0">
+                        <div className="font-medium">{r.name}</div>
+                        <div className="text-xs text-slate-500">
+                          Blinds {r.sb}/{r.bb} · Code {r.joinCode}
+                        </div>
+                      </div>
+                      <div className="relative z-10 flex items-center gap-2">
+                        <CopyInvite joinCode={r.joinCode} roomName={r.name} />
+                        <Badge tone="indigo">{r.playerCount} players</Badge>
+                      </div>
                     </div>
                   ))}
               </div>
-            </details>
-          )}
-          {publicRooms.length > 0 && (
-            <>
-              <h2 className="mb-3 mt-8 font-display font-semibold">Public tables</h2>
-              <div className="space-y-2">
-                {publicRooms.map((r) => (
-                  <div
-                    key={r.id}
-                    className="flex items-center justify-between gap-3 rounded-xl bg-white p-4 ring-1 ring-slate-200/70 dark:bg-slate-900 dark:ring-slate-700/70"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate font-medium">{r.name}</div>
-                      <div className="text-xs text-slate-500">
-                        Hosted by {r.hostName} · Blinds {r.sb}/{r.bb} · {r.playerCount} players
-                      </div>
-                    </div>
-                    {r.meetLink && (
-                      <a
-                        href={r.meetLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+            )}
+            {rooms.some((r) => r.archived) && (
+              <details className="mt-6">
+                <summary className="cursor-pointer text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
+                  Archived tables ({rooms.filter((r) => r.archived).length})
+                </summary>
+                <p className="mt-1.5 text-xs text-slate-400">
+                  Retired, not deleted. The ledger and every hand stay readable, and anything still
+                  owed is still owed — they just stop counting towards your stats.
+                </p>
+                <div className="mt-2 space-y-1.5">
+                  {rooms
+                    .filter((r) => r.archived)
+                    .map((r) => (
+                      <div
+                        key={r.id}
+                        className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-sm ring-1 ring-slate-200/70 dark:bg-slate-900/60 dark:ring-slate-700/70"
                       >
-                        Join call
-                      </a>
-                    )}
-                    <Button
-                      variant="secondary"
-                      onClick={() => void api.joinPublic(r.id).then(() => nav(`/room/${r.id}`))}
+                        <Link
+                          to={`/room/${r.id}/ledger`}
+                          className="min-w-0 flex-1 truncate hover:underline"
+                        >
+                          {r.name}
+                        </Link>
+                        {restorePending.has(r.id) ? (
+                          <span className="px-2 py-1 text-xs font-medium text-slate-400">
+                            Restore requested
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void requestRestore(r.id)}
+                            className="rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950"
+                          >
+                            Request restore
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                </div>
+              </details>
+            )}
+            {publicRooms.length > 0 && (
+              <>
+                <h2 className="mb-3 mt-8 font-display font-semibold">Public tables</h2>
+                <div className="space-y-2">
+                  {publicRooms.map((r) => (
+                    <div
+                      key={r.id}
+                      className="flex items-center justify-between gap-3 rounded-xl bg-white p-4 ring-1 ring-slate-200/70 dark:bg-slate-900 dark:ring-slate-700/70"
                     >
-                      Join
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{r.name}</div>
+                        <div className="text-xs text-slate-500">
+                          Hosted by {r.hostName} · Blinds {r.sb}/{r.bb} · {r.playerCount} players
+                        </div>
+                      </div>
+                      {r.meetLink && (
+                        <a
+                          href={r.meetLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                        >
+                          Join call
+                        </a>
+                      )}
+                      <Button
+                        variant="secondary"
+                        onClick={() => void api.joinPublic(r.id).then(() => nav(`/room/${r.id}`))}
+                      >
+                        Join
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
-      </div>
 
-      <div className="min-w-0 space-y-5 lg:col-span-2 xl:col-span-1">
-        <InvitesPanel onJoined={(roomId) => nav(`/room/${roomId}`)} />
-        <FriendsPanel />
-      </div>
+        <div className="min-w-0 space-y-5 lg:col-span-2 xl:col-span-1">
+          <InvitesPanel onJoined={(roomId) => nav(`/room/${roomId}`)} />
+          <FriendsPanel />
+        </div>
       </div>
 
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} title="Create room">
         <form onSubmit={create} className="space-y-3">
-          <Input placeholder="Room name" value={name} onChange={(e) => setName(e.target.value)} required />
+          <Input
+            aria-label="Room name"
+            placeholder="Room name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
           <div className="grid grid-cols-2 gap-3">
             <label className="text-sm">
               <span className="mb-1 block text-slate-500">Small blind</span>
@@ -290,7 +320,9 @@ export function LobbyPage() {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block text-slate-500">Video call link (Meet or Zoom, optional)</span>
+            <span className="mb-1 block text-slate-500">
+              Video call link (Meet or Zoom, optional)
+            </span>
             <Input
               placeholder="https://meet.google.com/..."
               value={meetLink}
@@ -309,7 +341,9 @@ export function LobbyPage() {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block text-slate-500">Hands required before winnings count in settle-up</span>
+            <span className="mb-1 block text-slate-500">
+              Hands required before winnings count in settle-up
+            </span>
             <Input
               type="number"
               min={0}
@@ -329,7 +363,8 @@ export function LobbyPage() {
               className="mt-0.5"
             />
             <span>
-              Strict audit: everyone's cards become checkable after each hand (folded cards included)
+              Strict audit: everyone's cards become checkable after each hand (folded cards
+              included)
             </span>
           </label>
           {error && <p className="text-sm text-rose-600">{error}</p>}

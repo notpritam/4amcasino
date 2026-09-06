@@ -1,40 +1,24 @@
-@import 'tailwindcss';
+@import '@zeus/tokens';
+@source '../../../../node_modules/@zeus/ui/dist/*.js';
+@import './zeus.css';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: 'Onest', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Bricolage Grotesque', 'Onest', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Inter', ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
-  @apply bg-slate-100 text-slate-900 font-sans antialiased;
+  @apply bg-background-primary-default text-text-primary font-sans antialiased;
   overflow-x: clip;
 }
 .dark body {
   @apply bg-slate-950 text-slate-100;
 }
 
-/* A quiet card-pip field gives the desktop table depth without competing with the felt. */
 .table-app-bg {
-  background-color: #f1f5f9;
-  background-image:
-    radial-gradient(circle at 50% 4%, rgb(99 102 241 / 0.08), transparent 34rem),
-    radial-gradient(circle, rgb(71 85 105 / 0.12) 0.7px, transparent 0.9px);
-  background-position:
-    center top,
-    0 0;
-  background-size:
-    auto,
-    1.5rem 1.5rem;
-  background-attachment: fixed;
-}
-
-.dark .table-app-bg {
-  background-color: #020617;
-  background-image:
-    radial-gradient(circle at 50% 4%, rgb(99 102 241 / 0.1), transparent 36rem),
-    radial-gradient(circle, rgb(129 140 248 / 0.1) 0.7px, transparent 0.9px);
+  background: var(--color-background-primary-default);
 }
 
 /* card backs — the 4AM night grid with a crescent, in four colorways */
@@ -220,31 +204,14 @@ body {
 
 /* Public landing page */
 .landing-root {
-  color-scheme: dark;
+  color-scheme: light;
   isolation: isolate;
   position: relative;
   overflow: hidden;
 }
 
-.landing-root::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto;
-  z-index: -2;
-  height: 52rem;
-  background:
-    radial-gradient(circle at 76% 16%, rgb(92 255 114 / 0.18), transparent 34%),
-    radial-gradient(circle at 14% -8%, rgb(255 60 142 / 0.05), transparent 28%);
-  pointer-events: none;
-}
-
 .landing-grain {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  opacity: 0.025;
-  pointer-events: none;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E");
+  display: none;
 }
 
 .landing-skip-link {
@@ -253,7 +220,7 @@ body {
   top: 1rem;
   z-index: 50;
   transform: translateY(-180%);
-  border-radius: 0.25rem;
+  border-radius: 0.875rem;
   background: white;
   color: #0f172a;
   padding: 0.75rem 1rem;
@@ -272,9 +239,9 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  border-radius: 0.25rem;
-  border: 1px solid rgb(92 255 114 / 0.22);
-  background: rgb(5 12 8 / 0.84);
+  border-radius: 0.875rem;
+  border: 1px solid rgb(37 99 235 / 0.22);
+  background: rgb(255 255 255 / 0.94);
   padding: 0.62rem 0.72rem 0.62rem 0.8rem;
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.04),
@@ -283,9 +250,9 @@ body {
 }
 
 .landing-nav-link {
-  border-radius: 0.25rem;
+  border-radius: 0.875rem;
   padding: 0.65rem 0.75rem;
-  color: #88ad97;
+  color: var(--color-text-secondary);
   font-size: 0.78rem;
   font-weight: 500;
   transition:
@@ -294,8 +261,8 @@ body {
 }
 
 .landing-nav-link:hover {
-  background: rgb(92 255 114 / 0.08);
-  color: #e8ffee;
+  background: rgb(37 99 235 / 0.08);
+  color: var(--color-text-primary);
 }
 
 .landing-nav-cta {
@@ -304,10 +271,10 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  border-radius: 0.25rem;
-  background: #5cff72;
+  border-radius: 0.875rem;
+  background: var(--color-accent-600);
   padding: 0.55rem 0.9rem;
-  color: #041007;
+  color: white;
   font-size: 0.78rem;
   font-weight: 600;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.2);
@@ -318,7 +285,7 @@ body {
 
 .landing-nav-cta:hover {
   transform: translateY(-1px);
-  background: #86f5a3;
+  background: var(--color-accent-700);
 }
 
 .landing-nav-cta:active {
@@ -330,11 +297,11 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
-  color: #5cff72;
+  color: var(--color-accent-600);
   font-size: 0.67rem;
   font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .landing-primary {
@@ -342,15 +309,15 @@ body {
   min-height: 3.5rem;
   align-items: center;
   gap: 1.15rem;
-  border-radius: 0.25rem;
-  background: #5cff72;
+  border-radius: 0.875rem;
+  background: var(--color-accent-600);
   padding: 0.28rem 0.3rem 0.28rem 1.35rem;
-  color: #041007;
+  color: white;
   font-size: 0.88rem;
   font-weight: 600;
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.2),
-    0 14px 40px rgb(92 255 114 / 0.22);
+    0 14px 40px rgb(37 99 235 / 0.22);
   transition:
     transform 500ms cubic-bezier(0.22, 1, 0.36, 1),
     background-color 300ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -358,7 +325,7 @@ body {
 
 .landing-primary:hover {
   transform: translateY(-2px);
-  background: #86f5a3;
+  background: var(--color-accent-700);
 }
 
 .landing-primary:active {
@@ -371,7 +338,7 @@ body {
   width: 2.8rem;
   align-items: center;
   justify-content: center;
-  border-radius: 0.2rem;
+  border-radius: 0.625rem;
   background: rgb(4 16 7 / 0.14);
   transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -385,7 +352,7 @@ body {
   min-height: 2.75rem;
   align-items: center;
   gap: 0.55rem;
-  color: #cbe9d6;
+  color: var(--color-text-secondary);
   font-size: 0.85rem;
   font-weight: 500;
   text-underline-offset: 0.35rem;
@@ -393,7 +360,7 @@ body {
 }
 
 .landing-text-link:hover {
-  color: #e8ffee;
+  color: var(--color-text-primary);
   text-decoration: underline;
 }
 
@@ -402,29 +369,19 @@ body {
   margin-inline: auto;
   width: 100%;
   max-width: 43rem;
-  border-radius: 0.25rem;
-  border: 1px solid rgb(92 255 114 / 0.28);
+  border-radius: 0.875rem;
+  border: 1px solid rgb(37 99 235 / 0.28);
   background: rgb(255 255 255 / 0.035);
   padding: 0.45rem;
   box-shadow:
     0 52px 120px rgb(0 0 0 / 0.38),
-    0 0 0 1px rgb(92 255 114 / 0.03);
-}
-
-.landing-stage-shell::before {
-  content: '';
-  position: absolute;
-  inset: 11% 8% -8%;
-  z-index: -1;
-  border-radius: 50%;
-  background: rgb(92 255 114 / 0.18);
-  filter: blur(75px);
+    0 0 0 1px rgb(37 99 235 / 0.03);
 }
 
 .landing-stage {
   overflow: hidden;
-  border-radius: 0.25rem;
-  background: #060d09;
+  border-radius: 0.875rem;
+  background: var(--color-background-secondary-default);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.045);
 }
 
@@ -433,9 +390,9 @@ body {
   min-height: 30rem;
   flex-direction: column;
   background:
-    radial-gradient(ellipse at center, rgb(92 255 114 / 0.05), transparent 62%),
-    linear-gradient(rgb(92 255 114 / 0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(92 255 114 / 0.055) 1px, transparent 1px);
+    radial-gradient(ellipse at center, rgb(37 99 235 / 0.05), transparent 62%),
+    linear-gradient(rgb(37 99 235 / 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(37 99 235 / 0.055) 1px, transparent 1px);
   background-size:
     auto,
     2.4rem 2.4rem,
@@ -451,7 +408,7 @@ body {
   height: 56%;
   transform: translateY(14px);
   border-radius: 50%;
-  background: rgb(92 255 114 / 0.28);
+  background: rgb(37 99 235 / 0.28);
 }
 
 .landing-oval-rim {
@@ -461,7 +418,7 @@ body {
   top: 16%;
   height: 56%;
   border-radius: 50%;
-  background: rgb(92 255 114 / 0.5);
+  background: rgb(37 99 235 / 0.5);
 }
 
 .landing-oval-felt {
@@ -471,7 +428,7 @@ body {
   top: 19%;
   height: 50%;
   border-radius: 50%;
-  background: linear-gradient(180deg, #0a1410, #060d09);
+  background: linear-gradient(180deg, #e4edf7, var(--color-background-secondary-default));
   box-shadow: inset 0 4px 18px rgb(0 0 0 / 0.6);
 }
 
@@ -487,18 +444,18 @@ body {
   min-width: 0;
   align-items: center;
   gap: 0.5rem;
-  border-radius: 0.25rem;
-  background: rgb(5 10 7 / 0.72);
+  border-radius: 0.875rem;
+  background: white;
   padding: 0.48rem;
-  box-shadow: inset 0 0 0 1px rgb(92 255 114 / 0.2);
+  box-shadow: inset 0 0 0 1px rgb(37 99 235 / 0.2);
 }
 
 .landing-player-active {
   background:
-    repeating-linear-gradient(135deg, rgb(92 255 114 / 0.12) 0 7px, transparent 7px 14px),
+    repeating-linear-gradient(135deg, rgb(37 99 235 / 0.12) 0 7px, transparent 7px 14px),
     rgb(255 255 255 / 0.035);
   box-shadow:
-    inset 0 0 0 1px rgb(92 255 114 / 0.18),
+    inset 0 0 0 1px rgb(37 99 235 / 0.18),
     inset 0 1px 0 rgb(255 255 255 / 0.05);
 }
 
@@ -509,7 +466,7 @@ body {
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  border-radius: 0.25rem;
+  border-radius: 0.875rem;
   font-family: var(--font-display);
   font-size: 0.72rem;
   font-weight: 700;
@@ -522,14 +479,14 @@ body {
   height: 0.35rem;
   width: 0.35rem;
   border-radius: 999px;
-  background: #5cff72;
-  box-shadow: 0 0 0 0 rgb(92 255 114 / 0.4);
+  background: var(--color-accent-600);
+  box-shadow: 0 0 0 0 rgb(37 99 235 / 0.4);
   animation: landing-turn-pulse 1.9s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
 @keyframes landing-turn-pulse {
   55% {
-    box-shadow: 0 0 0 0.35rem rgb(92 255 114 / 0);
+    box-shadow: 0 0 0 0.35rem rgb(37 99 235 / 0);
   }
 }
 
@@ -538,9 +495,9 @@ body {
   align-items: flex-end;
   justify-content: space-between;
   gap: 1rem;
-  border-radius: 0.25rem;
-  border: 1px solid rgb(92 255 114 / 0.22);
-  background: rgb(4 9 6 / 0.82);
+  border-radius: 0.875rem;
+  border: 1px solid rgb(37 99 235 / 0.22);
+  background: white;
   padding: 0.85rem;
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.04),
@@ -558,7 +515,7 @@ body {
   min-height: 2.45rem;
   align-items: center;
   justify-content: center;
-  border-radius: 0.25rem;
+  border-radius: 0.875rem;
   padding: 0.55rem 0.78rem;
   font-size: 0.68rem;
   font-weight: 600;
@@ -566,13 +523,13 @@ body {
 
 .landing-action-secondary {
   background: transparent;
-  color: #cbe9d6;
-  box-shadow: inset 0 0 0 1px rgb(92 255 114 / 0.3);
+  color: var(--color-text-secondary);
+  box-shadow: inset 0 0 0 1px rgb(37 99 235 / 0.3);
 }
 
 .landing-action-primary {
-  background: #5cff72;
-  color: #041007;
+  background: var(--color-accent-600);
+  color: white;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18);
 }
 
@@ -583,14 +540,14 @@ body {
   font-weight: 500;
   line-height: 1.12;
   letter-spacing: -0.01em;
-  text-transform: uppercase;
+  text-transform: none;
   text-wrap: balance;
-  color: white;
+  color: var(--color-text-primary);
 }
 
 .landing-section-copy {
   max-width: 40rem;
-  color: #88ad97;
+  color: var(--color-text-secondary);
   font-size: clamp(1rem, 1.5vw, 1.16rem);
   line-height: 1.75;
   text-wrap: pretty;
@@ -609,7 +566,7 @@ body {
 .landing-story-number {
   font-family: var(--font-display);
   font-size: 0.66rem;
-  color: #5cff72;
+  color: var(--color-accent-600);
   letter-spacing: 0.15em;
 }
 
@@ -622,13 +579,13 @@ body {
   line-height: 1.2;
   letter-spacing: -0.01em;
   text-wrap: balance;
-  color: white;
+  color: var(--color-text-primary);
 }
 
 .landing-story-body {
   margin-top: 1.25rem;
   max-width: 31rem;
-  color: #7fa38c;
+  color: var(--color-text-secondary);
   font-size: 0.96rem;
   line-height: 1.75;
   text-wrap: pretty;
@@ -641,42 +598,34 @@ body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: 0.25rem;
-  border: 1px solid rgb(92 255 114 / 0.22);
+  border-radius: 0.875rem;
+  border: 1px solid rgb(37 99 235 / 0.22);
   padding: 2rem;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
 }
 
 .landing-invite-visual {
-  background: radial-gradient(circle at 25% 25%, rgb(92 255 114 / 0.2), transparent 36%), #060d09;
-}
-
-.landing-invite-visual::after {
-  content: '';
-  position: absolute;
-  left: 10%;
-  top: 12%;
-  height: 7rem;
-  width: 7rem;
-  border-radius: 999px;
-  border: 1px solid rgb(92 255 114 / 0.16);
-  box-shadow:
-    0 0 0 2rem rgb(92 255 114 / 0.035),
-    0 0 0 4rem rgb(92 255 114 / 0.02);
+  background:
+    radial-gradient(circle at 25% 25%, rgb(37 99 235 / 0.2), transparent 36%),
+    var(--color-background-secondary-default);
 }
 
 .landing-replay-visual {
-  background: linear-gradient(135deg, rgb(255 255 255 / 0.025), transparent 55%), #060d09;
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 0.025), transparent 55%),
+    var(--color-background-secondary-default);
 }
 
 .landing-ledger-visual {
-  background: radial-gradient(circle at 82% 12%, rgb(16 185 129 / 0.12), transparent 32%), #060d09;
+  background:
+    radial-gradient(circle at 82% 12%, rgb(16 185 129 / 0.12), transparent 32%),
+    var(--color-background-secondary-default);
 }
 
 .landing-tech-card {
   min-height: 15rem;
-  border-radius: 0.25rem;
-  border: 1px solid rgb(92 255 114 / 0.22);
+  border-radius: 0.875rem;
+  border: 1px solid rgb(37 99 235 / 0.22);
   background: rgb(255 255 255 / 0.025);
   padding: 1.4rem;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035);
@@ -706,10 +655,10 @@ body {
   min-height: 3.75rem;
   align-items: center;
   gap: 1.1rem;
-  border-radius: 0.25rem;
-  background: #041007;
+  border-radius: 0.875rem;
+  background: white;
   padding: 0.35rem 0.38rem 0.35rem 1.4rem;
-  color: #5cff72;
+  color: var(--color-accent-600);
   font-size: 0.88rem;
   font-weight: 700;
   box-shadow: 0 15px 40px rgb(4 16 7 / 0.3);
@@ -721,7 +670,7 @@ body {
 }
 
 .landing-root :where(a, button):focus-visible {
-  outline: 2px solid #5cff72;
+  outline: 2px solid var(--color-accent-600);
   outline-offset: 4px;
 }
 
@@ -764,7 +713,7 @@ body {
 
   .landing-visual {
     min-height: 23rem;
-    border-radius: 0.25rem;
+    border-radius: 0.875rem;
     padding: 1.25rem;
   }
 }
@@ -778,7 +727,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .landing-turn-dot {
     animation: none;
-    box-shadow: 0 0 0 0.18rem rgb(92 255 114 / 0.16);
+    box-shadow: 0 0 0 0.18rem rgb(37 99 235 / 0.16);
   }
 
   .landing-grain {
@@ -788,139 +737,22 @@ body {
 
 @media (prefers-reduced-transparency: reduce) {
   .landing-nav {
-    background: #050a07;
+    background: white;
     backdrop-filter: none;
   }
-}
-
-/* ── Cypherpunk theme ─────────────────────────────────────────────────────
-   The third theme ('cyber'): terminal green on green-black, Unbounded display
-   over JetBrains Mono, squared corners, magenta for danger. Applied to <html>
-   alongside .dark so every dark: variant participates, and standalone on the
-   landing root. Tailwind v4 utilities resolve these variables per scope, so
-   remapping the slate and indigo scales reskins the whole app. */
-.cyber {
-  color-scheme: dark;
-  --font-sans: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-  --font-display: 'Unbounded', 'Bricolage Grotesque', ui-sans-serif, sans-serif;
-
-  --color-indigo-50: #f0fff4;
-  --color-indigo-100: #dcffe6;
-  --color-indigo-200: #b5f7c8;
-  --color-indigo-300: #86f5a3;
-  --color-indigo-400: #5cff72;
-  --color-indigo-500: #4bf265;
-  --color-indigo-600: #38e655;
-  --color-indigo-700: #13aa32;
-  --color-indigo-800: #0e7a26;
-  --color-indigo-900: #0a3f18;
-  --color-indigo-950: #06240e;
-
-  --color-slate-50: #f1fff5;
-  --color-slate-100: #e8ffee;
-  --color-slate-200: #cbe9d6;
-  --color-slate-300: #a3c4b0;
-  --color-slate-400: #7fa38c;
-  --color-slate-500: #5e806c;
-  --color-slate-600: #44614f;
-  --color-slate-700: #253c2e;
-  --color-slate-800: #16261c;
-  --color-slate-900: #0a130e;
-  --color-slate-950: #050a07;
-
-  --color-rose-300: #ff9cc9;
-  --color-rose-400: #ff5aa6;
-  --color-rose-500: #ff2e88;
-  --color-rose-600: #e0146d;
-  --color-rose-700: #ad0b52;
-  --color-rose-950: #33081d;
-
-  --radius-sm: 2px;
-  --radius-md: 2px;
-  --radius-lg: 2px;
-  --radius-xl: 3px;
-  --radius-2xl: 4px;
-  --radius-3xl: 4px;
-}
-
-/* neon fills read with ink, never white */
-.cyber :is(.bg-indigo-600, .bg-indigo-500, .bg-indigo-400),
-.cyber :is(.bg-indigo-600, .bg-indigo-500, .bg-indigo-400)
-  :is(.text-white, .text-indigo-50, .text-indigo-100, .text-indigo-200) {
-  color: #041007;
-}
-
-.cyber ::selection {
-  background: #5cff72;
-  color: #041007;
-}
-
-/* faint CRT scanlines above the app, inert to input */
-html.cyber body::after,
-.cyber-scanlines::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  pointer-events: none;
-  background: repeating-linear-gradient(0deg, rgb(92 255 114 / 0.028) 0 1px, transparent 1px 3px);
-}
-
-/* the table plays on a wireframe grid instead of felt */
-.cyber .table-app-bg {
-  background-color: #040906;
-  background-image:
-    radial-gradient(circle at 50% 4%, rgb(92 255 114 / 0.07), transparent 34rem),
-    linear-gradient(rgb(92 255 114 / 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(92 255 114 / 0.05) 1px, transparent 1px);
-  background-position:
-    center top,
-    0 0,
-    0 0;
-  background-size:
-    auto,
-    2.75rem 2.75rem,
-    2.75rem 2.75rem;
-  background-attachment: fixed;
-}
-
-/* landing flourishes in the cypherpunk voice */
-.cyber-chroma {
-  color: #5cff72;
-  text-shadow: 0.04em 0.05em 0 rgb(255 60 142 / 0.9);
-}
-
-.cyber-comment {
-  position: absolute;
-  right: 1.1rem;
-  top: 1rem;
-  z-index: 10;
-  color: #ff3c8e;
-  font-size: 0.66rem;
-  letter-spacing: 0.08em;
-}
-
-.cyber-card-pop {
-  filter: drop-shadow(0.26rem 0.28rem 0 rgb(255 60 142 / 0.55));
-}
-
-/* card-back colorways tuned to the theme */
-.cyber .card-back-indigo {
-  --back-color: #17843a;
-}
-.cyber .card-back-crimson {
-  --back-color: #c9166a;
 }
 
 /* who is playing: a breathing glow around the to-act seat pod */
 @keyframes turn-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-indigo-500) 90%, transparent),
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--color-indigo-500) 90%, transparent),
       0 0 10px 2px color-mix(in srgb, var(--color-indigo-500) 45%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 3px var(--color-indigo-400),
+    box-shadow:
+      0 0 0 3px var(--color-indigo-400),
       0 0 26px 9px color-mix(in srgb, var(--color-indigo-400) 65%, transparent);
   }
 }
@@ -928,11 +760,13 @@ html.cyber body::after,
 @keyframes turn-glow-rose {
   0%,
   100% {
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-rose-500) 90%, transparent),
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--color-rose-500) 90%, transparent),
       0 0 10px 2px color-mix(in srgb, var(--color-rose-500) 45%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 3px var(--color-rose-400),
+    box-shadow:
+      0 0 0 3px var(--color-rose-400),
       0 0 26px 9px color-mix(in srgb, var(--color-rose-400) 65%, transparent);
   }
 }
@@ -955,22 +789,43 @@ html.cyber body::after,
 
 /* the showdown lightning: two hard flashes, then a dying glow */
 @keyframes thunder-flash {
-  0% { opacity: 0; }
-  6% { opacity: 0.85; }
-  12% { opacity: 0.05; }
-  20% { opacity: 0.6; }
-  32% { opacity: 0.12; }
-  48% { opacity: 0.28; }
-  100% { opacity: 0; }
+  0% {
+    opacity: 0;
+  }
+  6% {
+    opacity: 0.85;
+  }
+  12% {
+    opacity: 0.05;
+  }
+  20% {
+    opacity: 0.6;
+  }
+  32% {
+    opacity: 0.12;
+  }
+  48% {
+    opacity: 0.28;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 .thunder-flash {
   position: fixed;
   inset: 0;
   z-index: 60;
   pointer-events: none;
-  background: radial-gradient(ellipse at 50% 30%, rgba(255, 255, 255, 0.95), rgba(167, 139, 250, 0.45) 55%, transparent 85%);
+  background: radial-gradient(
+    ellipse at 50% 30%,
+    rgba(255, 255, 255, 0.95),
+    rgba(167, 139, 250, 0.45) 55%,
+    transparent 85%
+  );
   animation: thunder-flash 0.9s ease-out forwards;
 }
 @media (prefers-reduced-motion: reduce) {
-  .thunder-flash { animation-duration: 0.3s; }
+  .thunder-flash {
+    animation-duration: 0.3s;
+  }
 }

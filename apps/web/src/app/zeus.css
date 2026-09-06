@@ -1,0 +1,323 @@
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter-latin.woff2') format('woff2');
+}
+/* Bridge existing utility names to Zeus primitives, keeping game card colors local. */
+@theme {
+  --color-indigo-50: var(--color-blue-50);
+  --color-indigo-100: var(--color-blue-100);
+  --color-indigo-200: var(--color-blue-200);
+  --color-indigo-300: var(--color-blue-300);
+  --color-indigo-400: var(--color-blue-400);
+  --color-indigo-500: var(--color-blue-500);
+  --color-indigo-600: var(--color-blue-600);
+  --color-indigo-700: var(--color-blue-700);
+  --color-indigo-800: var(--color-blue-800);
+  --color-indigo-900: var(--color-blue-900);
+  --color-indigo-950: var(--color-blue-950);
+  --color-slate-50: #fafafa;
+  --color-slate-100: #f7f7f7;
+  --color-slate-200: #ebebeb;
+  --color-slate-300: #d4d4d4;
+  --color-slate-400: #707070;
+  --color-slate-500: #666666;
+  --color-slate-600: #525252;
+  --color-slate-700: #404040;
+  --color-slate-800: #262626;
+  --color-slate-900: #171717;
+  --color-slate-950: #0a0a0a;
+}
+:root {
+  color-scheme: light;
+  --font-inter: 'Inter';
+  --color-text-tertiary: #707070;
+}
+::selection {
+  background: #dbeafe;
+  color: #153e75;
+}
+:where(input, textarea) {
+  caret-color: var(--color-accent-600);
+}
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent-500);
+  outline-offset: 3px;
+}
+:where(a) {
+  text-underline-offset: 3px;
+}
+:where(nav, [role='dialog']) {
+  scrollbar-width: thin;
+  scrollbar-color: #c4c4c4 transparent;
+}
+.zeus-button > span {
+  gap: 0.5rem;
+}
+.zeus-field:has(input:disabled) {
+  opacity: 0.55;
+}
+.zeus-app-shell {
+  --sidebar-width: 260px;
+  min-height: 100dvh;
+  background: var(--color-background-primary-default);
+}
+.zeus-app-shell.rail-mode {
+  --sidebar-width: 60px;
+}
+.zeus-sidebar {
+  position: fixed;
+  z-index: 30;
+  inset: 12px auto 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: var(--sidebar-width);
+  padding: 12px;
+  border-radius: 24px;
+  background: var(--color-background-secondary-default);
+  border: 1px solid var(--color-border-button-white);
+  box-shadow: var(--shadow-sidebar);
+}
+.zeus-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+}
+.zeus-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 10px;
+  color: white;
+  background: var(--color-accent-600);
+}
+.zeus-sidebar-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border-button-default);
+}
+.zeus-nav-list {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin: -4px;
+  padding: 4px;
+}
+.zeus-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px;
+  margin-bottom: 3px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--color-text-secondary);
+  transition:
+    background-color 140ms,
+    color 140ms;
+}
+.zeus-nav-item:hover {
+  background: var(--color-background-secondary-hover);
+  color: var(--color-text-primary);
+}
+.zeus-nav-item.is-active {
+  color: white;
+  background: linear-gradient(var(--color-accent-500), var(--color-accent-600));
+  box-shadow: var(--shadow-nav-selected);
+}
+.zeus-nav-item.is-rail {
+  width: 36px;
+  min-height: 36px;
+  justify-content: center;
+}
+.zeus-nav-section {
+  margin-top: 24px;
+}
+.zeus-nav-label {
+  padding: 0 8px 8px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+.zeus-nav-badge {
+  padding: 0 5px;
+  border-radius: 5px;
+  background: #ffe4e6;
+  color: #be123c;
+  font-size: 11px;
+}
+.zeus-nav-badge.is-dot {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  border-radius: 50%;
+  background: #e11d48;
+}
+.zeus-pending-count {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  font-size: 11px;
+  background: #dbeafe;
+  color: #1e40af;
+}
+.zeus-account {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-button-default);
+  min-width: 0;
+}
+.zeus-main {
+  padding-left: calc(var(--sidebar-width) + 24px);
+  min-width: 0;
+}
+.zeus-page-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 65px;
+  padding: 12px 24px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--color-border-button-default);
+}
+.zeus-skip-link {
+  position: fixed;
+  z-index: 100;
+  left: 90px;
+  top: 12px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: white;
+  transform: translateY(-150%);
+}
+.zeus-skip-link:focus {
+  transform: translateY(0);
+}
+.zeus-mobile-nav {
+  display: flex;
+  min-height: min(560px, 68dvh);
+  flex-direction: column;
+}
+[data-ui-dialog][aria-label='Navigation'] {
+  justify-content: flex-start;
+  padding: 12px;
+}
+[data-ui-dialog][aria-label='Navigation'] > div {
+  width: min(320px, 100%);
+  max-height: calc(100dvh - 24px);
+  border-radius: 24px;
+  background: var(--color-background-secondary-default);
+}
+@media (max-width: 767px) {
+  .zeus-sidebar {
+    display: none;
+  }
+  .zeus-main {
+    padding-left: 0;
+  }
+  .zeus-page-header {
+    min-height: 60px;
+    padding: 8px 12px;
+  }
+  .zeus-nav-item {
+    min-height: 44px;
+  }
+}
+/* Charts share Zeus card and axis tokens; no demo values or clipped losses. */
+.zeus-chart {
+  position: relative;
+  min-width: 0;
+}
+.zeus-chart-empty {
+  display: grid;
+  height: 180px;
+  place-content: center;
+  text-align: center;
+  gap: 6px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+.zeus-chart select {
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: var(--color-background-primary-default);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+/* The public page uses the same surfaces as the application. */
+.landing-root .landing-nav {
+  border-color: var(--color-border-button-default);
+  box-shadow: 0 3px 12px rgb(0 0 0 / 4%);
+}
+.landing-root :is(.landing-primary, .landing-nav-cta, .landing-action-primary) {
+  color: white;
+  box-shadow: var(--shadow-card);
+}
+.landing-root .landing-stage-shell {
+  box-shadow: 0 24px 60px rgb(24 42 66 / 10%);
+  border-color: var(--color-border-button-default);
+  border-radius: 20px;
+}
+.landing-root
+  :is(
+    .landing-table,
+    .landing-invite-visual,
+    .landing-replay-visual,
+    .landing-ledger-visual,
+    .landing-tech-card
+  ) {
+  background: var(--color-background-secondary-default);
+}
+.landing-root .landing-hand-panel {
+  box-shadow: 0 4px 16px rgb(0 0 0 / 4%);
+}
+.landing-root .landing-stage {
+  border-radius: 16px;
+}
+.landing-root :is(.landing-visual, .landing-tech-card) {
+  border-color: var(--color-border-button-default);
+}
+.landing-root .landing-primary {
+  border-radius: 10px;
+}
+.landing-root :is(.landing-section-title, .landing-story-title) {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+.landing-root :is(.landing-story-number, .landing-kicker) {
+  color: var(--color-text-secondary);
+  letter-spacing: 0;
+}
+
+/* Small status labels must stay readable on the light neutral surfaces. */
+html.zeus :is(.text-emerald-500, .text-emerald-600):not(.dark *) {
+  color: var(--color-emerald-700);
+}
+html.zeus :is(.text-rose-500, .text-rose-600):not(.dark *) {
+  color: var(--color-rose-700);
+}
+html.zeus :is(.text-amber-500, .text-amber-600):not(.dark *) {
+  color: var(--color-amber-700);
+}
+html.zeus .text-indigo-500:not(.dark *) {
+  color: var(--color-accent-600);
+}

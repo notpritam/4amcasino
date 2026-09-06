@@ -14,12 +14,11 @@ import {
   Eye,
   Microphone,
   MicrophoneSlash,
-  Moon,
+  GearSix,
   PauseCircle,
   Play,
   Receipt,
   ShareNetwork,
-  Sun,
   Timer,
   Trophy,
   UserPlus,
@@ -189,13 +188,6 @@ export function TablePage({
   }, []);
   const [chatSeenCount, setChatSeenCount] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
-  const prefs = useStore((s) => s.prefs);
-  const setPrefs = useStore((s) => s.setPrefs);
-  const toggleTheme = () => {
-    const theme = prefs.theme === 'dark' ? 'light' : 'dark';
-    setPrefs({ theme });
-    void api.updateProfile({ theme }).catch(() => {});
-  };
   const [peekAmtStr, setPeekAmtStr] = useState('');
   const [peekSent, setPeekSent] = useState<Record<number, boolean>>({});
   const [shareOpen, setShareOpen] = useState(false);
@@ -659,7 +651,7 @@ export function TablePage({
                 : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800',
             )}
           />
-          <span className={dark ? 'text-white/40' : 'text-slate-400'}>
+          <span className={dark ? 'text-white/60' : 'text-slate-400'}>
             chips, paid only if they agree to show you
           </span>
         </div>
@@ -942,7 +934,7 @@ export function TablePage({
               variants={revealItem}
               className="shine-once flex items-center gap-2 rounded-lg py-0.5"
             >
-              <span className="text-[0.6rem] uppercase tracking-wide text-white/40">
+              <span className="text-[0.6rem] uppercase tracking-wide text-white/60">
                 Winning five
               </span>
               <div className="flex gap-1">
@@ -961,7 +953,7 @@ export function TablePage({
           )}
           {!hand.showdown?.runTwice && hand.board.length > 0 && (
             <motion.div variants={revealItem} className="flex items-center gap-1">
-              <span className="text-[0.6rem] uppercase tracking-wide text-white/40">Table</span>
+              <span className="text-[0.6rem] uppercase tracking-wide text-white/60">Table</span>
               {hand.board.map((c) => (
                 <PlayingCard key={c} card={c} size="xs" deal />
               ))}
@@ -1170,20 +1162,18 @@ export function TablePage({
             </select>
           </label>
         );
-      case 'theme':
+      case 'preferences':
         return (
-          <button
-            type="button"
+          <Link
+            to="/settings"
+            target="_blank"
+            rel="noreferrer"
             role="menuitem"
             className={utilityItemClass}
-            onClick={() => {
-              toggleTheme();
-              closeUtilityMenu();
-            }}
+            onClick={closeUtilityMenu}
           >
-            {prefs.theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-            {prefs.theme === 'dark' ? 'Use light appearance' : 'Use dark appearance'}
-          </button>
+            <GearSix size={18} /> Settings <span className="sr-only">(opens in a new tab)</span>
+          </Link>
         );
     }
   };
@@ -1496,7 +1486,7 @@ export function TablePage({
             <div className="truncate font-display text-base font-bold leading-tight">
               {room.room.name}
             </div>
-            <div className="font-display text-[0.65rem] tracking-widest text-white/40">
+            <div className="font-display text-[0.65rem] tracking-widest text-white/60">
               {room.room.joinCode} · {room.room.sb}/{room.room.bb}
             </div>
           </div>
@@ -1605,9 +1595,15 @@ export function TablePage({
                     {meSittingOut ? 'Deal me back in' : 'Sit out next hands'}
                   </Button>
                 )}
-                <Button variant="secondary" className="flex-1" onClick={toggleTheme}>
-                  {prefs.theme === 'dark' ? 'Light mode' : 'Dark mode'}
-                </Button>
+                <Link
+                  to="/settings"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-background-secondary-default p-2 text-sm text-text-primary"
+                >
+                  <GearSix size={16} /> Settings{' '}
+                  <span className="sr-only">(opens in a new tab)</span>
+                </Link>
               </div>
               <div className="flex gap-2">
                 <Button
@@ -1915,9 +1911,7 @@ export function TablePage({
                 {pot > 0 && (
                   <ChipStack amount={pot} bb={room.room.bb} size="lg" className="justify-center" />
                 )}
-                {showResult ? // table: in here it shared a stacking context with the absolutely // The banner itself is rendered as a top overlay, outside the
-                // positioned seat pods, so the headline drew underneath them and
-                // its cards collided with everyone's. Nothing goes in the middle
+                {showResult ? // its cards collided with everyone's. Nothing goes in the middle // positioned seat pods, so the headline drew underneath them and // table: in here it shared a stacking context with the absolutely // The banner itself is rendered as a top overlay, outside the
                 // of the felt at showdown now.
                 null : (
                   <>

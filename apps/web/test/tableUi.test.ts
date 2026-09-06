@@ -23,7 +23,7 @@ describe('table utility menu', () => {
       { id: 'people', actions: ['invite', 'watch', 'video'] },
       { id: 'records', actions: ['standings', 'ledger', 'hands'] },
       { id: 'table', actions: ['sit-out', 'timer'] },
-      { id: 'preferences', actions: ['theme'] },
+      { id: 'preferences', actions: ['preferences'] },
     ]);
   });
 
@@ -38,7 +38,7 @@ describe('table utility menu', () => {
       }),
     ).toEqual([
       { id: 'records', actions: ['standings', 'ledger', 'hands'] },
-      { id: 'preferences', actions: ['theme'] },
+      { id: 'preferences', actions: ['preferences'] },
     ]);
   });
 });

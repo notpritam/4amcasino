@@ -41,7 +41,11 @@ export function ReplayPage() {
         handId: hand.handId,
         head: hand.head,
         ts: hand.ts,
-        players: ps.map((p) => ({ userId: p.userId, username: p.username, displayName: p.displayName })),
+        players: ps.map((p) => ({
+          userId: p.userId,
+          username: p.username,
+          displayName: p.displayName,
+        })),
         entries: hand.entries,
       });
     });
@@ -172,7 +176,7 @@ export function ReplayPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 md:p-6">
-      <header className="flex items-center gap-3">
+      <header className="flex flex-wrap items-center gap-3">
         <Link
           to={`/room/${roomId}/hands`}
           className="text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
@@ -233,11 +237,17 @@ export function ReplayPage() {
           <div className="flex gap-1.5 md:gap-2">
             {[0, 1, 2, 3, 4].map((i) =>
               step.board[i] !== undefined ? (
-                <PlayingCard key={`${i}-${step.board[i]}`} card={step.board[i]} size="md" deal />
+                <PlayingCard
+                  key={`${i}-${step.board[i]}`}
+                  card={step.board[i]}
+                  size="md"
+                  className="h-16 w-11 md:h-24 md:w-[4.2rem]"
+                  deal
+                />
               ) : (
                 <div
                   key={i}
-                  className="h-20 w-14 rounded-lg border-2 border-dashed border-slate-400/40 md:h-24 md:w-[4.2rem] md:rounded-xl dark:border-slate-600/50"
+                  className="h-16 w-11 rounded-lg border-2 border-dashed border-slate-400/40 md:h-24 md:w-[4.2rem] md:rounded-xl dark:border-slate-600/50"
                 />
               ),
             )}
@@ -263,13 +273,23 @@ export function ReplayPage() {
         <Button variant="secondary" onClick={() => setIdx(0)} aria-label="restart">
           <SkipBack size={16} weight="fill" />
         </Button>
-        <Button variant="secondary" onClick={() => setIdx((i) => Math.max(0, i - 1))} aria-label="back">
+        <Button
+          variant="secondary"
+          onClick={() => setIdx((i) => Math.max(0, i - 1))}
+          aria-label="back"
+        >
           <CaretLeft size={16} weight="bold" />
         </Button>
-        <Button onClick={() => (idx >= last ? (setIdx(0), setPlaying(true)) : setPlaying((p) => !p))}>
+        <Button
+          onClick={() => (idx >= last ? (setIdx(0), setPlaying(true)) : setPlaying((p) => !p))}
+        >
           {playing ? 'Pause' : 'Play'}
         </Button>
-        <Button variant="secondary" onClick={() => setIdx((i) => Math.min(last, i + 1))} aria-label="forward">
+        <Button
+          variant="secondary"
+          onClick={() => setIdx((i) => Math.min(last, i + 1))}
+          aria-label="forward"
+        >
           <CaretRight size={16} weight="bold" />
         </Button>
         <input
