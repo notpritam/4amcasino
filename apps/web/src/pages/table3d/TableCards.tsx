@@ -18,7 +18,11 @@ export function TableCards({
   const publicCards = publicCardsBySeat(hand);
   const boardRows = hand.board2.length ? [hand.board, hand.board2] : [hand.board];
   return (
-    <section className="lounge-card-rail" aria-label="Cards on the table">
+    <section
+      id="lounge-card-widget"
+      className="lounge-card-rail lounge-glass"
+      aria-label="Cards on the table"
+    >
       <div className="lounge-card-line">
         <div className="community-cards" aria-label="Community cards">
           <span className="card-rail-label">

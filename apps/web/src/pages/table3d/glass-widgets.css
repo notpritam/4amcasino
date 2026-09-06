@@ -1,0 +1,765 @@
+/* The renderer owns the viewport. HUD groups float above it; gaps stay interactive. */
+html.cyber:has(.table3d-lounge) body::after {
+  display: none;
+}
+.table3d-lounge {
+  --hud-inset: 16px;
+  --hud-top: max(var(--hud-inset), env(safe-area-inset-top));
+  --hud-bottom: max(var(--hud-inset), env(safe-area-inset-bottom));
+  --hud-left: max(var(--hud-inset), env(safe-area-inset-left));
+  --hud-right: max(var(--hud-inset), env(safe-area-inset-right));
+  --hud-world-top: calc(var(--hud-top) + 72px);
+  --hud-panel-top: calc(var(--hud-world-top) + 56px);
+  --lounge-muted: #d2dde0;
+  --hud-glass: rgb(13 24 31 / 64%);
+  --hud-line: rgb(223 238 242 / 20%);
+}
+
+/* Blur the backing, not the containing block: bank dialogs must stay viewport-fixed. */
+.lounge-glass {
+  position: relative;
+  isolation: isolate;
+  background: transparent;
+  border: 0;
+  border-radius: 14px;
+}
+.lounge-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--hud-glass);
+  border: 1px solid var(--hud-line);
+  border-radius: inherit;
+  backdrop-filter: blur(14px) saturate(115%);
+  -webkit-backdrop-filter: blur(14px) saturate(115%);
+}
+.table3d-lounge .lounge-button,
+.table3d-lounge .lounge-icon,
+.lounge-room-tools > div > button {
+  background: transparent;
+  color: var(--lounge-text);
+  border-color: transparent;
+  min-height: 44px;
+  border-radius: 10px;
+}
+.table3d-lounge .lounge-icon {
+  width: 44px;
+}
+.table3d-lounge :is(.lounge-button, .lounge-icon):hover:not(:disabled),
+.lounge-room-tools > div > button:hover {
+  background: rgb(228 239 244 / 12%);
+}
+.table3d-lounge :is(.lounge-button, .lounge-icon)[aria-expanded='true'] {
+  background: rgb(214 204 255 / 18%);
+  color: #f4efff;
+}
+.table3d-lounge .lounge-button.primary {
+  background: #d6cafa;
+  color: #211636;
+}
+.table3d-lounge .lounge-button.primary:hover:not(:disabled) {
+  background: #ede6ff;
+}
+.table3d-lounge .lounge-button:disabled {
+  opacity: 0.52;
+}
+
+.lounge-header {
+  position: absolute;
+  top: var(--hud-top);
+  left: var(--hud-left);
+  right: var(--hud-right);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
+.lounge-header > * {
+  pointer-events: auto;
+}
+.lounge-header:has([role='dialog']) {
+  z-index: 60;
+}
+.lounge-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  max-width: min(42%, 480px);
+  padding: 6px 16px 6px 6px;
+}
+.lounge-title {
+  min-width: 0;
+}
+.lounge-title h1 {
+  font-size: 18px;
+}
+.lounge-title > span {
+  white-space: nowrap;
+}
+.lounge-room-tools {
+  padding: 6px;
+  gap: 2px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.lounge-header .sound-toggle {
+  display: inline-flex;
+}
+.lounge-room-tools [role='menu'] {
+  left: auto;
+  right: 0;
+}
+.table-controls-trigger {
+  margin: 0;
+}
+.lounge-world-tools {
+  position: absolute;
+  left: var(--hud-left);
+  top: var(--hud-world-top);
+  padding: 4px;
+  gap: 0;
+  max-width: calc(100% - var(--hud-left) - var(--hud-right));
+  overflow: visible;
+}
+.table-readout {
+  position: absolute;
+  top: var(--hud-world-top);
+  left: auto;
+  right: var(--hud-right);
+  transform: none;
+  gap: 12px;
+  padding: 12px 16px;
+}
+.table-readout > span {
+  padding-right: 12px;
+  color: var(--lounge-muted);
+  border-color: var(--hud-line);
+}
+.table-readout small {
+  color: var(--lounge-muted);
+}
+.camera-controls {
+  position: absolute;
+  top: var(--hud-panel-top);
+  bottom: auto;
+  left: var(--hud-left);
+  transform: none;
+  padding: 4px;
+  max-width: calc(100% - var(--hud-left) - var(--hud-right));
+  overflow-x: auto;
+  color: var(--lounge-text);
+  z-index: 8;
+}
+.camera-controls button {
+  min-height: 44px;
+  padding: 8px 12px;
+}
+.camera-controls button:hover {
+  background: rgb(228 239 244 / 12%);
+}
+.camera-controls > svg {
+  flex-shrink: 0;
+}
+.orbit-hint {
+  display: none;
+}
+.restore-controls {
+  position: absolute;
+  top: var(--hud-top);
+  right: var(--hud-right);
+  z-index: 20;
+}
+.table3d-lounge.hud-hidden
+  :is(.lounge-header, .lounge-footer, .lounge-world-tools, .table-readout, .camera-controls) {
+  display: none;
+}
+
+/* Two small bottom widgets, never a reserved page track or a full-width scrim. */
+.table3d-lounge .lounge-footer {
+  position: absolute;
+  left: var(--hud-left);
+  right: var(--hud-right);
+  bottom: var(--hud-bottom);
+  display: grid;
+  grid-template-columns: minmax(0, 360px) minmax(0, 540px);
+  justify-content: space-between;
+  align-items: end;
+  align-content: end;
+  gap: 10px 24px;
+  max-height: min(52dvh, 440px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  scrollbar-gutter: auto;
+  pointer-events: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-padding-block: 4px;
+}
+.lounge-footer > * {
+  pointer-events: auto;
+}
+.lounge-toolbar {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  padding: 0;
+  gap: 12px;
+  flex-wrap: nowrap;
+  pointer-events: none;
+}
+.lounge-toolbar > * {
+  pointer-events: auto;
+}
+.turn-status {
+  flex: 0 1 auto;
+  width: fit-content;
+  min-height: 44px;
+  padding: 10px 14px;
+  color: var(--lounge-muted);
+}
+.turn-status.your-turn::before {
+  background: rgb(12 47 39 / 82%);
+  border-color: rgb(110 231 183 / 50%);
+}
+.turn-status.urgent::before {
+  background: rgb(63 24 35 / 88%);
+}
+.lounge-tools {
+  gap: 0;
+  padding: 3px;
+  flex-shrink: 0;
+}
+.lounge-tools small {
+  background: rgb(220 227 238 / 14%);
+}
+.lounge-tools .lounge-button {
+  padding: 0 12px;
+}
+.lounge-tools .lounge-icon {
+  min-height: 44px;
+  width: 44px;
+}
+.play-controls {
+  grid-column: 2;
+  grid-row: 2;
+  display: block;
+  align-self: end;
+  min-width: 0;
+}
+.lounge-card-rail {
+  grid-column: 1;
+  grid-row: 2;
+  margin: 0;
+  padding: 12px;
+  width: fit-content;
+  max-width: 100%;
+  border: 0;
+  align-self: end;
+}
+.lounge-card-line {
+  gap: 12px 16px;
+  flex-wrap: wrap;
+}
+.card-rail-label {
+  color: var(--lounge-muted);
+  font-size: 10px;
+  margin-bottom: 6px;
+}
+.community-run {
+  gap: 4px;
+}
+.community-slot {
+  background: rgb(223 232 241 / 7%);
+  border-color: rgb(224 234 239 / 25%);
+}
+.community-run > [aria-label]:not(.run-label),
+.lounge-card-rail .private-cards > * {
+  width: 34px !important;
+  height: 48px !important;
+  font-size: 11px;
+}
+.lounge-public-cards {
+  max-width: 100%;
+  margin-top: 10px;
+}
+.lounge-public-cards .text-sm {
+  font-size: 11px;
+}
+.hand-result-trigger {
+  margin-left: 0;
+}
+.lounge-footer :is(.lounge-last-hand, .lounge-peek) {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.lounge-last-hand:empty {
+  display: none;
+}
+.lounge-peek {
+  background: rgb(13 24 31 / 88%);
+  border-color: var(--hud-line);
+}
+.reaction-feedback {
+  position: fixed;
+  top: calc(var(--hud-world-top) + 66px);
+  bottom: auto;
+  max-width: calc(100% - 32px);
+  background: rgb(13 24 31 / 90%);
+  z-index: 35;
+}
+
+/* Semantic hooks keep 2D betting behavior and its guarded button slots intact. */
+.table3d-lounge .poker-actions > .poker-action-overlay {
+  padding: 12px;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--lounge-text);
+  border-radius: 14px;
+}
+.poker-action-overlay::before {
+  background: rgb(13 24 31 / 74%);
+}
+.is-my-turn .poker-action-overlay::before {
+  background: rgb(28 29 46 / 82%);
+  border-color: rgb(214 202 250 / 48%);
+}
+.poker-action-overlay .poker-action-summary {
+  gap: 10px 16px;
+}
+.poker-action-overlay .poker-your-bet {
+  min-width: 36px;
+}
+.poker-action-overlay :is(.poker-your-bet, .poker-your-balance) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.poker-action-overlay .poker-your-balance {
+  order: 2;
+}
+.poker-action-overlay .poker-action-message {
+  order: 1;
+  color: var(--lounge-muted);
+  font-size: 12px;
+}
+.table3d-lounge .poker-action-overlay:has(.poker-action-buttons) .poker-action-message {
+  display: none !important;
+}
+.poker-action-overlay .poker-action-summary > button,
+.poker-action-overlay .poker-ready-check {
+  order: 1;
+}
+.poker-action-overlay .poker-ready-check {
+  font-size: 12px;
+  gap: 6px;
+}
+.poker-action-overlay .poker-ready-check > span {
+  font-size: 11px;
+  color: var(--lounge-muted);
+}
+.poker-action-overlay .font-display.text-2xl {
+  font-size: 19px;
+  line-height: 1.15;
+}
+.poker-action-overlay :is(.poker-your-bet, .poker-your-balance) > svg {
+  display: inline;
+  width: 12px;
+  height: 12px;
+  margin-bottom: 3px;
+}
+.poker-action-overlay .poker-action-buttons {
+  order: 3;
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.poker-action-overlay .poker-action-buttons > button {
+  flex: 1;
+  white-space: nowrap;
+}
+.poker-action-overlay .poker-action-buttons > span {
+  flex-basis: 100%;
+}
+.poker-action-overlay button {
+  min-height: 44px;
+  font-size: 12px;
+}
+.table3d-lounge .poker-action-overlay :is(.poker-start-button, .poker-raise-button:not(:disabled)) {
+  background: #e1d6f6 !important;
+  color: #30203d !important;
+}
+.table3d-lounge .poker-actions .poker-action-overlay .poker-call-button {
+  background: #a7f3d0;
+  color: #12372a;
+}
+.table3d-lounge .poker-action-overlay .poker-call-button:hover:not(:disabled) {
+  background: #c7f9e3;
+}
+.poker-action-overlay .poker-raise-sizing {
+  margin-top: 10px;
+  gap: 6px;
+}
+.poker-action-overlay .poker-raise-sizing > .flex-wrap {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.poker-action-overlay .poker-raise-sizing > .flex-wrap > button {
+  min-height: 36px;
+  flex-shrink: 0;
+  padding: 5px 10px;
+}
+.poker-action-overlay .poker-raise-sizing input {
+  appearance: none;
+  min-height: 28px;
+  height: 28px;
+  background: transparent !important;
+  accent-color: #e1d6f6;
+}
+.poker-action-overlay .poker-raise-sizing input::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 4px;
+  background: rgb(228 239 244 / 30%);
+}
+.poker-action-overlay .poker-raise-sizing input::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border: 0;
+  border-radius: 50%;
+  background: #e1d6f6;
+}
+.poker-action-overlay .poker-raise-sizing input::-moz-range-track {
+  height: 4px;
+  border-radius: 4px;
+  background: rgb(228 239 244 / 30%);
+}
+.poker-action-overlay .poker-raise-sizing input::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: #e1d6f6;
+}
+.table3d-lounge.is-my-turn .poker-actions > div > .flex > .flex-1 {
+  display: block;
+}
+
+/* Disclosures occupy a bounded side of the scene and scroll without moving the world. */
+.lounge-panel {
+  background: rgb(16 28 36 / 87%);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--hud-line);
+  box-shadow: 0 14px 40px rgb(0 0 0 / 18%);
+}
+.lounge-explore-panel {
+  top: var(--hud-panel-top);
+  left: var(--hud-left);
+  max-height: calc(100dvh - var(--hud-panel-top) - var(--hud-bottom));
+}
+.lounge-tv-panel,
+.wardrobe {
+  position: absolute;
+  top: var(--hud-world-top);
+  right: var(--hud-right);
+  left: auto;
+  bottom: var(--hud-bottom);
+  max-height: calc(100dvh - var(--hud-world-top) - var(--hud-bottom));
+  z-index: 25;
+}
+.lounge-tv-panel {
+  bottom: auto;
+}
+.players-panel,
+.help-panel,
+.reactions-panel {
+  top: var(--hud-world-top);
+  bottom: auto;
+  right: var(--hud-right);
+  left: auto;
+  max-height: calc(100dvh - var(--hud-world-top) - var(--hud-bottom));
+  z-index: 25;
+}
+.wardrobe-footer {
+  background: rgb(13 24 31 / 60%);
+  border-color: var(--hud-line);
+}
+.lounge-game-prompt {
+  top: var(--hud-panel-top);
+  right: var(--hud-right);
+  max-height: calc(100dvh - var(--hud-panel-top) - var(--hud-bottom));
+  z-index: 26;
+}
+.lounge-game-prompt fieldset > div {
+  background: rgb(16 28 36 / 94%);
+  color: var(--lounge-text);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .lounge-glass::before {
+    background: rgb(13 24 31 / 94%);
+  }
+  .lounge-panel {
+    background: #101c24;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .lounge-glass::before,
+  .lounge-panel {
+    background: #101c24;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+@media (max-width: 1100px) {
+  .lounge-identity {
+    max-width: 45%;
+  }
+  .character-trigger span {
+    display: none;
+  }
+  .table3d-lounge .character-trigger {
+    width: 44px;
+    padding: 0;
+  }
+  .table3d-lounge .lounge-footer {
+    column-gap: 12px;
+    grid-template-columns: minmax(0, 330px) minmax(0, 500px);
+  }
+  .lounge-header .back-to-table span {
+    display: none;
+  }
+  .lounge-header .back-to-table {
+    width: 44px;
+    padding: 0;
+  }
+}
+@media (max-width: 700px) {
+  .table3d-lounge {
+    --hud-inset: 10px;
+    --hud-world-top: calc(var(--hud-top) + 110px);
+  }
+  .lounge-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .lounge-identity {
+    width: 100%;
+    max-width: none;
+    gap: 8px;
+    padding: 2px 10px 2px 2px;
+  }
+  .lounge-title h1 {
+    font-size: 15px;
+  }
+  .lounge-title > span {
+    font-size: 10px;
+    margin-top: 1px;
+  }
+  .lounge-room-tools {
+    width: 100%;
+    padding: 2px;
+    justify-content: space-between;
+  }
+  .lounge-room-tools > div:first-child {
+    margin-right: 0;
+  }
+  .lounge-room-tools [role='menu'] {
+    left: 0;
+    right: auto;
+  }
+  .lounge-room-tools > div > button {
+    font-size: 12px;
+    padding-inline: 10px;
+    gap: 5px;
+  }
+  .lounge-room-tools .table-controls-trigger span,
+  .lounge-header .sound-toggle {
+    display: none;
+  }
+  .table3d-lounge .table-controls-trigger {
+    width: 44px;
+    padding: 0;
+  }
+  .lounge-world-tools {
+    padding: 2px;
+    width: fit-content;
+  }
+  .lounge-world-tools .lounge-button {
+    padding-inline: 10px;
+    font-size: 11px;
+    gap: 6px;
+  }
+  .camera-trigger > span {
+    display: none;
+  }
+  .table-readout {
+    top: calc(var(--hud-world-top) + 56px);
+    padding: 8px 12px;
+    gap: 8px;
+  }
+  .table-readout > span {
+    font-size: 10px;
+    padding-right: 8px;
+  }
+  .table-readout strong {
+    font-size: 16px;
+  }
+  .table-readout small {
+    font-size: 10px;
+  }
+  .camera-controls {
+    flex-wrap: wrap;
+    width: 290px;
+  }
+  .camera-controls > svg {
+    display: none;
+  }
+  .camera-controls button {
+    flex: 1 0 28%;
+  }
+  .table3d-lounge .lounge-footer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    max-height: 48dvh;
+    align-content: start;
+  }
+  .lounge-toolbar {
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+  .turn-status {
+    flex: 1;
+    min-height: 48px;
+    padding: 8px 10px;
+    gap: 6px;
+    font-size: 10px;
+  }
+  .lounge-tools {
+    padding: 2px;
+  }
+  .lounge-tools :is(.lounge-button, .lounge-icon) {
+    width: 44px;
+    min-height: 44px;
+    padding: 0;
+  }
+  .lounge-tools .lounge-button > span,
+  .lounge-tools small {
+    display: none;
+  }
+  .play-controls {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .lounge-card-rail {
+    grid-column: 1;
+    grid-row: 3;
+    width: 100%;
+    padding: 10px 12px;
+  }
+  .lounge-card-line {
+    flex-wrap: wrap;
+    gap: 8px 16px;
+  }
+  .lounge-card-rail .private-hand {
+    flex-direction: column;
+    gap: 0;
+  }
+  .poker-action-overlay .poker-action-summary {
+    gap: 8px 12px;
+  }
+  .poker-action-overlay .poker-your-bet {
+    min-width: 28px;
+  }
+  .table3d-lounge .poker-actions > .poker-action-overlay {
+    padding: 10px;
+  }
+  .poker-action-overlay .poker-action-buttons {
+    gap: 5px;
+  }
+  .poker-action-overlay .poker-action-buttons > button {
+    padding-inline: 8px;
+    font-size: 11px;
+  }
+  .poker-action-overlay .poker-raise-sizing > .flex-wrap > button {
+    min-height: 36px;
+  }
+  .lounge-panel {
+    max-width: calc(100% - var(--hud-left) - var(--hud-right));
+  }
+  .lounge-explore-panel {
+    width: 360px;
+    padding: 16px;
+  }
+  .lounge-tv-panel,
+  .wardrobe,
+  .players-panel,
+  .help-panel,
+  .reactions-panel {
+    width: 380px;
+  }
+  .lounge-game-prompt {
+    width: calc(100% - var(--hud-left) - var(--hud-right));
+  }
+}
+@media (max-height: 540px) and (min-width: 701px) {
+  .table3d-lounge {
+    --hud-inset: 8px;
+    --hud-world-top: calc(var(--hud-top) + 60px);
+  }
+  .lounge-header {
+    gap: 8px;
+  }
+  .lounge-identity {
+    padding: 2px 10px 2px 2px;
+    gap: 4px;
+  }
+  .lounge-room-tools {
+    padding: 2px;
+  }
+  .lounge-header .sound-toggle {
+    display: none;
+  }
+  .table3d-lounge .lounge-footer {
+    max-height: 52dvh;
+    grid-template-columns: minmax(0, 300px) minmax(0, 440px);
+    gap: 6px 10px;
+  }
+  .lounge-tools .lounge-button > span,
+  .lounge-tools small {
+    display: none;
+  }
+  .lounge-tools .lounge-button {
+    width: 44px;
+    padding: 0;
+  }
+  .poker-action-overlay .poker-your-bet,
+  .poker-action-overlay .poker-your-balance {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .poker-action-overlay .poker-your-balance > .text-xs {
+    display: none;
+  }
+  .poker-action-overlay .poker-action-message {
+    display: none !important;
+  }
+  .table3d-lounge .poker-actions > .poker-action-overlay {
+    padding: 8px;
+  }
+}

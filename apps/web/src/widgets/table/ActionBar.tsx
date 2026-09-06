@@ -14,11 +14,13 @@ export function ActionBar({
   isHost,
   urgent,
   hideIdleStart = false,
+  presentation = 'standard',
 }: {
   mySeat: number | null;
   isHost: boolean;
   urgent: boolean;
   hideIdleStart?: boolean;
+  presentation?: 'standard' | 'overlay';
 }) {
   const hand = useStore((s) => s.hand);
   const room = useStore((s) => s.room);
@@ -131,7 +133,7 @@ export function ActionBar({
     const armedCall = !myTurn && (hand.preAction === 'call' || hand.preAction === 'check');
     const lock = settling || (myTurn && pending);
     return (
-      <div className="flex items-center gap-2">
+      <div className="poker-action-buttons flex items-center gap-2">
         {myTurn && pending && (
           <span className="flex items-center gap-1.5 text-xs text-indigo-100">
             <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -173,7 +175,11 @@ export function ActionBar({
         <Button
           variant="success"
           disabled={lock}
-          className={cn(!myTurn && 'opacity-90', armedCall && 'ring-2 ring-indigo-500')}
+          className={cn(
+            'poker-call-button',
+            !myTurn && 'opacity-90',
+            armedCall && 'ring-2 ring-indigo-500',
+          )}
           title={myTurn ? undefined : 'Arms now, acts on your turn'}
           onClick={() =>
             myTurn
@@ -187,8 +193,10 @@ export function ActionBar({
           variant="secondary"
           disabled={lock || !myTurn || !la?.canRaise}
           className={cn(
+            'poker-raise-button',
             myTurn &&
               la?.canRaise &&
+              presentation !== 'overlay' &&
               'border-0 bg-white! text-indigo-700! hover:bg-indigo-50! dark:bg-white! dark:text-indigo-700! dark:hover:bg-indigo-50!',
           )}
           title={myTurn ? undefined : 'Raising unlocks on your turn'}
@@ -214,15 +222,16 @@ export function ActionBar({
   return (
     <div
       className={cn(
-        'rounded-2xl p-4',
+        'poker-action-bar rounded-2xl p-4',
+        presentation === 'overlay' && 'poker-action-overlay lounge-glass',
         myTurn
           ? 'bg-indigo-600 text-white shadow-[0_18px_50px_rgba(79,70,229,0.2)]'
           : 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700/70',
         myTurn && urgent && 'animate-urgent',
       )}
     >
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-        <div className="min-w-16" title="Your bet this street">
+      <div className="poker-action-summary flex flex-wrap items-center gap-x-6 gap-y-3">
+        <div className="poker-your-bet min-w-16" title="Your bet this street">
           <Coins
             size={15}
             className={myTurn ? 'text-indigo-200' : 'text-slate-400'}
@@ -234,7 +243,7 @@ export function ActionBar({
         </div>
 
         {rc ? (
-          <div className="flex flex-1 flex-wrap items-center gap-3">
+          <div className="poker-ready-check flex flex-1 flex-wrap items-center gap-3">
             {amEligible && !amReady ? (
               <Button variant="success" className="animate-pulse" onClick={imReady}>
                 <HandWaving size={16} weight="fill" className="mr-1.5 inline" />
@@ -246,12 +255,16 @@ export function ActionBar({
               </span>
             )}
             <span className="text-sm text-slate-500">
-              {rc.ready.length}/{rc.eligible.length} ready · deals in {readySecs}s, without the
-              rest
+              {rc.ready.length}/{rc.eligible.length} ready · deals in {readySecs}s, without the rest
             </span>
           </div>
         ) : (
-          <div className={cn('flex-1 text-sm', myTurn ? 'text-indigo-100' : 'text-slate-500')}>
+          <div
+            className={cn(
+              'poker-action-message flex-1 text-sm',
+              myTurn ? 'text-indigo-100' : 'text-slate-500',
+            )}
+          >
             {myTurn
               ? 'Your turn.'
               : handIdle
@@ -295,14 +308,21 @@ export function ActionBar({
         {handIdle && isHost && !hideIdleStart && (
           <Button
             variant="secondary"
-            className="border-0 bg-white! text-indigo-700! dark:bg-white! dark:text-indigo-700!"
+            className={cn(
+              'poker-start-button',
+              presentation !== 'overlay' &&
+                'border-0 bg-white! text-indigo-700! dark:bg-white! dark:text-indigo-700!',
+            )}
             onClick={startHand}
           >
             Start hand
           </Button>
         )}
 
-        <div className="ml-auto text-right" title={`Your balance. Bought ${fmt(bought)} total.`}>
+        <div
+          className="poker-your-balance ml-auto text-right"
+          title={`Your balance. Bought ${fmt(bought)} total.`}
+        >
           <Wallet
             size={15}
             className={cn('ml-auto', myTurn ? 'text-indigo-200' : 'text-slate-400')}
@@ -337,7 +357,7 @@ export function ActionBar({
 
       {/* bet sizing on its own row BELOW the buttons, so the trio never moves */}
       {myTurn && la?.canRaise && (
-        <div className="mt-3 flex flex-col gap-2">
+        <div className="poker-raise-sizing mt-3 flex flex-col gap-2">
           <div className="flex flex-wrap gap-1.5">
             {quicks.map((q) => (
               <button

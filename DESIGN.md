@@ -63,6 +63,20 @@ Honor reduced motion and pause hidden playback.
 Card and chip places belong to the felt, independently of the wider seating
 layout. Both runouts, public opponent cards, and the viewer's private cards must
 remain clear of the rail and chip stacks from all nine seats. The large-card
-viewer and shared 2D controls remain available. The world viewport keeps a fixed
-height across turns; the dock scrolls internally. Put betting actions before the
-card rail on phones and bring the dock to its top when the player's turn begins.
+viewer and shared 2D controls remain available.
+
+The 3D world fills the entire dynamic viewport. Header, navigation, cards, and
+actions float as compact translucent glass widgets; no page track or opaque
+full-width band reserves space for UI. Empty space between widgets passes input
+to the canvas. Use the glass backing on a pseudo-element where a widget contains
+fixed dialogs, so blur cannot trap those dialogs inside its bounds. Readability
+comes from pale text, a restrained translucent dark backing, and a stronger
+fallback for reduced transparency or unsupported backdrop filtering.
+
+Camera presets and the card widget collapse independently. Hide empty idle card
+placeholders. A clear-view control hides the HUD and leaves a keyboard-accessible
+restore button; Escape also restores it. Poker turns, unanswered ready checks,
+run-it-twice prompts, and private-card offers restore required controls. The
+canvas and camera never resize when these controls change. On phones, actions
+precede the card widget and the bounded overlay scrolls internally; account and
+table dialogs keep the full viewport available for focus and scrolling.

@@ -5,13 +5,9 @@
   --lounge-text: #f4efff;
   --lounge-muted: #bcb0d0;
   --lounge-accent: #c4b5fd;
-  --lounge-dock-height: min(360px, 46dvh);
   position: relative;
   isolation: isolate;
-  display: grid;
-  /* Reserve the dock independently of turn controls, reveals, and offers.
-     Content scrolls inside it instead of resizing the world and its camera. */
-  grid-template-rows: auto minmax(0, 1fr) var(--lounge-dock-height);
+  display: block;
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
@@ -141,7 +137,8 @@
   background: #f0e8ff;
 }
 .lounge-stage {
-  position: relative;
+  position: absolute;
+  inset: 0;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
