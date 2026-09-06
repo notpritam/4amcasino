@@ -83,6 +83,30 @@
 .lounge-header:has([role='dialog']) {
   z-index: 60;
 }
+
+/* A result is a scrollable recap, not a scrim over the next hand's controls. */
+.lounge-result-overlay {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  bottom: calc(var(--lounge-dock-clearance, 180px) + 12px);
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  pointer-events: none;
+}
+.lounge-result-content {
+  width: 100%;
+  max-width: 48rem;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 16px;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 25%);
+  pointer-events: auto;
+}
 .lounge-identity {
   display: flex;
   align-items: center;
@@ -502,6 +526,28 @@
 .lounge-game-prompt fieldset > div {
   background: rgb(16 28 36 / 94%);
   color: var(--lounge-text);
+}
+
+/* A side widget must leave the same action clearance as the hand recap. */
+.table3d-lounge .lounge-panel {
+  --lounge-panel-top: var(--hud-world-top);
+  top: var(--lounge-panel-top);
+  bottom: auto;
+  max-height: max(
+    0px,
+    calc(100dvh - var(--lounge-panel-top) - var(--lounge-dock-clearance, 180px) - 12px)
+  );
+  overflow-y: auto;
+}
+.table3d-lounge .lounge-explore-panel {
+  --lounge-panel-top: var(--hud-panel-top);
+}
+/* Scroll the complete studio when a short viewport cannot fit its preview and form. */
+.table3d-lounge .wardrobe {
+  display: block;
+}
+.table3d-lounge .wardrobe-scroll {
+  overflow: visible;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {

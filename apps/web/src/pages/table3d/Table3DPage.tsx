@@ -66,7 +66,7 @@ import {
   dealPose,
   orientChair,
 } from './layout.ts';
-import { buildLounge } from './scenery.ts';
+import { buildLounge, createLoungeCutaway } from './scenery.ts';
 import { capturePose, blendPose } from './pose.ts';
 import {
   CharacterMotions,
@@ -80,6 +80,7 @@ import { LoungeTV } from './LoungeTV.tsx';
 import { LoungeLocomotion, type TravelPose } from './locomotion.ts';
 import { posture, walkPose } from './rigPose.ts';
 import { isWalkKey, walkDirection, LoungeMoveQueue } from './navigation.ts';
+import { CAMERA_VIEWS, cameraPresetFor, isSeatCamera, type CameraView } from './camera.ts';
 import './table3d.css';
 import './glass-widgets.css';
 
@@ -260,7 +261,9 @@ function Table3DView({ table }: { table: TablePresentation }) {
   const targetMenuRef = useRef(setTargetMenu);
   targetMenuRef.current = setTargetMenu;
   const [panel, setPanel] = useState<'players' | 'help' | null>(null);
-  const [cameraView, setCameraView] = useState('Table');
+  const [cameraView, setCameraView] = useState<CameraView>('Table');
+  const cameraViewRef = useRef(cameraView);
+  cameraViewRef.current = cameraView;
   const [soundOn, setSoundOn] = useState(soundsEnabled);
   const [sceneError, setSceneError] = useState('');
   const [kickArmed, setKickArmed] = useState<number | null>(null);
@@ -294,6 +297,41 @@ function Table3DView({ table }: { table: TablePresentation }) {
 
   const me = activeRoom?.players.find((p) => p.userId === auth.userId);
   const mySeat = me?.seat ?? null;
+  const selectCameraView = (view: CameraView) => {
+    setCameraView(view);
+    const preset = cameraPresetFor(view, mySeat);
+    flyRef.current?.(preset.pos, preset.look);
+  };
+  useEffect(() => {
+    if (!isSeatCamera(cameraViewRef.current)) return;
+    const preset = cameraPresetFor(cameraViewRef.current, mySeat);
+    flyRef.current?.(preset.pos, preset.look);
+  }, [mySeat]);
+
+  // Result panels share the viewport with the HUD. Measure only when it resizes,
+  // so long recaps cannot cover Deal, Ready, or the betting controls.
+  useEffect(() => {
+    const dock = dockRef.current;
+    const root = dock?.closest<HTMLElement>('.table3d-experience');
+    if (!dock || !root) return;
+    const measure = () => {
+      const bounds = dock.getBoundingClientRect();
+      // During rotation, innerHeight can change before the old dock rect moves.
+      // Its height plus the anchored bottom gap stays valid in either orientation.
+      const gap = Number.parseFloat(getComputedStyle(dock).bottom) || 0;
+      const clearance = bounds.height ? bounds.height + gap : 0;
+      root.style.setProperty('--lounge-dock-clearance', `${Math.ceil(clearance)}px`);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(dock);
+    window.addEventListener('resize', measure);
+    measure();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+      root.style.removeProperty('--lounge-dock-clearance');
+    };
+  }, []);
   const isHost = room?.room.hostId === auth.userId;
   const handActive = !!hand.handId && !hand.result && !hand.abort;
   const myTurn = mySeat !== null && handActive && hand.betting?.toAct === mySeat;
@@ -314,9 +352,9 @@ function Table3DView({ table }: { table: TablePresentation }) {
     if (myTurn) dockRef.current?.scrollTo({ top: 0, behavior: 'instant' });
   }, [myTurn]);
   useEffect(() => {
-    if (!needsResponse) return;
+    if (!needsResponse && !hand.result && !hand.abort) return;
     setControlsHidden(false);
-    // Side widgets may cover betting on a phone. A new decision clears them,
+    // A decision or new result brings attention back to the poker controls,
     // while leaving the renderer, camera, and any current walk untouched.
     setTVOpen(false);
     setCustomizeOpen(false);
@@ -328,7 +366,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
     if (myTurn) setCardsOpen(true);
     else if (hand.peekOffers.length > 0)
       peekRef.current?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
-  }, [needsResponse, myTurn, hand.peekOffers.length]);
+  }, [needsResponse, myTurn, hand.peekOffers.length, hand.result, hand.abort]);
   const restoreControls = () => {
     setControlsHidden(false);
     requestAnimationFrame(() => hideControlsButton.current?.focus());
@@ -387,8 +425,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
       setChooseSeat(true);
       setExploreOpen(false);
     } else wsClient.send({ t: 'lounge_return' });
-    setCameraView('Table');
-    flyRef.current?.([0, 6.5, 10.8], [0, 0.7, 0]);
+    selectCameraView('Table');
   };
   const worldActionsRef = useRef({
     walk: requestWalk,
@@ -604,10 +641,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
     // Camera keys never intercept sliders or text controls. Drag/touch uses OrbitControls.
 
     // smooth fly-to for the camera preset buttons
-    let cameraPreset: { pos: [number, number, number]; look: [number, number, number] } = {
-      pos: [0, 6.5, 10.8],
-      look: [0, 0.7, 0],
-    };
+    let cameraPreset = cameraPresetFor(cameraViewRef.current, mySeat);
     let flyPos: THREE.Vector3 | null = null;
     let flyLook: THREE.Vector3 | null = null;
     const fly = (pos: [number, number, number], look: [number, number, number]) => {
@@ -632,6 +666,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
 
     const lounge = buildLounge();
     scene.add(lounge);
+    const updateCutaway = createLoungeCutaway(lounge);
     const destinationRing = new THREE.Mesh(
       new THREE.RingGeometry(0.32, 0.37, 40),
       new THREE.MeshBasicMaterial({ color: 0xe8d5a9, transparent: true, opacity: 0.9 }),
@@ -1624,6 +1659,8 @@ function Table3DView({ table }: { table: TablePresentation }) {
       if (motionWasActive || previousReducedMotion !== motion.matches)
         renderer.shadowMap.needsUpdate = true;
       const cameraChanged = controls.update();
+      if ((cameraChanged || renderRequested) && updateCutaway(camera.position, controls.target))
+        renderer.shadowMap.needsUpdate = true;
       const overhead = camera.position.clone().sub(controls.target).normalize().y > 0.9;
       dynamic.traverse((object) => {
         if (object.userData.followActor !== undefined) {
@@ -2050,22 +2087,12 @@ function Table3DView({ table }: { table: TablePresentation }) {
             aria-label="Camera view"
           >
             <Camera size={16} />
-            {(
-              [
-                ['Table', [0, 6.5, 10.8], [0, 0.7, 0]],
-                ['Overhead', [0, 15, 0.01], [0, 1, 0]],
-                ['Side', [12, 5, 3], [0, 1, 0]],
-                ['Close', [0, 3.6, 7.4], [0, 1, 0]],
-                ['Lounge', [11, 10, 17], [0, 1, 0]],
-                ['TV', [0, 3.4, -2.5], [0, 2.9, -8.3]],
-              ] as [string, [number, number, number], [number, number, number]][]
-            ).map(([label, position, look]) => (
+            {CAMERA_VIEWS.map((label) => (
               <button
                 key={label}
                 aria-pressed={cameraView === label}
                 onClick={() => {
-                  setCameraView(label);
-                  flyRef.current?.(position, look);
+                  selectCameraView(label);
                   setCameraOpen(false);
                   requestAnimationFrame(() => cameraButton.current?.focus());
                 }}

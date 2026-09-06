@@ -1,6 +1,35 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
+/** Cut away perimeter architecture only when the camera looks through it into the room. */
+export function createLoungeCutaway(room: THREE.Group) {
+  room.updateMatrixWorld(true);
+  const walls = room.children.flatMap((object) => {
+    if (object.userData.walkFloor || object instanceof THREE.Light) return [];
+    const bounds = new THREE.Box3().setFromObject(object);
+    if (bounds.isEmpty()) return [];
+    const north = bounds.max.z < -8;
+    const east = bounds.min.x > 11;
+    const west = bounds.max.x < -11;
+    return north || east || west ? [{ object, north, east, west }] : [];
+  });
+  return (camera: THREE.Vector3, target: THREE.Vector3) => {
+    let changed = false;
+    for (const { object, north, east, west } of walls) {
+      const visible = !(
+        (north && camera.z < -8 && target.z > -8) ||
+        (east && camera.x > 11 && target.x < 11) ||
+        (west && camera.x < -11 && target.x > -11)
+      );
+      if (object.visible !== visible) {
+        object.visible = visible;
+        changed = true;
+      }
+    }
+    return changed;
+  };
+}
+
 /** An open-roof lounge. All tall furnishings are outside the playing area. */
 export function buildLounge() {
   const room = new THREE.Group();

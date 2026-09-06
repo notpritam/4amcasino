@@ -315,7 +315,7 @@ export function ActionBar({
             )}
             onClick={startHand}
           >
-            Start hand
+            {presentation === 'overlay' ? 'Deal hand' : 'Start hand'}
           </Button>
         )}
 

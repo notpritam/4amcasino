@@ -1434,10 +1434,8 @@ export function TablePage({
           </fieldset>
         </Dialog>
         {showResult && (
-          <div className="pointer-events-none fixed inset-x-0 top-3 z-50 flex justify-center px-3">
-            <div className="pointer-events-auto max-h-[86dvh] w-full max-w-3xl overflow-y-auto rounded-2xl shadow-2xl">
-              {resultBanner}
-            </div>
+          <div className="lounge-result-overlay" role="region" aria-label="Hand result">
+            <div className="lounge-result-content">{resultBanner}</div>
           </div>
         )}
         {bigCards && hand.myCards.length > 0 && !notInHand && (
