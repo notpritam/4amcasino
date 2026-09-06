@@ -89,6 +89,11 @@ long content from pushing the viewport wider. The lobby is checked down to 320
 pixels. The 3D world always occupies the dynamic viewport; its floating controls
 never reserve a page track or resize the canvas.
 
+Public pages inherit the same Zeus controls and typography. Landing-page
+composition, example-media rules, and responsive behavior live in its
+[surface brief](apps/web/.impeccable/surfaces/apps-web-src-pages-landing-landingpage-tsx.md)
+rather than changing the account interface's density or navigation.
+
 ## Elevation & Depth
 
 Use Zeus tonal surfaces with restrained shadows on navigation and raised

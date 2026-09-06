@@ -1,0 +1,98 @@
+[
+  {
+    "name": "Layout 1440",
+    "data": {
+      "width": 1440,
+      "scroll": 1440,
+      "overflow": [],
+      "font": "Inter, sans-serif"
+    }
+  },
+  {
+    "name": "Accessibility 1440",
+    "data": []
+  },
+  {
+    "name": "Layout 390",
+    "data": {
+      "width": 390,
+      "scroll": 390,
+      "overflow": [],
+      "font": "Inter, sans-serif"
+    }
+  },
+  {
+    "name": "Accessibility 390",
+    "data": []
+  },
+  {
+    "name": "Layout 768",
+    "data": {
+      "width": 768,
+      "scroll": 768,
+      "overflow": [],
+      "font": "Inter, sans-serif"
+    }
+  },
+  {
+    "name": "Accessibility 768",
+    "data": []
+  },
+  {
+    "name": "Layout 320",
+    "data": {
+      "width": 320,
+      "scroll": 320,
+      "overflow": [],
+      "font": "Inter, sans-serif"
+    }
+  },
+  {
+    "name": "Accessibility 320",
+    "data": []
+  },
+  {
+    "name": "Keyboard skip link",
+    "data": true
+  },
+  {
+    "name": "Gallery keyboard, selection and stable image size",
+    "data": true
+  },
+  {
+    "name": "Example hand flop, turn, river and reset",
+    "data": true
+  },
+  {
+    "name": "Every FAQ opens and closes with keyboard",
+    "data": true
+  },
+  {
+    "name": "Join error accessibility",
+    "data": []
+  },
+  {
+    "name": "Invalid/empty validation and lowercase invite auth handoff",
+    "data": true
+  },
+  {
+    "name": "Logged-out start destination",
+    "data": true
+  },
+  {
+    "name": "Authenticated start opens lobby",
+    "data": true
+  },
+  {
+    "name": "Header anchors and fair-play destination",
+    "data": true
+  },
+  {
+    "name": "Mobile join errors, camera view and complete hand",
+    "data": true
+  },
+  {
+    "name": "Runtime errors",
+    "data": []
+  }
+]

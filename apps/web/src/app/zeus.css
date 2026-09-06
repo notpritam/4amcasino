@@ -263,51 +263,6 @@
   color: var(--color-text-secondary);
   font-size: 12px;
 }
-/* The public page uses the same surfaces as the application. */
-.landing-root .landing-nav {
-  border-color: var(--color-border-button-default);
-  box-shadow: 0 3px 12px rgb(0 0 0 / 4%);
-}
-.landing-root :is(.landing-primary, .landing-nav-cta, .landing-action-primary) {
-  color: white;
-  box-shadow: var(--shadow-card);
-}
-.landing-root .landing-stage-shell {
-  box-shadow: 0 24px 60px rgb(24 42 66 / 10%);
-  border-color: var(--color-border-button-default);
-  border-radius: 20px;
-}
-.landing-root
-  :is(
-    .landing-table,
-    .landing-invite-visual,
-    .landing-replay-visual,
-    .landing-ledger-visual,
-    .landing-tech-card
-  ) {
-  background: var(--color-background-secondary-default);
-}
-.landing-root .landing-hand-panel {
-  box-shadow: 0 4px 16px rgb(0 0 0 / 4%);
-}
-.landing-root .landing-stage {
-  border-radius: 16px;
-}
-.landing-root :is(.landing-visual, .landing-tech-card) {
-  border-color: var(--color-border-button-default);
-}
-.landing-root .landing-primary {
-  border-radius: 10px;
-}
-.landing-root :is(.landing-section-title, .landing-story-title) {
-  color: var(--color-text-primary);
-  font-weight: 600;
-}
-.landing-root :is(.landing-story-number, .landing-kicker) {
-  color: var(--color-text-secondary);
-  letter-spacing: 0;
-}
-
 /* Small status labels must stay readable on the light neutral surfaces. */
 html.zeus :is(.text-emerald-500, .text-emerald-600):not(.dark *) {
   color: var(--color-emerald-700);
