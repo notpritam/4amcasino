@@ -1,3 +1,4 @@
+import { NEW_ROOM_COMMISSION_BPS, commissionRateLabel } from '@4am/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../shared/api.ts';
@@ -185,8 +186,9 @@ export function SettlePage() {
           <div>
             <h2 className="font-display text-base font-semibold">The house</h2>
             <p className="mt-0.5 max-w-md text-xs leading-relaxed text-slate-500">
-              Every pot pays 1% to keep the servers running. This is your share of it — the rake came
-              off pots you won, so it is what you actually contributed.
+              Your share of the platform commission deducted from pots you won. New rooms charge{' '}
+              {commissionRateLabel(NEW_ROOM_COMMISSION_BPS)}; earlier rooms keep their original
+              rate. This total reflects the actual deductions.
             </p>
           </div>
           <div className="text-right">

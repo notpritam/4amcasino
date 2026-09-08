@@ -19,6 +19,8 @@ import {
   signContent,
 } from '@4am/mental-poker';
 import type { CardId, PlayerAction, ServerMsg } from '@4am/shared';
+import { createUser } from '../src/auth.js';
+import { setPlatformUserId } from '../src/platform.js';
 
 type Strategy = 'passive' | 'fold-first' | 'allin-first';
 
@@ -56,6 +58,7 @@ class TestClient {
   handEnd: Extract<ServerMsg, { t: 'hand_end' }> | null = null;
   handAbort: Extract<ServerMsg, { t: 'hand_abort' }> | null = null;
   lastRespondedActionSeq = -1;
+  roomState: Extract<ServerMsg, { t: 'room_state' }> | null = null;
   lookup = cardLookup();
 
   constructor(baseUrl: string, username: string, strategy: Strategy = 'passive') {
@@ -146,6 +149,9 @@ class TestClient {
 
   handle(msg: ServerMsg): void {
     switch (msg.t) {
+      case 'room_state':
+        this.roomState = msg;
+        break;
       case 'hand_start': {
         const mine = msg.seats.find((s) => s.userId === this.userId);
         if (!mine) break;
@@ -617,11 +623,11 @@ describe('full hand integration', () => {
       ...players.flatMap((p) => p.myCards),
     ];
     expect(new Set(all).size).toBe(all.length);
-    // both halves settle: the 2,000 pot pays its 1% commission to the banker,
+    // both halves settle: the 2,000 pot pays its 0.1% commission to the banker,
     // the rest returns through the awards - every chip still accounted for
     const deltas = players[0]!.handEnd!.deltas;
-    expect(players[0]!.handEnd!.commission).toBe(20);
-    expect(deltas.reduce((s, x) => s + x.delta, 0)).toBe(-20);
+    expect(players[0]!.handEnd!.commission).toBe(2);
+    expect(deltas.reduce((s, x) => s + x.delta, 0)).toBe(-2);
     const state = await host.api(`/api/rooms/${room.id}`);
     expect(state.players.reduce((t: number, p: { stack: number }) => t + p.stack, 0)).toBe(2000);
     const hand = await host.api(`/api/rooms/${room.id}/hands/${players[0]!.handEnd!.handId}`);
@@ -642,22 +648,58 @@ describe('full hand integration', () => {
     expect(players[0]!.board2).toHaveLength(0);
   }, 20000);
 
-  it('every pot pays its 1% commission to the banker, on the ledger', async () => {
+  it('new rooms pay 0.1% to the platform, conserving chips on the ledger', async () => {
     const { players, room, host } = await setupRoom(['coma', 'comb'], ['allin-first', 'passive']);
+    expect(room.commissionBps).toBe(10);
+    expect(host.roomState?.room.commissionBps).toBe(10);
+    const { userId: platformId } = createUser(ctx.db, 'platform', 'a'.repeat(64), 'b'.repeat(64));
+    setPlatformUserId(ctx.db, platformId);
     host.send({ t: 'start_hand' });
     await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null, 15000)));
     expect(players[0]!.handAbort).toBeNull();
-    // 2,000 in the middle -> 20 raked, credited to the banker (the host)
-    expect(players[0]!.handEnd!.commission).toBe(20);
+    // 2,000 in the middle -> 2 raked, credited to the platform.
+    expect(players[0]!.handEnd!.commission).toBe(2);
     const ledger = await host.api(`/api/rooms/${room.id}/ledger`);
     const commission = ledger.entries.filter((e: { kind: string }) => e.kind === 'commission');
     expect(commission).toHaveLength(1);
-    expect(commission[0].userId).toBe(host.userId);
-    expect(commission[0].delta).toBe(20);
+    expect(commission[0].userId).toBe(platformId);
+    expect(commission[0].delta).toBe(2);
+    expect(commission[0].note).toContain('0.1%');
     expect(ledger.verified.ok).toBe(true);
     // room total unchanged: the rake moved, it did not vanish
     const state = await host.api(`/api/rooms/${room.id}`);
-    expect(state.players.reduce((t: number, p: { stack: number }) => t + p.stack, 0)).toBe(2000);
+    expect(state.players.reduce((t: number, p: { stack: number }) => t + p.stack, 0)).toBe(1998);
+    expect(ctx.db.prepare('SELECT SUM(stack) AS total FROM room_players WHERE room_id = ?').get(room.id))
+      .toEqual({ total: 2000 });
+    const transcript = await host.api(`/api/rooms/${room.id}/hands/${players[0]!.handEnd!.handId}`);
+    expect(transcript.entries.find((e: { type: string }) => e.type === 'hand_start').payload.commissionBps).toBe(10);
+  }, 20000);
+
+  it('legacy rooms still settle at 1%', async () => {
+    const { players, room, host } = await setupRoom(['oldcoma', 'oldcomb'], ['allin-first', 'passive']);
+    ctx.db.prepare('UPDATE rooms SET commission_bps = 100 WHERE id = ?').run(room.id);
+    host.send({ t: 'start_hand' });
+    await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null, 15000)));
+    expect(players[0]!.handAbort).toBeNull();
+    expect(players[0]!.handEnd!.commission).toBe(20);
+    const state = await host.api(`/api/rooms/${room.id}`);
+    expect(state.commissionBps).toBe(100);
+    const ledger = await host.api(`/api/rooms/${room.id}/ledger`);
+    expect(ledger.entries.find((e: { kind: string }) => e.kind === 'commission')).toMatchObject({ delta: 20, note: '1% table commission - keeps the lights on' });
+    expect(ledger.verified.ok).toBe(true);
+  }, 20000);
+
+  it('small pots won by folding incur no fractional or minimum commission', async () => {
+    const { players, room, host } = await setupRoom(['foldcoma', 'foldcomb'], ['fold-first', 'passive']);
+    host.send({ t: 'start_hand' });
+    await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null, 15000)));
+    expect(players[0]!.handAbort).toBeNull();
+    expect(players[0]!.handEnd!.commission).toBe(0);
+    const ledger = await host.api(`/api/rooms/${room.id}/ledger`);
+    expect(ledger.entries.filter((e: { kind: string }) => e.kind === 'commission')).toEqual([]);
+    expect(ledger.verified.ok).toBe(true);
+    expect(ctx.db.prepare('SELECT SUM(stack) AS total FROM room_players WHERE room_id = ?').get(room.id))
+      .toEqual({ total: 2000 });
   }, 20000);
 
   it('a leaver during the shuffle aborts fast and the redeal skips them', async () => {

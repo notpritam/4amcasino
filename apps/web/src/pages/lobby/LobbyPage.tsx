@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { NEW_ROOM_COMMISSION_BPS, commissionRateLabel } from '@4am/shared';
 import { api } from '../../shared/api.ts';
 import { useStore } from '../../shared/store.ts';
 import { Badge, Button, Dialog, Input, Panel } from '../../shared/ui/index.tsx';
@@ -368,6 +369,10 @@ export function LobbyPage() {
             </span>
           </label>
           {error && <p className="text-sm text-rose-600">{error}</p>}
+          <p className="text-xs leading-relaxed text-slate-500">
+            Platform commission: {commissionRateLabel(NEW_ROOM_COMMISSION_BPS)} per pot, rounded
+            down to whole chips.
+          </p>
           <Button type="submit" className="w-full">
             Create
           </Button>

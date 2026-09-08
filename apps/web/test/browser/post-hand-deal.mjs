@@ -34,6 +34,7 @@ const room = {
     meetLink: null,
     autoApproveBuys: false,
     tvReplays: false,
+    commissionBps: Number(process.env.COMMISSION_BPS || 10),
   },
   players: names.map((name, i) => ({
     userId: i + 2,
@@ -169,6 +170,7 @@ try {
               t: 'hand_end',
               handId: baseHand.handId,
               head: 'qa',
+              commission: 2,
               stacks: s.room.players.map((p) => ({ seat: p.seat, stack: 2000 })),
               deltas: s.room.players.map((p) => ({
                 seat: p.seat,
@@ -207,6 +209,12 @@ try {
             ? await page.locator('.lounge-canvas canvas').boundingBox()
             : null;
         await fixture(kind);
+        if (kind !== 'abort') {
+          const rate = `${room.room.commissionBps / 100}%`;
+          const label = page.getByText(new RegExp(`${rate} (table )?commission`));
+          const visibleLabels = await Promise.all((await label.all()).map((item) => item.isVisible()));
+          assert.equal(visibleLabels.filter(Boolean).length, 1, `${mode}: result shows the room's ${rate} rate`);
+        }
         const visible = async (locator) => {
           const list = [];
           for (const item of await locator.all()) if (await item.isVisible()) list.push(item);

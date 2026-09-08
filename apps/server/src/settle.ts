@@ -15,7 +15,7 @@ import { rateLimit } from './limits.js';
  *     not need to move twice - Ann can pay Bob directly and two debts close at
  *     once. Only debts YOU are part of are ever used to build a suggestion, so
  *     this never reveals a position you could not already see.
- *  3. House dues: your share of the 1% table commission, which is what keeps the
+ *  3. House dues: your share of the table commission, which is what keeps the
  *     servers running. Derived from the ledger rather than stored, so it can
  *     never drift from what actually happened at the table. */
 
@@ -95,7 +95,7 @@ export function registerSettleRoutes(
     'SELECT COALESCE(display_name, username) as name, avatar_version as avatarVersion FROM users WHERE id = ?',
   );
 
-  /** Your share of the 1% commission.
+  /** Your share of the commission.
    *
    *  The rake comes off the pot before it is awarded, so the players who won
    *  those pots are the ones who actually paid it. We attribute each hand's

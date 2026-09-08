@@ -30,6 +30,7 @@ export interface RoomRow {
   allow_spectators: number;
   auto_approve_buys: number;
   tv_replays: number;
+  commission_bps: number;
   created_at: number;
 }
 
@@ -150,6 +151,7 @@ function roomJson(db: DB, room: RoomRow) {
     allowSpectators: !!room.allow_spectators,
     autoApproveBuys: !!room.auto_approve_buys,
     tvReplays: !!room.tv_replays,
+    commissionBps: room.commission_bps,
     players: presentablePlayers(db, room.id).map((p) => ({
       ...p,
       privateMode: undefined,

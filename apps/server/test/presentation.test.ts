@@ -169,7 +169,7 @@ describe('room rosters hide the platform account', () => {
       })
     ).json() as { id: string };
 
-    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1' });
+    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1', commissionBps: 100 });
 
     const res = await ctx.app.inject({
       method: 'GET',
@@ -203,7 +203,7 @@ describe('presentablePlayers (shared helper backing both REST and the live broad
       })
     ).json() as { id: string };
 
-    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1' });
+    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1', commissionBps: 100 });
 
     const raw = roomPlayers(ctx.db, room.id);
     expect(raw.map((p) => p.userId)).toContain(house.userId);
@@ -238,7 +238,7 @@ describe('playerCount and session roster exclude the platform (final-review fix)
     });
 
     // platform holds rake for this room, same as a live table would after a hand
-    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1' });
+    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1', commissionBps: 100 });
 
     // the platform's room_players row (its rake stack) must survive untouched -
     // only the presentation layer should hide it

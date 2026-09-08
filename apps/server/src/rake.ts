@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { commissionRateLabel } from '@4am/shared';
 import { copyFileSync } from 'node:fs';
 import type { DB } from './db.js';
 import { appendLedger, rechainRoom, verifyLedger } from './ledger.js';
@@ -28,7 +29,7 @@ export function backupDatabaseConsistent(dbPath: string, backupPath: string): vo
  *  the recipient is a room member first so the stack has somewhere to land. */
 export function settleRake(
   db: DB,
-  args: { roomId: string; recipientId: number; rake: number; ref: string },
+  args: { roomId: string; recipientId: number; rake: number; ref: string; commissionBps: number },
 ): void {
   if (args.rake <= 0) return;
   db.prepare('INSERT OR IGNORE INTO room_players (room_id, user_id) VALUES (?, ?)').run(
@@ -46,7 +47,7 @@ export function settleRake(
     delta: args.rake,
     kind: 'commission',
     ref: args.ref,
-    note: '1% table commission - keeps the lights on',
+    note: `${commissionRateLabel(args.commissionBps)} table commission - keeps the lights on`,
   });
 }
 

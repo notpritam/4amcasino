@@ -118,7 +118,7 @@ describe('exclude archived/deleted rooms from money and listings (Task 2)', () =
       kind: 'hand-settlement',
       ref: 'h1',
     });
-    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1' });
+    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1', commissionBps: 100 });
     expect(verifyLedger(ctx.db, room.id).ok).toBe(true);
 
     async function settleOtherIds(token: string) {
@@ -500,7 +500,7 @@ describe('platform admin approves room lifecycle (Task 4)', () => {
       kind: 'hand-settlement',
       ref: 'h1',
     });
-    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1' });
+    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1', commissionBps: 100 });
     expect(verifyLedger(ctx.db, room.id).ok).toBe(true);
 
     async function settleOtherIds(token: string) {

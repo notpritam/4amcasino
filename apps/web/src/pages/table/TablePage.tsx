@@ -27,7 +27,14 @@ import {
 } from '@phosphor-icons/react';
 import NumberFlow from '@number-flow/react';
 import confetti from 'canvas-confetti';
-import { HAND_CATEGORY_NAMES, bestFive, describeScore, evaluate7, handCategory } from '@4am/shared';
+import {
+  HAND_CATEGORY_NAMES,
+  bestFive,
+  describeScore,
+  evaluate7,
+  handCategory,
+  commissionRateLabel,
+} from '@4am/shared';
 import {
   answerPeek,
   bindGameClient,
@@ -820,7 +827,8 @@ export function TablePage({
               </motion.span>
               {(hand.result?.commission ?? 0) > 0 && (
                 <motion.span variants={revealItem} className="text-xs text-slate-500">
-                  1% table commission · {fmt(hand.result!.commission!)} to the house
+                  {commissionRateLabel(room?.room.commissionBps)} table commission ·{' '}
+                  {fmt(hand.result!.commission!)} to the house
                 </motion.span>
               )}
               {!hand.showdown &&
@@ -976,7 +984,8 @@ export function TablePage({
             </span>
             {(hand.result?.commission ?? 0) > 0 && (
               <span className="text-[0.65rem] text-white/50">
-                1% commission · {fmt(hand.result!.commission!)} to the house
+                {commissionRateLabel(room?.room.commissionBps)} commission ·{' '}
+                {fmt(hand.result!.commission!)} to the house
               </span>
             )}
             {!hand.showdown &&

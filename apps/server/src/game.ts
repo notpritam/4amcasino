@@ -21,6 +21,7 @@ import {
   applyAction,
   awardPots,
   computePots,
+  commissionForPot,
   evaluate7,
   nextStreet,
   startHand,
@@ -399,6 +400,7 @@ export class GameRoom {
         minSettleHands: room.min_settle_hands,
         autoApproveBuys: !!room.auto_approve_buys,
         tvReplays: !!room.tv_replays,
+        commissionBps: room.commission_bps,
         sevenDeuceBonus: room.seven_deuce_bonus,
         voided: !!room.voided,
         meetLink: room.meet_link,
@@ -874,6 +876,7 @@ class Hand {
   private goneTimer: NodeJS.Timeout | null = null;
   private timer: NodeJS.Timeout | null = null;
   private lookup = cardLookup();
+  private readonly commissionBps: number;
   private settlement: {
     awards: Map<number, number>;
     deltas: { seat: number; delta: number }[];
@@ -897,6 +900,7 @@ class Hand {
   ) {
     this.n = seats.length;
     this.retriesLeft = opts.cryptoRetries ?? 3;
+    this.commissionBps = getRoom(db, roomId)!.commission_bps;
   }
 
   // ---------- lifecycle ----------
@@ -908,6 +912,7 @@ class Hand {
       buttonSeat: this.buttonSeat,
       sb: this.sb,
       bb: this.bb,
+      commissionBps: this.commissionBps,
     });
     this.startMsg = {
       t: 'hand_start',
@@ -1768,14 +1773,11 @@ class Hand {
     const st = this.betting!;
     const board = this.currentBoard();
     const pots = computePots(st.seats);
-    // the house always gets its cut: a mandatory 1% commission comes off every
-    // pot before any award, floored per pot, and lands with the platform
-    // account at finalize (falling back to the banker only if the platform
-    // account is unseeded) - the donation that keeps the table running
-    // (requested by notpritam, docs/FEATURES.md)
+    // Deduct the room's commission before awards, floored per pot. Snapshot
+    // the rate at deal time and record the same rate in the transcript and ledger.
     let rake = 0;
     for (const p of pots) {
-      const cut = Math.floor(p.amount / 100);
+      const cut = commissionForPot(p.amount, this.commissionBps);
       p.amount -= cut;
       rake += cut;
     }
@@ -1938,7 +1940,7 @@ class Hand {
       // balances. Falls back to the banker when the platform isn't seeded yet.
       if (rake > 0 && room) {
         const recipientId = platformUserId(this.db) ?? room.banker_id;
-        settleRake(this.db, { roomId: this.roomId, recipientId, rake, ref: head });
+        settleRake(this.db, { roomId: this.roomId, recipientId, rake, ref: head, commissionBps: this.commissionBps });
       }
       this.db
         .prepare('INSERT INTO transcripts (hand_id, room_id, head, entries, ts) VALUES (?, ?, ?, ?, ?)')

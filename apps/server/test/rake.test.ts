@@ -23,7 +23,7 @@ describe('settleRake', () => {
     const { userId: platformId } = createUser(db, 'house', 'c'.repeat(64), 'd'.repeat(64));
     seedRoom(db, 'room01', hostId);
 
-    settleRake(db, { roomId: 'room01', recipientId: platformId, rake: 50, ref: 'h1' });
+    settleRake(db, { roomId: 'room01', recipientId: platformId, rake: 50, ref: 'h1', commissionBps: 100 });
 
     const row = db
       .prepare('SELECT stack FROM room_players WHERE room_id = ? AND user_id = ?')
@@ -45,7 +45,7 @@ describe('settleRake', () => {
     const { userId: platformId } = createUser(db, 'house', 'c'.repeat(64), 'd'.repeat(64));
     seedRoom(db, 'room01', hostId);
 
-    settleRake(db, { roomId: 'room01', recipientId: platformId, rake: 0, ref: 'h1' });
+    settleRake(db, { roomId: 'room01', recipientId: platformId, rake: 0, ref: 'h1', commissionBps: 100 });
 
     const row = db
       .prepare('SELECT stack FROM room_players WHERE room_id = ? AND user_id = ?')
@@ -68,7 +68,7 @@ describe('settleRake', () => {
     );
 
     expect(() =>
-      settleRake(db, { roomId: 'room01', recipientId: platformId, rake: 25, ref: 'h1' }),
+      settleRake(db, { roomId: 'room01', recipientId: platformId, rake: 25, ref: 'h1', commissionBps: 100 }),
     ).not.toThrow();
 
     const row = db
@@ -139,7 +139,7 @@ describe('platform excluded from peer settle-up', () => {
       .run(-250, room.id, bob.userId);
     appendLedger(ctx.db, { roomId: room.id, userId: alice.userId, delta: 200, kind: 'hand-settlement', ref: 'h1' });
     appendLedger(ctx.db, { roomId: room.id, userId: bob.userId, delta: -250, kind: 'hand-settlement', ref: 'h1' });
-    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1' });
+    settleRake(ctx.db, { roomId: room.id, recipientId: house.userId, rake: 50, ref: 'h1', commissionBps: 100 });
     expect(verifyLedger(ctx.db, room.id).ok).toBe(true);
 
     const res = await ctx.app.inject({
@@ -173,7 +173,7 @@ describe('rewriteRakeToPlatform', () => {
       1000,
     );
     appendLedger(db, { roomId: 'room01', userId: hostId, delta: 1000, kind: 'purchase', ref: 'buy1' });
-    settleRake(db, { roomId: 'room01', recipientId: hostId, rake: 50, ref: 'h1' });
+    settleRake(db, { roomId: 'room01', recipientId: hostId, rake: 50, ref: 'h1', commissionBps: 100 });
     expect(verifyLedger(db, 'room01').ok).toBe(true);
 
     const report = rewriteRakeToPlatform(db, platformId);
@@ -209,7 +209,7 @@ describe('rewriteRakeToPlatform', () => {
     const { userId: platformId } = createUser(db, 'house', 'c'.repeat(64), 'd'.repeat(64));
     seedRoom(db, 'room01', hostId);
 
-    settleRake(db, { roomId: 'room01', recipientId: hostId, rake: 50, ref: 'h1' });
+    settleRake(db, { roomId: 'room01', recipientId: hostId, rake: 50, ref: 'h1', commissionBps: 100 });
     // the banker has since spent chips elsewhere; stack is now below the 50 reclaim
     db.prepare('UPDATE room_players SET stack = ? WHERE room_id = ? AND user_id = ?').run(30, 'room01', hostId);
     expect(verifyLedger(db, 'room01').ok).toBe(true);
@@ -244,7 +244,7 @@ describe('rewriteRakeToPlatform', () => {
       hostId,
       1000,
     );
-    settleRake(db, { roomId: 'room01', recipientId: hostId, rake: 50, ref: 'h1' });
+    settleRake(db, { roomId: 'room01', recipientId: hostId, rake: 50, ref: 'h1', commissionBps: 100 });
 
     const first = rewriteRakeToPlatform(db, platformId);
     expect(first.roomsRewritten).toEqual(['room01']);

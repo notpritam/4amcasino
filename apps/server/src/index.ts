@@ -22,7 +22,7 @@ async function main(): Promise<void> {
     lastBackup: persist?.lastBackupTs() ?? null,
   }));
 
-  // Seed (or adopt) the platform/house account on boot so the mandatory 1% rake
+  // Seed (or adopt) the platform/house account on boot so the room commission
   // routes to it instead of falling back to the room banker - a plain deploy is
   // enough, no manual seed script needed. Idempotent: adopts the existing account
   // by username when it already exists (the prod case), creates it otherwise.
