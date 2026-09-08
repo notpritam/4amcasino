@@ -21,6 +21,7 @@ import { useStore } from '../../shared/store.ts';
 import { cn } from '../../shared/lib/cn.ts';
 import { Avatar } from '../../entities/user/Avatar.tsx';
 import { Dialog, Input } from '../../shared/ui/index.tsx';
+import { AppearanceToggle } from '../../shared/ui/AppearanceToggle.tsx';
 
 interface RoomRow {
   id: string;
@@ -200,6 +201,7 @@ export function AppShell({ children, newTab = false }: { children: ReactNode; ne
           </Link>
         )}
         <nav aria-label="Account navigation">{secondary.map((item) => row(item, rail))}</nav>
+        <AppearanceToggle compact={rail} />
         <div className="zeus-account">
           <Link
             to={'/players/' + auth.userId}

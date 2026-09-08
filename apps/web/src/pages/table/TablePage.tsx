@@ -1909,9 +1909,8 @@ export function TablePage({
                 {pot > 0 && (
                   <ChipStack amount={pot} bb={room.room.bb} size="lg" className="justify-center" />
                 )}
-                {showResult ? // its cards collided with everyone's. Nothing goes in the middle // positioned seat pods, so the headline drew underneath them and // table: in here it shared a stacking context with the absolutely // The banner itself is rendered as a top overlay, outside the
-                // of the felt at showdown now.
-                null : (
+                {/* Results sit above the table so they clear the positioned seat pods. */}
+                {showResult ? null : (
                   <>
                     {runTwice}
                     <div className="flex flex-col items-center gap-2">
@@ -1936,6 +1935,7 @@ export function TablePage({
                             <div
                               key={index}
                               className="h-36 w-24 rounded-2xl border-2 border-dashed border-slate-300/80 dark:border-slate-700"
+                              role="img"
                               aria-label={`Empty community card ${index + 1}`}
                             />
                           ),

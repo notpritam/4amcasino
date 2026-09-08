@@ -13,9 +13,6 @@ body {
   @apply bg-background-primary-default text-text-primary font-sans antialiased;
   overflow-x: clip;
 }
-.dark body {
-  @apply bg-slate-950 text-slate-100;
-}
 
 .table-app-bg {
   background: var(--color-background-primary-default);

@@ -12,6 +12,7 @@ import { useStore } from '../../shared/store.ts';
 import { Button, Input, Panel, Spinner } from '../../shared/ui/index.tsx';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
 import { cardFromName } from '@4am/shared';
+import { AppearanceToggle } from '../../shared/ui/AppearanceToggle.tsx';
 
 type Mode = 'login' | 'register' | 'recover';
 
@@ -98,7 +99,10 @@ export function LoginPage() {
     mode === 'login' ? 'Log in' : mode === 'register' ? 'Create account' : 'Reset my password';
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <div className="relative flex min-h-screen items-center justify-center px-4 py-20">
+      <div className="absolute right-4 top-4">
+        <AppearanceToggle compact />
+      </div>
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-end justify-center gap-1.5">
           {['As', 'Kh'].map((n, i) => (
@@ -136,7 +140,9 @@ export function LoginPage() {
                   setError(null);
                 }}
                 className={`rounded-md py-1.5 text-sm font-medium capitalize transition-colors ${
-                  mode === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+                  mode === m
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                    : 'text-slate-500'
                 }`}
               >
                 {m === 'login' ? 'Log in' : 'Register'}
@@ -199,7 +205,7 @@ export function LoginPage() {
               />
             )}
             {error && (
-              <p role="alert" className="text-sm text-rose-600">
+              <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
                 {error}
               </p>
             )}

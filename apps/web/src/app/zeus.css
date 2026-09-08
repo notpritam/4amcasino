@@ -35,6 +35,33 @@
   --font-inter: 'Inter';
   --color-text-tertiary: #707070;
 }
+html.zeus.dark {
+  color-scheme: dark;
+  --color-text-secondary: #b8b8b8;
+  --color-text-tertiary: #a3a3a3;
+  --color-foreground-icon-secondary: #b8b8b8;
+  --color-foreground-icon-tertiary: #a3a3a3;
+}
+/* Older account screens use slate utilities for secondary copy. Keep surfaces
+   and playing-card ink unchanged; explicit component dark variants still win. */
+@layer utilities {
+  :where(html.zeus.dark) :is(.text-slate-400, .text-slate-500) {
+    color: var(--color-text-secondary);
+  }
+}
+.appearance-toggle {
+  min-height: 44px;
+}
+button.appearance-toggle {
+  min-width: 44px;
+  flex-shrink: 0;
+}
+.rail-mode .zeus-sidebar > div .appearance-toggle {
+  margin-left: -5px;
+}
+html.dark :where(nav, [role='dialog']) {
+  scrollbar-color: #737373 transparent;
+}
 ::selection {
   background: #dbeafe;
   color: #153e75;
@@ -206,7 +233,7 @@
   top: 12px;
   padding: 10px 16px;
   border-radius: 10px;
-  background: white;
+  background: var(--color-background-primary-default);
   transform: translateY(-150%);
 }
 .zeus-skip-link:focus {

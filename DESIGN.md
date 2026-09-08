@@ -47,13 +47,13 @@ components:
 **Creative North Star: "Zeus around the table"**
 
 Use the official Zeus UI design system selected by the user at myzeusui.com:
-white canvas, neutral panels, Inter typography, blue actions, and a floating icon
+light or dark canvas, neutral panels, Inter typography, blue actions, and a floating icon
 sidebar. Poker remains the content. The immersive 3D lounge uses the same action
 language in transparent widgets over its night scene.
 
 **Key Characteristics:**
 
-- One account appearance, with no light, dark, or cyber selector.
+- Zeus light and dark appearances, selected with the official theme control and saved on the device.
 - Compact navigation that expands to show names and real tables.
 - Actual account data, honest empty states, readable gains and losses.
 - A full viewport for the 3D world, independent of the control state.
@@ -64,11 +64,11 @@ The normative palette comes from `@zeus/tokens` 0.2.3. `zeus.css` bridges existi
 slate and indigo utility names to the neutral and blue palette. Primary colors in
 the frontmatter retain the source OKLCH values. Emerald means positive results,
 rose means losses or a fold, and amber means committed chips or blind positions.
-Small text on neutral panels uses the darker muted tone for contrast.
+Small text on neutral panels uses a darker muted tone in light mode and a lighter muted tone in dark mode.
 
-Night colors are scoped to the 3D environment and its glass controls. They are
-part of that scene, not a second user-selectable application theme. Card-back
-colorways and four-color suits remain player preferences.
+The 3D environment retains its night scene and glass controls in either application appearance.
+Card faces stay white for recognition; card-back colorways and four-color suits remain player preferences.
+The device preference is applied before the app renders and is independent of server profile preferences.
 
 ## Typography
 
@@ -204,6 +204,6 @@ in charge of occupied arrival spots.
 - Do preserve native forms and all existing poker actions during visual changes.
 - Do show real account data and readable negative chart values.
 - Do keep the world canvas stable when controls appear, collapse, or hide.
-- Don't restore old theme selectors or global cyber overrides.
+- Keep appearance choices limited to Zeus light and dark; do not restore cyber overrides.
 - Don't let UI typing steer the character.
 - Don't put scenery or HUD labels across the overhead card area.

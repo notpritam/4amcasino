@@ -2,7 +2,8 @@ import { api } from './api.ts';
 import { useStore } from './store.ts';
 
 export function applyAppearance(): void {
-  document.documentElement.classList.remove('dark', 'cyber');
+  // Appearance is a device preference; a profile refresh must not reset it.
+  document.documentElement.classList.remove('cyber');
   document.documentElement.classList.add('zeus');
 }
 

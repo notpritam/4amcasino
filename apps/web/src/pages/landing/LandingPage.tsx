@@ -17,6 +17,7 @@ import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
 import { useStore } from '../../shared/store.ts';
 import { Button, Input } from '../../shared/ui/index.tsx';
 import './landing.css';
+import { AppearanceToggle } from '../../shared/ui/AppearanceToggle.tsx';
 
 const community = ['2h', '5s', '8d', 'Jd', '3c'].map(cardFromName);
 const hole = ['Jc', 'Jh'].map(cardFromName);
@@ -264,14 +265,17 @@ export function LandingPage() {
           <a href="#how-it-works">How it works</a>
           <a href="#questions">Questions</a>
         </nav>
-        <ButtonLink
-          href={destination}
-          variant="secondary"
-          className="home-login"
-          trailingIcon={RiArrowRightUpLine}
-        >
-          {signedIn ? 'Your lobby' : 'Log in'}
-        </ButtonLink>
+        <div className="home-header-actions">
+          <AppearanceToggle compact />
+          <ButtonLink
+            href={destination}
+            variant="secondary"
+            className="home-login"
+            trailingIcon={RiArrowRightUpLine}
+          >
+            {signedIn ? 'Your lobby' : 'Log in'}
+          </ButtonLink>
+        </div>
       </header>
       <main id="main" tabIndex={-1}>
         <section className="home-hero home-wrap" aria-labelledby="home-title">

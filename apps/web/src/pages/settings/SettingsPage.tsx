@@ -4,6 +4,7 @@ import {
   RiShieldKeyholeLine,
   RiLinksLine,
   RiLogoutBoxLine,
+  RiSunLine,
 } from '@remixicon/react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -15,6 +16,7 @@ import { cn } from '../../shared/lib/cn.ts';
 import { ProfileEditor } from '../../features/profile/ProfileDialog.tsx';
 import { AccountSecurity } from '../../features/account/AccountSecurity.tsx';
 import { SettingsCard } from '../../features/settings/SettingsCard.tsx';
+import { AppearanceToggle } from '../../shared/ui/AppearanceToggle.tsx';
 
 /** Profile and preferences as a real page: linkable, refreshable, back-button
  *  friendly - and laid out as titled sections with a rail instead of one long
@@ -23,6 +25,7 @@ import { SettingsCard } from '../../features/settings/SettingsCard.tsx';
 const SECTIONS = [
   { id: 'profile', label: 'Profile', icon: RiUser3Line },
   { id: 'table', label: 'Table & play', icon: RiPokerClubsLine },
+  { id: 'appearance', label: 'Appearance', icon: RiSunLine },
   { id: 'account', label: 'Account & security', icon: RiShieldKeyholeLine },
   { id: 'merge', label: 'Merge accounts', icon: RiLinksLine },
   { id: 'session', label: 'Session', icon: RiLogoutBoxLine },
@@ -214,6 +217,15 @@ export function SettingsPage() {
 
         <div className="min-w-0 flex-1 space-y-6">
           <ProfileEditor sectioned />
+
+          <SettingsCard
+            id="appearance"
+            title="Appearance"
+            icon={<RiSunLine className="size-4" aria-hidden />}
+            desc="Choose light or dark. Your preference is saved on this device."
+          >
+            <AppearanceToggle />
+          </SettingsCard>
 
           <SettingsCard
             id="account"

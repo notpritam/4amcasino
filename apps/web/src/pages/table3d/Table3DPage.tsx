@@ -50,6 +50,7 @@ import {
 import { BankControls } from '../../widgets/table/BankControls.tsx';
 import { LastHandStrip } from '../../widgets/table/LastHandStrip.tsx';
 import { Dialog } from '../../shared/ui/index.tsx';
+import { AppearanceToggle } from '../../shared/ui/AppearanceToggle.tsx';
 import { TablePage, type TablePresentation } from '../table/TablePage.tsx';
 import { TableCards } from './TableCards.tsx';
 import { publicCardsBySeat } from './publicTableCards.ts';
@@ -2298,6 +2299,7 @@ function Table3DView({ table }: { table: TablePresentation }) {
       </main>
 
       <Dialog open={table.menuOpen} onClose={() => table.setMenuOpen(false)} title="Table controls">
+        <AppearanceToggle />
         <div className="lounge-shared-controls">{table.utilities}</div>
         <div className="lounge-extra-controls">
           {table.fullscreenControl}

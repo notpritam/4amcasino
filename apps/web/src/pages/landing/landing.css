@@ -1,6 +1,8 @@
 .home-page {
   --home-ink: var(--color-text-primary);
   --home-muted: var(--color-text-secondary);
+  --home-tint: #f0f4fc;
+  --home-slot: rgb(255 255 255 / 35%);
   color: var(--home-ink);
   background: var(--color-background-primary-default);
   font-family:
@@ -59,7 +61,7 @@
   left: 16px;
   z-index: 100;
   padding: 12px 18px;
-  background: white;
+  background: var(--color-background-primary-default);
   border: 1px solid;
   transform: translateY(-160%);
 }
@@ -72,7 +74,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  border-bottom: 1px solid #ebebeb;
+  border-bottom: 1px solid var(--color-border-button-default);
 }
 .home-brand {
   display: inline-flex;
@@ -267,7 +269,7 @@
   justify-content: center;
   gap: 48px;
   padding: 28px 0 34px;
-  border-bottom: 1px solid #ebebeb;
+  border-bottom: 1px solid var(--color-border-button-default);
   color: var(--home-muted);
   font-size: 13px;
 }
@@ -296,7 +298,7 @@
   gap: 28px;
 }
 .home-steps li {
-  border-bottom: 1px solid #ebebeb;
+  border-bottom: 1px solid var(--color-border-button-default);
   padding-bottom: 24px;
 }
 .home-steps li:last-child {
@@ -341,9 +343,9 @@
 }
 .home-hand {
   min-width: 0;
-  border: 1px solid #e1e5ed;
+  border: 1px solid var(--color-border-button-default);
   border-radius: 16px;
-  background: #fff;
+  background: var(--color-background-primary-default);
   overflow: hidden;
 }
 .home-hand-header,
@@ -355,7 +357,7 @@
   padding: 18px 24px;
 }
 .home-hand-header {
-  border-bottom: 1px solid #ebebeb;
+  border-bottom: 1px solid var(--color-border-button-default);
   font-size: 12px;
   font-weight: 500;
 }
@@ -364,7 +366,7 @@
   font-weight: 400;
 }
 .home-hand-play {
-  background: #f0f4fc;
+  background: var(--home-tint);
   padding: 26px 24px 30px;
 }
 .home-hand-street {
@@ -374,7 +376,7 @@
   font-size: 15px;
 }
 .home-hand-street p {
-  color: #596579;
+  color: var(--home-muted);
   font-size: 12px;
   margin-top: 6px;
   line-height: 1.6;
@@ -387,12 +389,12 @@
   margin: 16px 0 28px;
 }
 .home-card-slot {
-  border: 1px dashed #bdc9df;
+  border: 1px dashed var(--color-border-button-default);
   border-radius: 12px;
   width: 67.2px;
   height: 96px;
   flex-shrink: 0;
-  background: rgb(255 255 255 / 35%);
+  background: var(--home-slot);
 }
 .home-card-slot > div {
   margin: -1px;
@@ -411,7 +413,7 @@
   gap: 20px;
   align-items: center;
   padding-top: 22px;
-  border-top: 1px solid #dae1ed;
+  border-top: 1px solid var(--color-border-button-default);
 }
 .home-hole-cards {
   display: flex;
@@ -424,7 +426,7 @@
 .home-hole strong {
   font-size: 11px;
   font-weight: 400;
-  color: #596579;
+  color: var(--home-muted);
 }
 .home-hand-footer > span {
   display: flex;
@@ -454,7 +456,7 @@
   padding-top: 6px;
 }
 .home-source {
-  border-top: 1px solid #ebebeb;
+  border-top: 1px solid var(--color-border-button-default);
   padding-top: 24px;
   display: flex;
   align-items: center;
@@ -472,7 +474,7 @@
   display: grid;
   grid-template-columns: 1fr 1.25fr;
   gap: 80px;
-  border-top: 1px solid #ebebeb;
+  border-top: 1px solid var(--color-border-button-default);
   padding-block: 70px 100px;
   scroll-margin-top: 36px;
 }
@@ -480,7 +482,7 @@
   font-size: 34px;
 }
 .home-faq details {
-  border-bottom: 1px solid #ebebeb;
+  border-bottom: 1px solid var(--color-border-button-default);
 }
 .home-faq summary {
   list-style: none;
@@ -513,7 +515,7 @@
   justify-content: space-between;
   gap: 32px;
   padding: 54px 60px;
-  background: #f0f4fc;
+  background: var(--home-tint);
   border-radius: 20px;
 }
 .home-close h2 {
@@ -799,5 +801,33 @@
     scroll-behavior: auto;
     transition: none !important;
     animation: none !important;
+  }
+}
+
+/* Both appearances share the same composition and card faces. */
+html.dark .home-page {
+  --home-tint: #202c3d;
+  --home-slot: rgb(15 23 42 / 20%);
+}
+html.dark .home-page :is(.home-text-link, .home-brand > svg, .home-hand-footer > span > svg) {
+  color: var(--color-accent-400);
+}
+html.dark .home-error {
+  color: var(--color-rose-300);
+}
+.home-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+@media (max-width: 380px) {
+  .home-header-actions {
+    gap: 4px;
+  }
+  .home-header {
+    gap: 8px;
+  }
+  .home-header .home-brand-name {
+    display: none;
   }
 }
