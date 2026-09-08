@@ -1440,6 +1440,7 @@ export function TablePage({
         )}
         {bigCards && hand.myCards.length > 0 && !notInHand && (
           <FloatingCards
+            bounded
             cards={hand.myCards}
             onClose={() => {
               setBigCards(false);
@@ -1453,20 +1454,6 @@ export function TablePage({
 
   return (
     <div className="table-app-bg min-h-screen">
-      {/* The showdown result, pinned to the top and above everything.
-          It used to live in the middle of the felt, where it fought the seat
-          pods for the same space and got clipped by the oval. Up here it can be
-          as tall as it needs to be, and it covers nothing that matters - the
-          hand is over. The wrapper ignores pointer events so the table stays
-          usable around it. */}
-      {showResult && (
-        <div className="pointer-events-none fixed inset-x-0 top-3 z-50 flex justify-center px-3">
-          <div className="pointer-events-auto max-h-[86vh] w-full max-w-3xl overflow-y-auto rounded-2xl shadow-2xl">
-            {resultBanner}
-          </div>
-        </div>
-      )}
-
       {/* MOBILE: full-screen Offsuit-style app view */}
       <div
         className="flex min-h-[100dvh] flex-col overflow-x-hidden bg-slate-950 text-white md:hidden"
@@ -1552,7 +1539,15 @@ export function TablePage({
 
         {(showResult || !me || hasPeekContent) && (
           <div className="space-y-3 px-4 pb-6">
-            {mobileResult}
+            {showResult && (
+              <section
+                aria-label="Hand result"
+                tabIndex={0}
+                className="max-h-[60dvh] overflow-y-auto overscroll-contain rounded-2xl"
+              >
+                {mobileResult}
+              </section>
+            )}
             {mobilePeekPanel}
             {!me && (amSpectator ? spectatorPanel : mobileSeatPicker)}
           </div>
@@ -2006,7 +2001,27 @@ export function TablePage({
 
             {/* the control strip sits under the table so the oval keeps its space */}
             {amSpectator && spectatorPanel}
-            <ActionBar mySeat={mySeat} isHost={!!isHost} urgent={urgent} hideIdleStart />
+            <fieldset
+              disabled={!wsConnected}
+              className={cn('min-w-0', showResult && 'sticky bottom-4 top-4 z-20')}
+            >
+              <ActionBar
+                mySeat={mySeat}
+                isHost={!!isHost}
+                urgent={urgent}
+                hideIdleStart={!showResult}
+              />
+            </fieldset>
+
+            {showResult && (
+              <section
+                aria-label="Hand result"
+                tabIndex={0}
+                className="max-h-[60dvh] overflow-y-auto overscroll-contain rounded-2xl"
+              >
+                {resultBanner}
+              </section>
+            )}
 
             <LastHandStrip roomId={roomId!} />
 
