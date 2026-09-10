@@ -8,9 +8,16 @@ import { mergeAccounts } from './merge.js';
 import { rekey } from './account.js';
 import { activeHands } from './liveHands.js';
 import { platformDues } from './house.js';
+import { registerPlatformControl } from './adminControl.js';
 
-const authKey = z.string().length(64).regex(/^[0-9a-f]+$/);
-const pubKey = z.string().length(64).regex(/^[0-9a-f]+$/);
+const authKey = z
+  .string()
+  .length(64)
+  .regex(/^[0-9a-f]+$/);
+const pubKey = z
+  .string()
+  .length(64)
+  .regex(/^[0-9a-f]+$/);
 
 /** Same guard as account.ts's seatedSomewhere: re-keying while seated would
  *  desync a live seat's pubkey mid-deal, whether the change is self-served
@@ -52,6 +59,7 @@ function balanceSummary(db: DB, userId: number): { balance: number; rooms: numbe
  *  unarchive and delete are all requested by a host or banker (see social.ts)
  *  but only take effect once approved here. Rejecting leaves the room as-is. */
 export function registerAdminRoutes(app: FastifyInstance, db: DB): void {
+  registerPlatformControl(app, db);
   const platformOnly = { preHandler: requirePlatform(db) };
 
   app.get('/api/admin/house', platformOnly, async () => platformDues(db));
@@ -139,8 +147,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: DB): void {
     }
 
     const from = db.prepare('SELECT id FROM users WHERE username = ?').get(fromUsername) as
-      | { id: number }
-      | undefined;
+      { id: number } | undefined;
     if (!from) return reply.code(404).send({ error: `no such user: ${fromUsername}` });
     // Filing this request is the front door mergeAccounts guards against too
     // (merge.ts) - refuse here as well so a request naming the platform
@@ -149,8 +156,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: DB): void {
       return reply.code(400).send({ error: 'cannot merge the platform account' });
     }
     const into = db.prepare('SELECT id FROM users WHERE username = ?').get(intoUsername) as
-      | { id: number }
-      | undefined;
+      { id: number } | undefined;
     if (!into) return reply.code(404).send({ error: `no such user: ${intoUsername}` });
     if (from.id === into.id) {
       return reply.code(400).send({ error: 'cannot merge an account into itself' });
@@ -230,7 +236,8 @@ export function registerAdminRoutes(app: FastifyInstance, db: DB): void {
       .prepare(
         `SELECT id, from_user AS fromUser, into_user AS intoUser, status FROM account_merge_requests WHERE id = ?`,
       )
-      .get(requestId) as { id: number; fromUser: number; intoUser: number; status: string } | undefined;
+      .get(requestId) as
+      { id: number; fromUser: number; intoUser: number; status: string } | undefined;
     if (!mergeRequest) return reply.code(404).send({ error: 'no such request' });
     if (mergeRequest.status !== 'pending')
       return reply.code(400).send({ error: 'already decided' });
@@ -284,12 +291,10 @@ export function registerAdminRoutes(app: FastifyInstance, db: DB): void {
     }
 
     const from = db.prepare('SELECT id FROM users WHERE username = ?').get(fromUsername) as
-      | { id: number }
-      | undefined;
+      { id: number } | undefined;
     if (!from) return reply.code(404).send({ error: `no such user: ${fromUsername}` });
     const into = db.prepare('SELECT id FROM users WHERE username = ?').get(intoUsername) as
-      | { id: number }
-      | undefined;
+      { id: number } | undefined;
     if (!into) return reply.code(404).send({ error: `no such user: ${intoUsername}` });
     if (from.id === into.id) {
       return reply.code(400).send({ error: 'cannot merge an account into itself' });
@@ -334,7 +339,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: DB): void {
     const like = q && q.trim() ? `%${q.trim()}%` : '%';
     const rows = db
       .prepare(
-        `SELECT r.id AS id, r.name AS name, r.archived AS archived,
+        `SELECT r.id AS id, r.name AS name, r.archived AS archived, r.commission_bps AS commissionBps,
                 COALESCE(u.display_name, u.username) AS hostName,
                 (SELECT COUNT(*) FROM room_players rp WHERE rp.room_id = r.id
                    AND rp.user_id NOT IN (SELECT CAST(value AS INTEGER) FROM meta WHERE key='platform_user_id')) AS playerCount

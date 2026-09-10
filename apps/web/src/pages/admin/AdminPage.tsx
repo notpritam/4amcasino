@@ -1,772 +1,594 @@
-import { PlatformDues } from '../../features/house/PlatformDues.tsx';
-import { type FormEvent, type ReactNode, memo, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import {
+  RiDashboardLine,
+  RiExchangeDollarLine,
+  RiGroupLine,
+  RiInboxLine,
+  RiSettings3Line,
+  RiPokerClubsLine,
+  RiArrowRightUpLine,
+  RiLogoutBoxLine,
+  RiShieldCheckLine,
+  RiRefreshLine,
+} from '@remixicon/react';
+import { commissionRateLabel, type AdminOverview } from '@4am/shared';
 import { api } from '../../shared/api.ts';
-import { deriveAuthKey, deriveIdentity } from '../../shared/crypto.ts';
+import { useStore } from '../../shared/store.ts';
+import { isAdminSite } from '../../shared/adminSite.ts';
 import { fmt } from '../../shared/lib/cn.ts';
-import { Badge, Button, Dialog, Input, Panel, Spinner } from '../../shared/ui/index.tsx';
+import { Button, Input } from '../../shared/ui/index.tsx';
+import { AppearanceToggle } from '../../shared/ui/AppearanceToggle.tsx';
+import { PlatformDues } from '../../features/house/PlatformDues.tsx';
+import { CommissionControl } from './CommissionControl.tsx';
+import {
+  LifecycleSection,
+  MergeSection,
+  RoomsSection,
+  UserAdminSection,
+  type AdminTarget,
+} from './AdminSections.tsx';
+import './admin.css';
 
-/** Lets the spinner paint before scrypt blocks the main thread deriving keys. */
-const yieldFrame = () => new Promise((resolve) => setTimeout(resolve, 30));
+// Operate surface: a dedicated Zeus control center. Persistent navigation leads
+// to real account, room, receivables and rate controls; no player-game chrome.
+const sections = [
+  {
+    id: '',
+    name: 'Overview',
+    icon: RiDashboardLine,
+    description: 'The platform at a glance, with the work that needs your attention.',
+  },
+  {
+    id: 'revenue',
+    name: 'Revenue & dues',
+    icon: RiExchangeDollarLine,
+    description: 'Find who needs to pay, review recorded payments, and inspect each room.',
+  },
+  {
+    id: 'rooms',
+    name: 'Rooms',
+    icon: RiPokerClubsLine,
+    description: 'Manage tables and see the house cut assigned to each room.',
+  },
+  {
+    id: 'users',
+    name: 'Users',
+    icon: RiGroupLine,
+    description: 'Find an account by name or ID, then manage it directly.',
+  },
+  {
+    id: 'requests',
+    name: 'Requests',
+    icon: RiInboxLine,
+    description: 'Review room lifecycle requests and account merges.',
+  },
+  {
+    id: 'settings',
+    name: 'Platform settings',
+    icon: RiSettings3Line,
+    description: 'Control the house cut without a deployment.',
+  },
+];
 
-const netStr = (n: number) => `${n > 0 ? '+' : ''}${fmt(n)}`;
-
-function Note({ kind, children }: { kind: 'ok' | 'bad'; children: ReactNode }) {
+function RevenueChart({ data }: { data: AdminOverview['revenue'] }) {
+  const max = Math.max(1, ...data.map((d) => d.commission));
+  const total = data.reduce((sum, d) => sum + d.commission, 0);
   return (
-    <p
-      className={
-        kind === 'ok'
-          ? 'mt-2 text-xs text-emerald-600 dark:text-emerald-400'
-          : 'mt-2 text-xs text-rose-600 dark:text-rose-400'
-      }
-    >
-      {children}
-    </p>
+    <figure className="admin-chart">
+      <div className="admin-section-heading">
+        <div>
+          <h2>Commission activity</h2>
+          <p>Actual deductions in active rooms · last 14 days · UTC</p>
+        </div>
+        <strong className="admin-chart-total">
+          {fmt(total)} <span>chips</span>
+        </strong>
+      </div>
+      <svg
+        viewBox="0 0 720 200"
+        role="img"
+        aria-label={`${fmt(total)} chips accrued over the last 14 days`}
+      >
+        {[0, 1, 2].map((n) => (
+          <g key={n}>
+            <line x1="42" x2="715" y1={20 + n * 76} y2={20 + n * 76} className="admin-chart-grid" />
+            <text x="35" y={24 + n * 76} textAnchor="end">
+              {fmt(Math.round(max * (1 - n / 2)))}
+            </text>
+          </g>
+        ))}
+        {data.map((d, i) => (
+          <rect
+            key={d.date}
+            x={52 + i * 47}
+            y={172 - (d.commission / max) * 152}
+            width="25"
+            height={(d.commission / max) * 152}
+            rx="3"
+            className="admin-chart-bar"
+          >
+            <title>
+              {d.date}: {fmt(d.commission)} chips
+            </title>
+          </rect>
+        ))}
+      </svg>
+      <figcaption>
+        <span>{data[0]?.date}</span>
+        <span>
+          {total
+            ? 'Each bar is one day of commission.'
+            : 'Commission will appear after qualifying pots are settled.'}
+        </span>
+        <span>{data.at(-1)?.date}</span>
+      </figcaption>
+      <details className="admin-chart-data">
+        <summary>View daily amounts</summary>
+        <table>
+          <thead>
+            <tr>
+              <th>Date (UTC)</th>
+              <th>Commission</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((d) => (
+              <tr key={d.date}>
+                <td>{d.date}</td>
+                <td>{fmt(d.commission)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
+    </figure>
   );
 }
 
-interface LifecycleRequest {
-  id: number;
-  roomId: string;
-  roomName: string;
-  action: string;
-  requestedBy: number;
-  requesterName: string;
-  note: string | null;
-  createdAt: number;
-}
-
-function LifecycleSection() {
-  const [requests, setRequests] = useState<LifecycleRequest[] | null>(null);
-  const [busyId, setBusyId] = useState<number | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  function load() {
-    void api
-      .adminLifecycle()
-      .then((r) => setRequests(r.requests ?? []))
-      .catch(() => setRequests([]));
-  }
-  useEffect(load, []);
-
-  async function decide(id: number, approve: boolean) {
-    setErr(null);
-    setBusyId(id);
-    try {
-      await api.adminDecideLifecycle(id, approve);
-      load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'could not decide that request');
-    } finally {
-      setBusyId(null);
-    }
-  }
-
+function Overview({ data, base }: { data: AdminOverview; base: string }) {
   return (
-    <Panel>
-      <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">
-        Room requests
-      </h2>
-      <p className="mt-1 text-sm text-slate-500">
-        Hosts asking to archive, restore, or delete a table.
-      </p>
-
-      {requests === null ? (
-        <div className="mt-4">
-          <Spinner label="Loading requests…" />
+    <>
+      <dl className="admin-metrics">
+        {[
+          [
+            'Outstanding dues',
+            fmt(data.dues.outstanding),
+            `${data.dues.usersOwing} users need to pay`,
+            'revenue',
+          ],
+          ['Active rooms', fmt(data.activeRooms), `${data.rooms} rooms in total`, 'rooms'],
+          [
+            'Player accounts',
+            fmt(data.users),
+            `${fmt(data.hands)} settled hands in active rooms`,
+            'users',
+          ],
+          [
+            'House cut',
+            commissionRateLabel(data.commissionBps),
+            'Default for newly created rooms',
+            'settings',
+          ],
+        ].map(([label, value, detail, route]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+            <Link to={`${base}/${route}`}>
+              {detail}
+              <RiArrowRightUpLine size={14} aria-hidden="true" />
+            </Link>
+          </div>
+        ))}
+      </dl>
+      <div className="admin-overview-grid">
+        <section className="admin-panel">
+          <RevenueChart data={data.revenue} />
+        </section>
+        <section className="admin-panel admin-attention">
+          <h2>Needs attention</h2>
+          <Link to={`${base}/requests`}>
+            <RiInboxLine size={21} />
+            <span>
+              <strong>{data.pendingRequests} pending requests</strong>
+              <small>Room changes and account merges</small>
+            </span>
+            <RiArrowRightUpLine size={18} />
+          </Link>
+          <Link to={`${base}/revenue`}>
+            <RiExchangeDollarLine size={21} />
+            <span>
+              <strong>{data.dues.usersOwing} users with dues</strong>
+              <small>{fmt(data.dues.outstanding)} chips outstanding</small>
+            </span>
+            <RiArrowRightUpLine size={18} />
+          </Link>
+          <div className="admin-attention-note">
+            <RiShieldCheckLine size={20} />
+            <p>
+              Payments shown here are recorded by users. Confirm receipt separately before treating
+              them as paid.
+            </p>
+          </div>
+        </section>
+      </div>
+      <section className="admin-panel admin-revenue-summary">
+        <div>
+          <h2>House accounting</h2>
+          <p>Active rooms, excluding voided hands. Amounts are in chips.</p>
         </div>
-      ) : requests.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-400">Nothing waiting on you.</p>
-      ) : (
-        <ul className="mt-4 space-y-2">
-          {requests.map((r) => (
-            <li
-              key={r.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-sm ring-1 ring-slate-200/70 dark:bg-slate-900/60 dark:ring-slate-700/70"
-            >
-              <div className="min-w-0">
-                <div className="font-medium text-slate-900 dark:text-slate-100">{r.roomName}</div>
-                <div className="text-xs text-slate-400">
-                  {r.requesterName} asked to {r.action} this table
-                  {r.note ? `, note: ${r.note}` : ''}
-                </div>
-              </div>
-              <div className="flex shrink-0 gap-2">
-                <Button
-                  variant="success"
-                  disabled={busyId === r.id}
-                  onClick={() => void decide(r.id, true)}
-                >
-                  {busyId === r.id ? <Spinner label="Working…" /> : 'Approve'}
-                </Button>
-                <Button
-                  variant="danger"
-                  disabled={busyId === r.id}
-                  onClick={() => void decide(r.id, false)}
-                >
-                  Reject
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      {err && <Note kind="bad">{err}</Note>}
-    </Panel>
-  );
-}
-
-interface MergeRequestRow {
-  id: number;
-  fromUser: number;
-  fromUsername: string;
-  intoUser: number;
-  intoUsername: string;
-  note: string | null;
-  createdAt: number;
-  fromBalance: number;
-  fromRooms: number;
-  intoBalance: number;
-  intoRooms: number;
-}
-
-function MergeSection() {
-  const [requests, setRequests] = useState<MergeRequestRow[] | null>(null);
-  const [busyId, setBusyId] = useState<number | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [confirmTarget, setConfirmTarget] = useState<MergeRequestRow | null>(null);
-
-  const [directFrom, setDirectFrom] = useState('');
-  const [directInto, setDirectInto] = useState('');
-  const [directNote, setDirectNote] = useState('');
-  const [directConfirm, setDirectConfirm] = useState(false);
-  const [directBusy, setDirectBusy] = useState(false);
-  const [directMsg, setDirectMsg] = useState<{ kind: 'ok' | 'bad'; text: string } | null>(null);
-
-  function load() {
-    void api
-      .adminMerges()
-      .then((r) => setRequests(r.requests ?? []))
-      .catch(() => setRequests([]));
-  }
-  useEffect(load, []);
-
-  async function decide(id: number, approve: boolean) {
-    setErr(null);
-    setBusyId(id);
-    try {
-      await api.adminDecideMerge(id, approve);
-      setConfirmTarget(null);
-      load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'could not decide that request');
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  function openDirectConfirm(e: FormEvent) {
-    e.preventDefault();
-    setDirectMsg(null);
-    if (!directFrom.trim() || !directInto.trim()) {
-      setDirectMsg({ kind: 'bad', text: 'enter both usernames' });
-      return;
-    }
-    setDirectConfirm(true);
-  }
-
-  async function mergeNow() {
-    setDirectBusy(true);
-    setDirectMsg(null);
-    try {
-      const from = directFrom.trim();
-      const into = directInto.trim();
-      await api.adminMergeNow(from, into, directNote.trim() || undefined);
-      setDirectMsg({ kind: 'ok', text: `Merged @${from} into @${into}.` });
-      setDirectFrom('');
-      setDirectInto('');
-      setDirectNote('');
-      setDirectConfirm(false);
-      load();
-    } catch (e) {
-      setDirectMsg({
-        kind: 'bad',
-        text: e instanceof Error ? e.message : 'could not merge those accounts',
-      });
-    } finally {
-      setDirectBusy(false);
-    }
-  }
-
-  return (
-    <Panel>
-      <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">
-        Merge requests
-      </h2>
-      <p className="mt-1 text-sm text-slate-500">
-        Folding one account into another. Approving cannot be undone.
-      </p>
-
-      {requests === null ? (
-        <div className="mt-4">
-          <Spinner label="Loading requests…" />
-        </div>
-      ) : requests.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-400">Nothing waiting on you.</p>
-      ) : (
-        <ul className="mt-4 space-y-2">
-          {requests.map((r) => (
-            <li
-              key={r.id}
-              className="rounded-xl bg-slate-50 p-3 text-sm ring-1 ring-slate-200/70 dark:bg-slate-900/60 dark:ring-slate-700/70"
-            >
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium text-slate-900 dark:text-slate-100">
-                    @{r.fromUsername} <span className="text-slate-400">into</span> @{r.intoUsername}
-                  </div>
-                  {r.note && <div className="text-xs text-slate-400">note: {r.note}</div>}
-                  <div className="mt-1.5 grid grid-cols-1 gap-1 text-xs text-slate-500 sm:grid-cols-2">
-                    <div>
-                      @{r.fromUsername}: {netStr(r.fromBalance)} net, {r.fromRooms} room
-                      {r.fromRooms === 1 ? '' : 's'}
-                    </div>
-                    <div>
-                      @{r.intoUsername}: {netStr(r.intoBalance)} net, {r.intoRooms} room
-                      {r.intoRooms === 1 ? '' : 's'}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button
-                    variant="success"
-                    disabled={busyId === r.id}
-                    onClick={() => setConfirmTarget(r)}
-                  >
-                    Approve
-                  </Button>
-                  <Button
-                    variant="danger"
-                    disabled={busyId === r.id}
-                    onClick={() => void decide(r.id, false)}
-                  >
-                    Reject
-                  </Button>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      {err && <Note kind="bad">{err}</Note>}
-
-      <form
-        onSubmit={openDirectConfirm}
-        className="mt-5 border-t border-slate-200/70 pt-4 dark:border-slate-700/70"
-      >
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-          Merge accounts directly
-        </h3>
-        <p className="mt-0.5 text-xs text-slate-500">
-          Skips the request queue and folds one account into another immediately. Approving cannot
-          be undone.
-        </p>
-        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <Input
-            aria-label="From username"
-            placeholder="From username"
-            value={directFrom}
-            onChange={(e) => setDirectFrom(e.target.value)}
-            disabled={directBusy}
-          />
-          <Input
-            aria-label="Into username"
-            placeholder="Into username"
-            value={directInto}
-            onChange={(e) => setDirectInto(e.target.value)}
-            disabled={directBusy}
-          />
-        </div>
-        <div className="mt-2">
-          <Input
-            aria-label="Note (optional)"
-            placeholder="Note (optional)"
-            value={directNote}
-            onChange={(e) => setDirectNote(e.target.value)}
-            disabled={directBusy}
-          />
-        </div>
-        <div className="mt-2">
-          <Button type="submit" variant="secondary" disabled={directBusy}>
-            {directBusy ? <Spinner label="Merging…" /> : 'Merge now'}
-          </Button>
-        </div>
-        {directMsg && <Note kind={directMsg.kind}>{directMsg.text}</Note>}
-      </form>
-
-      <Dialog
-        open={confirmTarget !== null}
-        onClose={() => setConfirmTarget(null)}
-        title="Approve this merge?"
-      >
-        {confirmTarget && (
+        <dl>
           <div>
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              Everything @{confirmTarget.fromUsername} owns moves to @{confirmTarget.intoUsername},
-              and @{confirmTarget.fromUsername} is retired. This cannot be undone.
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <Button
-                variant="ghost"
-                onClick={() => setConfirmTarget(null)}
-                disabled={busyId === confirmTarget.id}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => void decide(confirmTarget.id, true)}
-                disabled={busyId === confirmTarget.id}
-              >
-                {busyId === confirmTarget.id ? <Spinner label="Merging…" /> : 'Merge accounts'}
-              </Button>
-            </div>
+            <dt>Accrued commission</dt>
+            <dd>{fmt(data.dues.accrued + data.dues.unallocated)}</dd>
           </div>
-        )}
-      </Dialog>
-
-      <Dialog
-        open={directConfirm}
-        onClose={() => setDirectConfirm(false)}
-        title="Merge these accounts now?"
-      >
-        <p className="text-sm text-slate-600 dark:text-slate-300">
-          Everything @{directFrom} owns moves to @{directInto}, and @{directFrom} is retired. This
-          takes effect immediately and cannot be undone.
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => setDirectConfirm(false)} disabled={directBusy}>
-            Cancel
-          </Button>
-          <Button variant="danger" onClick={() => void mergeNow()} disabled={directBusy}>
-            {directBusy ? <Spinner label="Merging…" /> : 'Merge accounts'}
-          </Button>
-        </div>
-      </Dialog>
-    </Panel>
+          <div>
+            <dt>Payments recorded</dt>
+            <dd>{fmt(data.dues.paid)}</dd>
+          </div>
+          <div>
+            <dt>User credits</dt>
+            <dd>{fmt(data.dues.credit)}</dd>
+          </div>
+        </dl>
+        <Link to={`${base}/revenue`}>
+          Open dues breakdown <RiArrowRightUpLine size={16} />
+        </Link>
+      </section>
+    </>
   );
 }
 
-interface AdminTarget {
-  userId: number;
-  username: string;
-  displayName: string;
-  isPlatform?: boolean;
+interface UserRow extends AdminTarget {
+  disabled: number;
+  createdAt: number;
+  rooms: number;
 }
-
-function UserAdminSection() {
-  const [idInput, setIdInput] = useState('');
-  const [target, setTarget] = useState<AdminTarget | null>(null);
-  const [lookupErr, setLookupErr] = useState<string | null>(null);
-  const [lookupBusy, setLookupBusy] = useState(false);
-
-  const [disableConfirm, setDisableConfirm] = useState(false);
-  const [disableBusy, setDisableBusy] = useState(false);
-  const [disableMsg, setDisableMsg] = useState<{ kind: 'ok' | 'bad'; text: string } | null>(null);
-
-  const [newPassword, setNewPassword] = useState('');
-  const [pwBusy, setPwBusy] = useState(false);
-  const [pwMsg, setPwMsg] = useState<{ kind: 'ok' | 'bad'; text: string } | null>(null);
-
-  async function lookup(e: FormEvent) {
-    e.preventDefault();
-    setLookupErr(null);
-    setTarget(null);
-    setDisableMsg(null);
-    setPwMsg(null);
-    const id = Number(idInput);
-    if (!Number.isInteger(id) || id <= 0) {
-      setLookupErr('enter a valid user ID');
-      return;
-    }
-    setLookupBusy(true);
-    try {
-      const p = await api.userProfile(id);
-      setTarget({
-        userId: p.userId,
-        username: p.username,
-        displayName: p.displayName,
-        isPlatform: p.isPlatform,
-      });
-    } catch (e2) {
-      setLookupErr(e2 instanceof Error ? e2.message : 'could not find that user');
-    } finally {
-      setLookupBusy(false);
-    }
-  }
-
-  async function disable() {
-    if (!target) return;
-    setDisableBusy(true);
-    setDisableMsg(null);
-    try {
-      await api.adminDisableUser(target.userId);
-      setDisableMsg({
-        kind: 'ok',
-        text: `@${target.username} is disabled and signed out everywhere.`,
-      });
-      setDisableConfirm(false);
-    } catch (e) {
-      setDisableMsg({
-        kind: 'bad',
-        text: e instanceof Error ? e.message : 'could not disable that account',
-      });
-    } finally {
-      setDisableBusy(false);
-    }
-  }
-
-  async function resetPassword(e: FormEvent) {
-    e.preventDefault();
-    setPwMsg(null);
-    if (!target) return;
-    if (newPassword.length < 6) {
-      setPwMsg({ kind: 'bad', text: 'use at least 6 characters' });
-      return;
-    }
-    setPwBusy(true);
-    try {
-      await yieldFrame();
-      const newAuthKey = deriveAuthKey(target.username, newPassword);
-      const identity = deriveIdentity(target.username, newPassword);
-      await api.adminSetUserPassword(target.userId, newAuthKey, identity.publicKey);
-      setNewPassword('');
-      setPwMsg({
-        kind: 'ok',
-        text: `Password reset for @${target.username}. Tell them the new password directly, they were signed out everywhere.`,
-      });
-    } catch (e2) {
-      setPwMsg({
-        kind: 'bad',
-        text: e2 instanceof Error ? e2.message : 'could not reset that password',
-      });
-    } finally {
-      setPwBusy(false);
-    }
-  }
-
-  return (
-    <Panel>
-      <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">
-        User admin
-      </h2>
-      <p className="mt-1 text-sm text-slate-500">
-        Look a player up by their user ID. It's visible in the URL of their profile page,
-        /players/ID.
-      </p>
-
-      <form onSubmit={(e) => void lookup(e)} className="mt-4 flex max-w-sm gap-2">
-        <Input
-          type="number"
-          min={1}
-          aria-label="User ID"
-          placeholder="User ID"
-          value={idInput}
-          onChange={(e) => setIdInput(e.target.value)}
-          disabled={lookupBusy}
-        />
-        <Button type="submit" variant="secondary" disabled={lookupBusy}>
-          {lookupBusy ? <Spinner label="Looking up…" /> : 'Look up'}
-        </Button>
-      </form>
-      {lookupErr && <Note kind="bad">{lookupErr}</Note>}
-
-      {target && (
-        <div className="mt-5 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200/70 dark:bg-slate-900/60 dark:ring-slate-700/70">
-          <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-slate-100">
-            {target.displayName}
-            <span className="font-normal text-slate-400">@{target.username}</span>
-            {target.isPlatform && <Badge tone="indigo">House account</Badge>}
-          </div>
-
-          {target.isPlatform ? (
-            <p className="mt-2 text-xs text-slate-400">
-              The house account can't be disabled or reset from here.
-            </p>
-          ) : (
-            <>
-              <div className="mt-3 border-t border-slate-200/70 pt-3 dark:border-slate-700/70">
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                  Disable account
-                </h3>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Signs them out everywhere and blocks further logins. Nothing is deleted.
-                </p>
-                <div className="mt-2">
-                  <Button
-                    variant="danger"
-                    onClick={() => setDisableConfirm(true)}
-                    disabled={disableBusy}
-                  >
-                    Disable @{target.username}
-                  </Button>
-                </div>
-                {disableMsg && <Note kind={disableMsg.kind}>{disableMsg.text}</Note>}
-              </div>
-
-              <form
-                onSubmit={(e) => void resetPassword(e)}
-                className="mt-3 border-t border-slate-200/70 pt-3 dark:border-slate-700/70"
-              >
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                  Reset password
-                </h3>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Sets a new password and signing key for @{target.username}. They must not be
-                  seated at a table when you do this.
-                </p>
-                <div className="mt-2 flex max-w-sm gap-2">
-                  <Input
-                    type="password"
-                    aria-label="New password"
-                    placeholder="New password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    minLength={6}
-                    disabled={pwBusy}
-                  />
-                  <Button type="submit" disabled={pwBusy}>
-                    {pwBusy ? <Spinner label="Re-keying…" /> : 'Reset password'}
-                  </Button>
-                </div>
-                {pwMsg && <Note kind={pwMsg.kind}>{pwMsg.text}</Note>}
-              </form>
-            </>
-          )}
-        </div>
-      )}
-
-      <Dialog
-        open={disableConfirm}
-        onClose={() => setDisableConfirm(false)}
-        title={`Disable @${target?.username ?? ''}?`}
-      >
-        <p className="text-sm text-slate-600 dark:text-slate-300">
-          They're signed out everywhere and can't log back in until re-enabled. Nothing they own is
-          deleted.
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => setDisableConfirm(false)} disabled={disableBusy}>
-            Cancel
-          </Button>
-          <Button variant="danger" onClick={() => void disable()} disabled={disableBusy}>
-            {disableBusy ? <Spinner label="Working…" /> : 'Disable account'}
-          </Button>
-        </div>
-      </Dialog>
-    </Panel>
-  );
-}
-
-interface AdminRoomRow {
-  id: string;
-  name: string;
-  archived: number; // sqlite INTEGER 0/1 round-trips as a number over JSON
-  hostName: string;
-  playerCount: number;
-}
-
-const RoomsSection = memo(function RoomsSection() {
+function UsersDirectory() {
   const [query, setQuery] = useState('');
-  const [rooms, setRooms] = useState<AdminRoomRow[] | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<AdminRoomRow | null>(null);
-
-  function load(q?: string) {
-    void api
-      .adminRooms(q)
-      .then((r) => setRooms(r.rooms ?? []))
-      .catch(() => setRooms([]));
-  }
-  useEffect(() => load(), []);
-
-  function onSearch(e: FormEvent) {
+  const [appliedQuery, setAppliedQuery] = useState('');
+  const [result, setResult] = useState<{
+    users: UserRow[];
+    total: number;
+    offset: number;
+    hasMore: boolean;
+  } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [target, setTarget] = useState<UserRow | null>(null);
+  const load = useCallback(async (q = '', offset = 0) => {
+    setBusy(true);
+    setError('');
+    try {
+      setResult(await api.adminUsers(q, offset));
+      setAppliedQuery(q);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load users.');
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  function search(e: FormEvent) {
     e.preventDefault();
-    load(query.trim() || undefined);
+    void load(query);
   }
-
-  async function toggleArchive(room: AdminRoomRow) {
-    setErr(null);
-    setBusyId(room.id);
-    try {
-      await api.adminArchiveRoom(room.id, !room.archived);
-      load(query.trim() || undefined);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'could not update that room');
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function doDelete() {
-    if (!deleteTarget) return;
-    setErr(null);
-    setBusyId(deleteTarget.id);
-    try {
-      await api.adminDeleteRoom(deleteTarget.id);
-      setDeleteTarget(null);
-      load(query.trim() || undefined);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'could not delete that room');
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   return (
-    <Panel>
-      <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">
-        Rooms
-      </h2>
-      <p className="mt-1 text-sm text-slate-500">
-        Archive or delete any table directly. Delete cannot be undone.
-      </p>
-
-      <form onSubmit={onSearch} className="mt-4 flex max-w-sm gap-2">
-        <Input
-          aria-label="Search by name"
-          placeholder="Search by name"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <Button type="submit" variant="secondary">
-          Search
-        </Button>
-      </form>
-
-      {rooms === null ? (
-        <div className="mt-4">
-          <Spinner label="Loading rooms…" />
+    <div className="admin-users-stack">
+      <section className="admin-panel" aria-busy={busy}>
+        <div className="admin-section-heading">
+          <div>
+            <h2>User directory</h2>
+            <p>Search all accounts, including users without outstanding dues.</p>
+          </div>
         </div>
-      ) : rooms.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-400">No rooms found.</p>
-      ) : (
-        <ul className="mt-4 space-y-2">
-          {rooms.map((r) => (
-            <li
-              key={r.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-sm ring-1 ring-slate-200/70 dark:bg-slate-900/60 dark:ring-slate-700/70"
-            >
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-slate-100">
-                  {r.name}
-                  {!!r.archived && <Badge tone="amber">Archived</Badge>}
-                </div>
-                <div className="text-xs text-slate-400">
-                  Hosted by {r.hostName} &middot; {r.playerCount} player
-                  {r.playerCount === 1 ? '' : 's'}
-                </div>
-              </div>
-              <div className="flex shrink-0 gap-2">
+        <form className="admin-search" onSubmit={search}>
+          <Input
+            type="search"
+            aria-label="Search users by name or ID"
+            placeholder="Name, @username, or user ID"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <Button type="submit" disabled={busy}>
+            {busy ? 'Searching…' : 'Search users'}
+          </Button>
+        </form>
+        {error && (
+          <p className="admin-error" role="alert">
+            {error} <button onClick={() => void load(query)}>Retry</button>
+          </p>
+        )}
+        {!result ? (
+          <p className="admin-loading" role="status">
+            {error ? 'Search again to load the directory.' : 'Loading accounts…'}
+          </p>
+        ) : result.users.length === 0 ? (
+          <p className="admin-empty">No accounts match this search. Try a username or user ID.</p>
+        ) : (
+          <>
+            <div className="admin-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Status</th>
+                    <th>Rooms</th>
+                    <th>Joined</th>
+                    <th>
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.users.map((u) => (
+                    <tr key={u.userId}>
+                      <td>
+                        <strong>{u.displayName}</strong>
+                        <small>
+                          @{u.username} · ID {u.userId}
+                        </small>
+                      </td>
+                      <td>
+                        <span
+                          className={`admin-status ${u.disabled ? 'admin-status-disabled' : ''}`}
+                        >
+                          {u.isPlatform ? 'Platform' : u.disabled ? 'Disabled' : 'Active'}
+                        </span>
+                      </td>
+                      <td>{u.rooms}</td>
+                      <td>{new Date(u.createdAt).toLocaleDateString()}</td>
+                      <td>
+                        <Button
+                          variant="secondary"
+                          onClick={() => setTarget(u)}
+                          aria-label={`Manage ${u.username}`}
+                        >
+                          Manage
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="admin-pagination">
+              <span>
+                {result.offset + 1}–{result.offset + result.users.length} of {result.total} accounts
+              </span>
+              <div>
                 <Button
                   variant="secondary"
-                  disabled={busyId === r.id}
-                  onClick={() => void toggleArchive(r)}
+                  disabled={busy || result.offset === 0}
+                  onClick={() => void load(appliedQuery, Math.max(0, result.offset - 50))}
                 >
-                  {busyId === r.id ? (
-                    <Spinner label="Working…" />
-                  ) : r.archived ? (
-                    'Unarchive'
-                  ) : (
-                    'Archive'
-                  )}
+                  Previous
                 </Button>
                 <Button
-                  variant="danger"
-                  disabled={busyId === r.id}
-                  onClick={() => setDeleteTarget(r)}
+                  variant="secondary"
+                  disabled={busy || !result.hasMore}
+                  onClick={() => void load(appliedQuery, result.offset + 50)}
                 >
-                  Delete
+                  Next
                 </Button>
               </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      {err && <Note kind="bad">{err}</Note>}
-
-      <Dialog
-        open={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
-        title="Delete this room?"
-      >
-        {deleteTarget && (
-          <div>
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              "{deleteTarget.name}" will be removed from every list. This cannot be undone.
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <Button
-                variant="ghost"
-                onClick={() => setDeleteTarget(null)}
-                disabled={busyId === deleteTarget.id}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => void doDelete()}
-                disabled={busyId === deleteTarget.id}
-              >
-                {busyId === deleteTarget.id ? <Spinner label="Deleting…" /> : 'Delete room'}
-              </Button>
             </div>
-          </div>
+          </>
         )}
-      </Dialog>
-    </Panel>
+      </section>
+      {target && (
+        <section className="admin-user-actions">
+          <div className="admin-section-heading">
+            <h2>Manage @{target.username}</h2>
+            <Button variant="ghost" onClick={() => setTarget(null)}>
+              Close account controls
+            </Button>
+          </div>
+          <UserAdminSection key={target.userId} initialTarget={target} />
+        </section>
+      )}
+    </div>
   );
-});
-RoomsSection.displayName = 'RoomsSection';
+}
 
 export function AdminPage() {
+  const token = useStore((s) => s.auth.token);
+  const username = useStore((s) => s.auth.username);
+  const logout = useStore((s) => s.logout);
   const nav = useNavigate();
-  const [checked, setChecked] = useState(false);
-
+  const location = useLocation();
+  const base = isAdminSite() ? '' : '/admin';
+  const sectionId = location.pathname.slice(base.length).replace(/^\/+|\/+$/g, '');
+  const section = sections.find((s) => s.id === sectionId);
+  const [access, setAccess] = useState<{ token: string | null; allowed: boolean } | null>(null);
+  const [accessError, setAccessError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  const [data, setData] = useState<AdminOverview | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [refresh, setRefresh] = useState(0);
+  const [logoutBusy, setLogoutBusy] = useState(false);
   useEffect(() => {
+    let active = true;
+    setAccess(null);
+    setAccessError('');
     void api
       .me()
       .then((me) => {
-        if (!me.isPlatform) nav('/lobby', { replace: true });
-        else setChecked(true);
+        if (active) setAccess({ token, allowed: !!me.isPlatform });
       })
-      .catch(() => nav('/lobby', { replace: true }));
-  }, [nav]);
-
-  if (!checked) {
+      .catch((e) => {
+        if (active) setAccessError(e instanceof Error ? e.message : 'Could not check access.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [token, attempt]);
+  const allowed = access?.token === token && access?.allowed;
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      setData(await api.adminOverview());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load the dashboard.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    if (allowed) void load();
+  }, [allowed, load]);
+  async function signOut() {
+    setLogoutBusy(true);
+    setError('');
+    try {
+      await api.logout();
+      logout();
+      nav('/login?admin=1', { replace: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not sign out. Try again.');
+    } finally {
+      setLogoutBusy(false);
+    }
+  }
+  if (!access || access.token !== token)
     return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <Spinner label="Checking access…" />
+      <div className="admin-gate">
+        <RiShieldCheckLine size={34} />
+        <h1>Platform access</h1>
+        <p role={accessError ? 'alert' : 'status'}>
+          {accessError || 'Checking your platform account…'}
+        </p>
+        {accessError && (
+          <Button onClick={() => setAttempt((a) => a + 1)}>Retry access check</Button>
+        )}
       </div>
     );
-  }
+  if (!allowed)
+    return (
+      <div className="admin-gate">
+        <RiShieldCheckLine size={34} />
+        <h1>Platform account required</h1>
+        <p>
+          This dashboard is only available to the platform account. Your player account can continue
+          on the main site.
+        </p>
+        <Button onClick={() => void signOut()} disabled={logoutBusy}>
+          Sign in with another account
+        </Button>
+        <a href="https://4amcasino.com">Back to 4AM Casino</a>
+        {error && <p role="alert">{error}</p>}
+      </div>
+    );
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6">
-      <header>
-        <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-100">
-          Admin
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Platform dues, room requests, account merges, and user accounts.
-        </p>
-      </header>
-      <PlatformDues />
-      <LifecycleSection />
-      <MergeSection />
-      <RoomsSection />
-      <UserAdminSection />
+    <div className="admin-app">
+      <a className="admin-skip" href="#admin-content">
+        Skip to dashboard content
+      </a>
+      <aside className="admin-sidebar">
+        <Link className="admin-brand" to={base || '/'}>
+          <span>
+            <RiPokerClubsLine size={25} />
+          </span>
+          <strong>
+            4AM Casino<small>Administration</small>
+          </strong>
+        </Link>
+        <nav aria-label="Admin navigation">
+          {sections.map((item) => (
+            <NavLink key={item.id} to={item.id ? `${base}/${item.id}` : base || '/'} end>
+              <item.icon size={20} />
+              <span>{item.name}</span>
+              {item.id === 'requests' && !!data?.pendingRequests && <b>{data.pendingRequests}</b>}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="admin-sidebar-bottom">
+          <a href="https://4amcasino.com">
+            <RiArrowRightUpLine size={19} />
+            Open casino
+          </a>
+          <div className="admin-account">
+            <RiShieldCheckLine size={19} />
+            <span>
+              <strong>{username || 'Platform account'}</strong>
+              <small>Platform administrator</small>
+            </span>
+          </div>
+          <button onClick={() => void signOut()} disabled={logoutBusy}>
+            <RiLogoutBoxLine size={19} />
+            {logoutBusy ? 'Signing out…' : 'Sign out'}
+          </button>
+        </div>
+      </aside>
+      <div className="admin-main">
+        <header className="admin-topbar">
+          <span>
+            <RiShieldCheckLine size={17} />
+            Platform workspace
+          </span>
+          <div>
+            <AppearanceToggle compact />
+            <Button
+              variant="secondary"
+              disabled={loading}
+              onClick={() => {
+                void load();
+                setRefresh((n) => n + 1);
+              }}
+            >
+              <RiRefreshLine size={16} />
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </Button>
+          </div>
+        </header>
+        <main id="admin-content" tabIndex={-1} className="admin-content">
+          <header className="admin-page-heading">
+            <div>
+              <h1>{section?.name ?? 'Page not found'}</h1>
+              <p>{section?.description ?? 'Choose a dashboard section from the navigation.'}</p>
+            </div>
+            {data && sectionId !== 'settings' && (
+              <Link className="admin-rate-shortcut" to={`${base}/settings`}>
+                House cut <strong>{commissionRateLabel(data.commissionBps)}</strong>
+                <RiSettings3Line size={16} />
+              </Link>
+            )}
+          </header>
+          {error && (
+            <p className="admin-error" role="alert">
+              {error} <button onClick={() => void load()}>Retry</button>
+            </p>
+          )}
+          {!section && <Link to={base || '/'}>Return to overview</Link>}
+          {sectionId === '' &&
+            (data ? (
+              <Overview data={data} base={base} />
+            ) : (
+              !error && (
+                <div className="admin-loading" role="status">
+                  Loading platform activity…
+                </div>
+              )
+            ))}
+          {sectionId === 'revenue' && <PlatformDues key={refresh} />}
+          {sectionId === 'rooms' && <RoomsSection key={refresh} />}
+          {sectionId === 'users' && <UsersDirectory key={refresh} />}
+          {sectionId === 'requests' && (
+            <div className="admin-requests" key={refresh}>
+              <LifecycleSection />
+              <MergeSection />
+            </div>
+          )}
+          {sectionId === 'settings' && (
+            <CommissionControl key={refresh} onChanged={() => void load()} />
+          )}
+        </main>
+      </div>
     </div>
   );
 }

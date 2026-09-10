@@ -153,13 +153,21 @@ export class GameRoom {
   private shown = new Map<number, CardId[]>();
   private shownHandId: string | null = null;
   private lastHandShow: ShowSnapshot | null = null;
-  private peekOffers = new Map<string, { handId: string; fromUserId: number; targetSeat: number; amount: number }>();
+  private peekOffers = new Map<
+    string,
+    { handId: string; fromUserId: number; targetSeat: number; amount: number }
+  >();
   private sevenDeucePaid = new Set<string>();
   private autoDeal: NodeJS.Timeout | null = null;
   // no hand auto-starts until everyone is ready: a 20s ready check runs
   // before each auto-deal, and whoever has not clicked by the deadline is
   // left out of that hand (requested by notpritam, docs/FEATURES.md)
-  private readyCheck: { deadline: number; timer: NodeJS.Timeout; eligible: Set<number>; ready: Set<number> } | null = null;
+  private readyCheck: {
+    deadline: number;
+    timer: NodeJS.Timeout;
+    eligible: Set<number>;
+    ready: Set<number>;
+  } | null = null;
   private hostHandover: NodeJS.Timeout | null = null;
   private lookup = cardLookup();
 
@@ -177,7 +185,9 @@ export class GameRoom {
     // and a player stuck in that loop answers no crypto requests, so every hand
     // they are dealt into stalls out. The orphan is cheap; the loop was not.
     this.sockets.set(userId, ws);
-    const member = this.db.prepare('SELECT seat FROM room_players WHERE room_id = ? AND user_id = ?').get(this.roomId, userId) as { seat: number | null } | undefined;
+    const member = this.db
+      .prepare('SELECT seat FROM room_players WHERE room_id = ? AND user_id = ?')
+      .get(this.roomId, userId) as { seat: number | null } | undefined;
     if (member?.seat === null && !this.lounge.has(userId)) {
       const point = availableLoungePoint(LOUNGE_DESTINATIONS.entry, [...this.lounge.values()]);
       if (point) this.lounge.set(userId, { ...point, revision: ++this.loungeRevision });
@@ -235,7 +245,9 @@ export class GameRoom {
       // they came back, or someone already took it: nothing to do
       if (!current || current.host_id !== goneUserId || this.isConnected(goneUserId)) return;
       // presentablePlayers so the house can never be handed host duties
-      const here = presentablePlayers(this.db, this.roomId).filter((p) => this.sockets.has(p.userId));
+      const here = presentablePlayers(this.db, this.roomId).filter((p) =>
+        this.sockets.has(p.userId),
+      );
       // the banker if they are here - they already hold the room's trust
       const next = here.find((p) => p.userId === current.banker_id) ?? here[0];
       if (!next) return;
@@ -309,7 +321,9 @@ export class GameRoom {
     const autoReady = new Set(
       (
         this.db
-          .prepare(`SELECT id FROM users WHERE auto_ready = 1 AND id IN (${ids.map(() => '?').join(',')})`)
+          .prepare(
+            `SELECT id FROM users WHERE auto_ready = 1 AND id IN (${ids.map(() => '?').join(',')})`,
+          )
           .all(...ids) as { id: number }[]
       ).map((r) => r.id),
     );
@@ -327,7 +341,12 @@ export class GameRoom {
   private broadcastReadyCheck(): void {
     const rc = this.readyCheck;
     if (!rc) return;
-    this.broadcast({ t: 'ready_check', deadlineTs: rc.deadline, eligible: [...rc.eligible], ready: [...rc.ready] });
+    this.broadcast({
+      t: 'ready_check',
+      deadlineTs: rc.deadline,
+      eligible: [...rc.eligible],
+      ready: [...rc.ready],
+    });
   }
 
   private onReady(userId: number): void {
@@ -394,13 +413,14 @@ export class GameRoom {
         sb: room.sb,
         bb: room.bb,
         auditMode: room.audit_mode,
-        actionTimeoutMs: room.action_secs !== null ? room.action_secs * 1000 : this.opts.actionTimeoutMs,
+        actionTimeoutMs:
+          room.action_secs !== null ? room.action_secs * 1000 : this.opts.actionTimeoutMs,
         actionSecs: room.action_secs,
         coBankerId: room.co_banker_id,
         minSettleHands: room.min_settle_hands,
         autoApproveBuys: !!room.auto_approve_buys,
         tvReplays: !!room.tv_replays,
-        commissionBps: room.commission_bps,
+        commissionBps: this.hand?.commissionBps ?? room.commission_bps,
         sevenDeuceBonus: room.seven_deuce_bonus,
         voided: !!room.voided,
         meetLink: room.meet_link,
@@ -421,33 +441,59 @@ export class GameRoom {
   handleMessage(userId: number, msg: ClientMsg): void {
     switch (msg.t) {
       case 'lounge_move': {
-        const player = this.db.prepare('SELECT seat, sitting_out FROM room_players WHERE room_id = ? AND user_id = ?')
+        const player = this.db
+          .prepare('SELECT seat, sitting_out FROM room_players WHERE room_id = ? AND user_id = ?')
           .get(this.roomId, userId) as { seat: number | null; sitting_out: number } | undefined;
         if (!player || !this.sockets.has(userId))
-          return this.send(userId, { t: 'error', message: 'Join this table as a member to explore the lounge.' });
+          return this.send(userId, {
+            t: 'error',
+            message: 'Join this table as a member to explore the lounge.',
+          });
         if (player.seat !== null && !player.sitting_out)
-          return this.send(userId, { t: 'error', message: 'Take a break before leaving your chair.' });
+          return this.send(userId, {
+            t: 'error',
+            message: 'Take a break before leaving your chair.',
+          });
         if (this.hand?.isContesting(userId))
-          return this.send(userId, { t: 'error', message: 'Finish this hand before walking away. Your break is saved.' });
+          return this.send(userId, {
+            t: 'error',
+            message: 'Finish this hand before walking away. Your break is saved.',
+          });
         if (!isLoungeWalkable(msg))
-          return this.send(userId, { t: 'error', message: 'Choose a clear spot on the lounge floor.' });
+          return this.send(userId, {
+            t: 'error',
+            message: 'Choose a clear spot on the lounge floor.',
+          });
         const now = Date.now();
         if (now - (this.loungeLastMove.get(userId) ?? -Infinity) < 180) return;
         this.loungeLastMove.set(userId, now);
-        const point = availableLoungePoint(msg, [...this.lounge].filter(([id]) => id !== userId).map(([, position]) => position));
-        if (!point) return this.send(userId, { t: 'error', message: 'That part of the lounge is full. Choose another spot.' });
+        const point = availableLoungePoint(
+          msg,
+          [...this.lounge].filter(([id]) => id !== userId).map(([, position]) => position),
+        );
+        if (!point)
+          return this.send(userId, {
+            t: 'error',
+            message: 'That part of the lounge is full. Choose another spot.',
+          });
         const position = { ...point, revision: ++this.loungeRevision };
         this.lounge.set(userId, position);
         this.broadcast({ t: 'lounge_presence', roomId: this.roomId, userId, position });
         return;
       }
       case 'lounge_return': {
-        const player = this.db.prepare('SELECT seat FROM room_players WHERE room_id = ? AND user_id = ?')
+        const player = this.db
+          .prepare('SELECT seat FROM room_players WHERE room_id = ? AND user_id = ?')
           .get(this.roomId, userId) as { seat: number | null } | undefined;
         if (!player || player.seat === null)
-          return this.send(userId, { t: 'error', message: 'Choose an open seat to return to the table.' });
+          return this.send(userId, {
+            t: 'error',
+            message: 'Choose an open seat to return to the table.',
+          });
         this.lounge.delete(userId);
-        this.db.prepare('UPDATE room_players SET sitting_out = 0 WHERE room_id = ? AND user_id = ?').run(this.roomId, userId);
+        this.db
+          .prepare('UPDATE room_players SET sitting_out = 0 WHERE room_id = ? AND user_id = ?')
+          .run(this.roomId, userId);
         this.broadcastRoomState();
         return;
       }
@@ -473,7 +519,12 @@ export class GameRoom {
         const pokeUser = this.db
           .prepare('SELECT COALESCE(display_name, username) as name FROM users WHERE id = ?')
           .get(userId) as { name: string };
-        this.broadcast({ t: 'poke', fromUserId: userId, fromName: pokeUser.name, targetSeat: msg.targetSeat });
+        this.broadcast({
+          t: 'poke',
+          fromUserId: userId,
+          fromName: pokeUser.name,
+          targetSeat: msg.targetSeat,
+        });
         return;
       }
       case 'emote': {
@@ -506,22 +557,33 @@ export class GameRoom {
         return;
       }
       case 'sit': {
-        if (this.hand) return this.send(userId, { t: 'error', message: 'wait for the hand to end' });
+        if (this.hand)
+          return this.send(userId, { t: 'error', message: 'wait for the hand to end' });
         const taken = this.db
           .prepare('SELECT 1 FROM room_players WHERE room_id = ? AND seat = ?')
           .get(this.roomId, msg.seat);
         if (taken) return this.send(userId, { t: 'error', message: 'seat taken' });
         this.db
-          .prepare('UPDATE room_players SET seat = ?, sitting_out = 0 WHERE room_id = ? AND user_id = ?')
+          .prepare(
+            'UPDATE room_players SET seat = ?, sitting_out = 0 WHERE room_id = ? AND user_id = ?',
+          )
           .run(msg.seat, this.roomId, userId);
         this.lounge.delete(userId);
         this.broadcastRoomState();
         return;
       }
       case 'leave_seat': {
-        if (this.hand) return this.send(userId, { t: 'error', message: 'wait for the hand to end' });
-        if (!this.db.prepare('SELECT 1 FROM room_players WHERE room_id = ? AND user_id = ?').get(this.roomId, userId))
-          return this.send(userId, { t: 'error', message: 'Only table members have a seat to leave.' });
+        if (this.hand)
+          return this.send(userId, { t: 'error', message: 'wait for the hand to end' });
+        if (
+          !this.db
+            .prepare('SELECT 1 FROM room_players WHERE room_id = ? AND user_id = ?')
+            .get(this.roomId, userId)
+        )
+          return this.send(userId, {
+            t: 'error',
+            message: 'Only table members have a seat to leave.',
+          });
         this.db
           .prepare('UPDATE room_players SET seat = NULL WHERE room_id = ? AND user_id = ?')
           .run(this.roomId, userId);
@@ -538,7 +600,10 @@ export class GameRoom {
           return this.send(userId, { t: 'error', message: 'only the host starts hands' });
         // an archived table is retired: history stays readable, play does not resume
         if (room.archived)
-          return this.send(userId, { t: 'error', message: 'this table is archived - unarchive it to deal again' });
+          return this.send(userId, {
+            t: 'error',
+            message: 'this table is archived - unarchive it to deal again',
+          });
         if (this.hand) return this.send(userId, { t: 'error', message: 'hand already running' });
         if (this.autoDeal) {
           clearTimeout(this.autoDeal);
@@ -590,7 +655,11 @@ export class GameRoom {
     const room = getRoom(this.db, this.roomId)!;
     const eligible = this.eligiblePlayers().filter((p) => !onlyIds || onlyIds.has(p.userId));
     if (eligible.length < 2) {
-      if (!auto) this.broadcast({ t: 'error', message: 'need at least 2 seated, funded, connected players' });
+      if (!auto)
+        this.broadcast({
+          t: 'error',
+          message: 'need at least 2 seated, funded, connected players',
+        });
       return;
     }
     const seats = eligible.map((p) => p.seat!);
@@ -612,29 +681,42 @@ export class GameRoom {
     // the host's turn-time setting is read at deal time, so edits apply from the next hand
     const handOpts: GameOpts = {
       ...this.opts,
-      actionTimeoutMs: room.action_secs !== null ? room.action_secs * 1000 : this.opts.actionTimeoutMs,
+      actionTimeoutMs:
+        room.action_secs !== null ? room.action_secs * 1000 : this.opts.actionTimeoutMs,
       tvReplays: !!room.tv_replays,
     };
     this.shown.clear();
     this.shownHandId = null;
     this.peekOffers.clear();
     activeHands.add(this.roomId);
-    this.hand = new Hand(this, this.db, room.id, handSeats, button, room.sb, room.bb, room.audit_mode, this.serverId, handOpts, () => {
-      activeHands.delete(this.roomId);
-      this.lastButton = button;
-      this.lastHandShow = this.hand?.showSnapshot() ?? null;
-      this.hand = null;
-      // showdown winners already revealed their cards: the 7-2 bounty applies now
-      const snap = this.lastHandShow;
-      if (snap) {
-        for (const seat of snap.winnerSeats) {
-          const cards = snap.reveals.get(seat);
-          if (cards) this.trySevenDeuce(snap.handId, seat, cards);
+    this.hand = new Hand(
+      this,
+      this.db,
+      room.id,
+      handSeats,
+      button,
+      room.sb,
+      room.bb,
+      room.audit_mode,
+      this.serverId,
+      handOpts,
+      () => {
+        activeHands.delete(this.roomId);
+        this.lastButton = button;
+        this.lastHandShow = this.hand?.showSnapshot() ?? null;
+        this.hand = null;
+        // showdown winners already revealed their cards: the 7-2 bounty applies now
+        const snap = this.lastHandShow;
+        if (snap) {
+          for (const seat of snap.winnerSeats) {
+            const cards = snap.reveals.get(seat);
+            if (cards) this.trySevenDeuce(snap.handId, seat, cards);
+          }
         }
-      }
-      this.broadcastRoomState();
-      this.scheduleAutoDeal();
-    });
+        this.broadcastRoomState();
+        this.scheduleAutoDeal();
+      },
+    );
     this.hand.begin();
   }
 
@@ -728,10 +810,14 @@ export class GameRoom {
     if (this.hand || !snap || snap.handId !== msg.handId)
       return this.send(userId, { t: 'error', message: 'peek offers only work between hands' });
     const target = snap.bySeat.get(msg.targetSeat);
-    if (!target) return this.send(userId, { t: 'error', message: 'that player was not in the last hand' });
+    if (!target)
+      return this.send(userId, { t: 'error', message: 'that player was not in the last hand' });
     if (target.userId === userId)
       return this.send(userId, { t: 'error', message: 'those are your own cards' });
-    if (snap.revealedSeats.has(msg.targetSeat) || (this.shownHandId === msg.handId && this.shown.has(msg.targetSeat)))
+    if (
+      snap.revealedSeats.has(msg.targetSeat) ||
+      (this.shownHandId === msg.handId && this.shown.has(msg.targetSeat))
+    )
       return this.send(userId, { t: 'error', message: 'those cards are already public' });
     const buyer = this.db
       .prepare(
@@ -836,10 +922,15 @@ class Hand {
   /** Roaming never stops the crypto client or silently folds a live participant. */
   isContesting(userId: number): boolean {
     const player = this.seatOf(userId);
-    return this.phase !== 'done' && !!player && !this.betting?.seats.find(s => s.seat === player.seat)?.folded;
+    return (
+      this.phase !== 'done' &&
+      !!player &&
+      !this.betting?.seats.find((s) => s.seat === player.seat)?.folded
+    );
   }
   readonly id = randomBytes(8).toString('hex');
-  private phase: 'commit' | 'shuffle' | 'deal' | 'betting' | 'rit' | 'reveal' | 'audit' | 'done' = 'commit';
+  private phase: 'commit' | 'shuffle' | 'deal' | 'betting' | 'rit' | 'reveal' | 'audit' | 'done' =
+    'commit';
   private readonly n: number;
   private commits = new Map<number, Point>();
   private transcript = new Transcript();
@@ -876,7 +967,7 @@ class Hand {
   private goneTimer: NodeJS.Timeout | null = null;
   private timer: NodeJS.Timeout | null = null;
   private lookup = cardLookup();
-  private readonly commissionBps: number;
+  readonly commissionBps: number;
   private settlement: {
     awards: Map<number, number>;
     deltas: { seat: number; delta: number }[];
@@ -908,7 +999,12 @@ class Hand {
   begin(): void {
     this.appendServer('hand_start', {
       roomId: this.roomId,
-      seats: this.seats.map((s) => ({ seat: s.seat, userId: s.userId, pubkey: s.pubkey, stack: s.stack })),
+      seats: this.seats.map((s) => ({
+        seat: s.seat,
+        userId: s.userId,
+        pubkey: s.pubkey,
+        stack: s.stack,
+      })),
       buttonSeat: this.buttonSeat,
       sb: this.sb,
       bb: this.bb,
@@ -946,7 +1042,13 @@ class Hand {
   private onTimeout(): void {
     // give a stalled (often just disconnected) player a fixed grace window:
     // re-send whatever we are waiting on a few times before giving up
-    if (this.phase !== 'betting' && this.phase !== 'audit' && this.phase !== 'rit' && this.phase !== 'done' && this.retriesLeft > 0) {
+    if (
+      this.phase !== 'betting' &&
+      this.phase !== 'audit' &&
+      this.phase !== 'rit' &&
+      this.phase !== 'done' &&
+      this.retriesLeft > 0
+    ) {
       this.retriesLeft--;
       this.renudge();
       this.armTimer(this.opts.cryptoTimeoutMs);
@@ -1048,7 +1150,13 @@ class Hand {
     const orderIdx = this.seats.findIndex((s) => s.seat === info.seat);
     for (const idx of this.holeIndexes(orderIdx)) {
       const pt = this.holeFinal.get(idx);
-      if (pt) this.room.send(userId, { t: 'your_card', handId: this.id, deckIndex: idx, point: pointHex(pt) });
+      if (pt)
+        this.room.send(userId, {
+          t: 'your_card',
+          handId: this.id,
+          deckIndex: idx,
+          point: pointHex(pt),
+        });
     }
     for (const [deckIndex, card] of this.boardCards) {
       this.room.send(userId, { t: 'board_open', handId: this.id, deckIndex, card });
@@ -1080,12 +1188,26 @@ class Hand {
   private appendServer(type: string, payload: unknown): void {
     const sig = signContent(this.serverId.secretKey, this.id, type, payload);
     const e = this.transcript.append({ type, from: this.serverId.publicKey, payload, sig });
-    this.room.broadcast({ t: 'transcript_entry', handId: this.id, seq: e.seq, type, from: e.from, head: this.transcript.head });
+    this.room.broadcast({
+      t: 'transcript_entry',
+      handId: this.id,
+      seq: e.seq,
+      type,
+      from: e.from,
+      head: this.transcript.head,
+    });
   }
 
   private appendPlayer(type: string, pubkey: string, payload: unknown, sig: string): void {
     const e = this.transcript.append({ type, from: pubkey, payload, sig });
-    this.room.broadcast({ t: 'transcript_entry', handId: this.id, seq: e.seq, type, from: e.from, head: this.transcript.head });
+    this.room.broadcast({
+      t: 'transcript_entry',
+      handId: this.id,
+      seq: e.seq,
+      type,
+      from: e.from,
+      head: this.transcript.head,
+    });
   }
 
   // ---------- helpers ----------
@@ -1112,7 +1234,16 @@ class Hand {
     if (this.phase === 'done') return;
     const info = this.seatOf(userId);
     if (!info) return this.err(userId, 'not in this hand');
-    if (msg.t === 'key_commit' || msg.t === 'shuffle_deck' || msg.t === 'unmask_share' || msg.t === 'action' || msg.t === 'reveal_key' || msg.t === 'show_cards' || msg.t === 'rit_vote' || msg.t === 'fold_key') {
+    if (
+      msg.t === 'key_commit' ||
+      msg.t === 'shuffle_deck' ||
+      msg.t === 'unmask_share' ||
+      msg.t === 'action' ||
+      msg.t === 'reveal_key' ||
+      msg.t === 'show_cards' ||
+      msg.t === 'rit_vote' ||
+      msg.t === 'fold_key'
+    ) {
       if (!verifyContent(info.pubkey, this.id, msg.t, signedBody(msg), msg.sig)) {
         return this.err(userId, 'bad signature');
       }
@@ -1225,7 +1356,12 @@ class Hand {
     this.commits.set(info.seat, commit);
     this.retriesLeft = this.opts.cryptoRetries ?? 3;
     this.appendPlayer('key_commit', info.pubkey, { commit: commitHex }, sig);
-    this.room.broadcast({ t: 'key_commit_applied', handId: this.id, seat: info.seat, commit: commitHex });
+    this.room.broadcast({
+      t: 'key_commit_applied',
+      handId: this.id,
+      seat: info.seat,
+      commit: commitHex,
+    });
     if (this.commits.size === this.n) {
       this.phase = 'shuffle';
       this.requestShuffle();
@@ -1247,14 +1383,16 @@ class Hand {
 
   private onShuffle(info: HandSeatInfo, deckHexes: string[], sig: string): void {
     if (this.phase !== 'shuffle') return this.err(info.userId, 'not in shuffle phase');
-    if (this.seats[this.shuffleIdx]!.seat !== info.seat) return this.err(info.userId, 'not your shuffle turn');
+    if (this.seats[this.shuffleIdx]!.seat !== info.seat)
+      return this.err(info.userId, 'not your shuffle turn');
     let points: Point[];
     try {
       points = deckHexes.map(pointFromHex);
     } catch {
       return this.abort('invalid deck from shuffler', info.seat);
     }
-    if (new Set(deckHexes).size !== 52) return this.abort('shuffled deck has duplicates', info.seat);
+    if (new Set(deckHexes).size !== 52)
+      return this.abort('shuffled deck has duplicates', info.seat);
     this.deck = points;
     this.retriesLeft = this.opts.cryptoRetries ?? 3;
     this.appendPlayer('shuffle_deck', info.pubkey, { deck: deckHexes }, sig);
@@ -1316,7 +1454,8 @@ class Hand {
     sig: string,
   ): void {
     const chain = this.chains.get(deckIndex);
-    if (!chain || chain.remaining[0] !== info.seat) return this.err(info.userId, 'no share expected from you');
+    if (!chain || chain.remaining[0] !== info.seat)
+      return this.err(info.userId, 'no share expected from you');
     let out: Point;
     try {
       out = pointFromHex(outHex);
@@ -1371,10 +1510,18 @@ class Hand {
       }
       case 'board': {
         const card = recoverCard(chain.current, this.lookup);
-        if (card === null) return this.abort(`opened board point at index ${chain.deckIndex} is not a card (mis-shuffle)`, null);
+        if (card === null)
+          return this.abort(
+            `opened board point at index ${chain.deckIndex} is not a card (mis-shuffle)`,
+            null,
+          );
         this.boardCards.set(chain.deckIndex, card);
         const run2 = chain.deckIndex > 2 * this.n + 4;
-        this.appendServer('board_open', { deckIndex: chain.deckIndex, card, ...(run2 ? { run: 2 } : {}) });
+        this.appendServer('board_open', {
+          deckIndex: chain.deckIndex,
+          card,
+          ...(run2 ? { run: 2 } : {}),
+        });
         this.room.broadcast({
           t: 'board_open',
           handId: this.id,
@@ -1389,7 +1536,11 @@ class Hand {
       }
       case 'showdown': {
         const card = recoverCard(chain.current, this.lookup);
-        if (card === null) return this.abort(`revealed hole point at index ${chain.deckIndex} is not a card (mis-shuffle)`, null);
+        if (card === null)
+          return this.abort(
+            `revealed hole point at index ${chain.deckIndex} is not a card (mis-shuffle)`,
+            null,
+          );
         const list = this.reveals.get(chain.forSeat!) ?? [];
         list.push(card);
         this.reveals.set(chain.forSeat!, list);
@@ -1442,12 +1593,18 @@ class Hand {
   }
 
   private onAction(info: HandSeatInfo, action: PlayerAction, sig: string): void {
-    if (this.phase !== 'betting' || !this.betting) return this.err(info.userId, 'not in a betting round');
+    if (this.phase !== 'betting' || !this.betting)
+      return this.err(info.userId, 'not in a betting round');
     this.appendPlayer('action', info.pubkey, { action, seat: info.seat }, sig);
     this.applyEngineAction(info.seat, action, false, info.userId);
   }
 
-  private applyEngineAction(seat: number, action: PlayerAction, auto: boolean, userId?: number): void {
+  private applyEngineAction(
+    seat: number,
+    action: PlayerAction,
+    auto: boolean,
+    userId?: number,
+  ): void {
     try {
       this.betting = applyAction(this.betting!, seat, action);
     } catch (e) {
@@ -1455,7 +1612,13 @@ class Hand {
       return;
     }
     this.actionSeq++;
-    this.room.broadcast({ t: 'action_applied', handId: this.id, seat, action, ...(auto ? { auto: true } : {}) });
+    this.room.broadcast({
+      t: 'action_applied',
+      handId: this.id,
+      seat,
+      action,
+      ...(auto ? { auto: true } : {}),
+    });
     this.broadcastBetting();
     this.afterBettingChange();
   }
@@ -1589,7 +1752,9 @@ class Hand {
     const info = this.seatOf(userId);
     if (!info) return;
     const preBetting = () =>
-      this.phase === 'commit' || this.phase === 'shuffle' || (this.phase === 'deal' && !this.betting);
+      this.phase === 'commit' ||
+      this.phase === 'shuffle' ||
+      (this.phase === 'deal' && !this.betting);
     if (preBetting()) {
       if (this.goneTimer) return;
       this.goneTimer = setTimeout(() => {
@@ -1724,7 +1889,12 @@ class Hand {
       }
     }
     this.appendServer('rit_result', { runTwice });
-    this.room.broadcast({ t: 'rit_result', handId: this.id, runTwice, sharedBoard: this.currentBoard() });
+    this.room.broadcast({
+      t: 'rit_result',
+      handId: this.id,
+      runTwice,
+      sharedBoard: this.currentBoard(),
+    });
     this.requestReveals();
   }
 
@@ -1848,8 +2018,14 @@ class Hand {
       };
     }
 
-    const deltas = st.seats.map((s) => ({ seat: s.seat, delta: (awards.get(s.seat) ?? 0) - s.total }));
-    const stacks = st.seats.map((s) => ({ seat: s.seat, stack: s.stack + (awards.get(s.seat) ?? 0) }));
+    const deltas = st.seats.map((s) => ({
+      seat: s.seat,
+      delta: (awards.get(s.seat) ?? 0) - s.total,
+    }));
+    const stacks = st.seats.map((s) => ({
+      seat: s.seat,
+      stack: s.stack + (awards.get(s.seat) ?? 0),
+    }));
     this.settlement = { awards, deltas, stacks, showdown: showdownMsg, rake };
     this.appendServer('settlement', {
       board,
@@ -1940,14 +2116,30 @@ class Hand {
       // balances. Falls back to the banker when the platform isn't seeded yet.
       if (rake > 0 && room) {
         const recipientId = platformUserId(this.db) ?? room.banker_id;
-        settleRake(this.db, { roomId: this.roomId, recipientId, rake, ref: head, commissionBps: this.commissionBps });
+        settleRake(this.db, {
+          roomId: this.roomId,
+          recipientId,
+          rake,
+          ref: head,
+          commissionBps: this.commissionBps,
+        });
       }
       this.db
-        .prepare('INSERT INTO transcripts (hand_id, room_id, head, entries, ts) VALUES (?, ?, ?, ?, ?)')
+        .prepare(
+          'INSERT INTO transcripts (hand_id, room_id, head, entries, ts) VALUES (?, ?, ?, ?, ?)',
+        )
         .run(this.id, this.roomId, head, JSON.stringify(this.transcript.entries), Date.now());
     });
     write();
-    this.room.broadcast({ t: 'hand_end', handId: this.id, head, stacks, deltas, commission: rake });
+    this.room.broadcast({
+      t: 'hand_end',
+      handId: this.id,
+      head,
+      stacks,
+      deltas,
+      commission: rake,
+      commissionBps: this.commissionBps,
+    });
     this.onDone();
   }
 }

@@ -13,10 +13,13 @@ import { Button, Input, Panel, Spinner } from '../../shared/ui/index.tsx';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
 import { cardFromName } from '@4am/shared';
 import { AppearanceToggle } from '../../shared/ui/AppearanceToggle.tsx';
+import { adminDestination, isAdminSite } from '../../shared/adminSite.ts';
 
 type Mode = 'login' | 'register' | 'recover';
 
 export function LoginPage() {
+  const admin = isAdminSite() || new URLSearchParams(window.location.search).get('admin') === '1';
+  const [adminNext] = useState(adminDestination);
   const [mode, setMode] = useState<Mode>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -43,6 +46,10 @@ export function LoginPage() {
   /** Land the user wherever they were actually headed: into the shared table if
    *  a /j/CODE link brought them here, otherwise the lobby. */
   async function goOnwards() {
+    if (admin) {
+      nav(adminNext);
+      return;
+    }
     const pending = takePendingJoin() ?? joinCode;
     if (pending) {
       try {
@@ -87,7 +94,8 @@ export function LoginPage() {
             : await api.login(username, authKey);
       setAuth({ token: res.token, userId: res.userId, username, identity });
       setPhase('success');
-      onwardTimer.current = setTimeout(() => void goOnwards(), 650);
+      if (admin) nav(adminNext, { replace: true });
+      else onwardTimer.current = setTimeout(() => void goOnwards(), 650);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not sign in. Try again.';
       setError(message === 'bad credentials' ? 'Username or password is incorrect.' : message);
@@ -114,11 +122,15 @@ export function LoginPage() {
             />
           ))}
         </div>
-        <h1 className="mb-1 text-center font-display text-2xl font-bold">4AM Casino</h1>
+        <h1 className="mb-1 text-center font-display text-2xl font-bold">
+          {admin ? 'Platform sign in' : '4AM Casino'}
+        </h1>
         <p className="mb-6 text-center text-sm text-slate-500">
-          Hold'em with friends. Nobody sees your cards. Not even the house.
+          {admin
+            ? 'Use your 4AM Casino platform account to manage the casino.'
+            : "Hold'em with friends. Nobody sees your cards. Not even the house."}
         </p>
-        {joinCode && (
+        {joinCode && !admin && (
           <div className="mb-4 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">
             You were invited to a table (<span className="font-mono font-bold">{joinCode}</span>).
             Log in or create an account and we'll seat you straight away.
@@ -126,29 +138,30 @@ export function LoginPage() {
         )}
         {expired && (
           <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
-            The server restarted and reset its data, so your login is gone. Sessions here never time
-            out on their own. Register again with the same name and you are back in.
+            Your session has expired. Sign in again to continue.
           </div>
         )}
         <Panel>
-          <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
-            {(['login', 'register'] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => {
-                  setMode(m);
-                  setError(null);
-                }}
-                className={`rounded-md py-1.5 text-sm font-medium capitalize transition-colors ${
-                  mode === m
-                    ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
-                    : 'text-slate-500'
-                }`}
-              >
-                {m === 'login' ? 'Log in' : 'Register'}
-              </button>
-            ))}
-          </div>
+          {!admin && (
+            <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
+              {(['login', 'register'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => {
+                    setMode(m);
+                    setError(null);
+                  }}
+                  className={`rounded-md py-1.5 text-sm font-medium capitalize transition-colors ${
+                    mode === m
+                      ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                      : 'text-slate-500'
+                  }`}
+                >
+                  {m === 'login' ? 'Log in' : 'Register'}
+                </button>
+              ))}
+            </div>
+          )}
 
           {mode === 'recover' && (
             <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
@@ -229,7 +242,9 @@ export function LoginPage() {
                   }
                 />
               ) : phase === 'success' ? (
-                joinCode ? (
+                admin ? (
+                  '✓ Signed in. Opening dashboard…'
+                ) : joinCode ? (
                   '✓ Seating you at the table…'
                 ) : mode === 'register' ? (
                   '✓ Account created. Dealing you in…'
@@ -261,10 +276,12 @@ export function LoginPage() {
           </p>
         </Panel>
         <Link
-          to="/fair"
+          to={admin ? 'https://4amcasino.com' : '/fair'}
           className="mt-4 block text-center text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400"
         >
-          How can an online deck be fair? Watch the 60-second explainer
+          {admin
+            ? 'Back to 4AM Casino'
+            : 'How can an online deck be fair? Watch the 60-second explainer'}
         </Link>
       </div>
     </div>

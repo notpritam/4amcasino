@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { clientMsgSchema } from '@4am/shared';
 import { genIdentity } from '@4am/mental-poker';
 import type { DB } from './db.js';
-import {userForToken, touchPresence } from './auth.js';
+import { userForToken, touchPresence } from './auth.js';
 import { isMember, isSpectator, roomEvents } from './rooms.js';
 import { GameRoom, type GameOpts } from './game.js';
 import { LIMITS } from './limits.js';
@@ -19,7 +19,12 @@ function originAllowed(origin: string | undefined): boolean {
   // meaningful as a defence against a *page* on another origin - which always
   // sends one. Denying here would lock out every non-browser client instead.
   if (!origin) return true;
-  if (origin === 'https://4amcasino.com' || origin === 'https://www.4amcasino.com') return true;
+  if (
+    origin === 'https://4amcasino.com' ||
+    origin === 'https://www.4amcasino.com' ||
+    origin === 'https://admin.4amcasino.com'
+  )
+    return true;
   const extra = (process.env.ALLOWED_ORIGINS ?? '')
     .split(',')
     .map((s) => s.trim())
@@ -120,8 +125,17 @@ export function attachHub(
     // socket in the room, one rtc frame is relayed verbatim. Those get a tight
     // budget. The wide bucket underneath is only a backstop against a pure flood.
     const PROTOCOL_TYPES = new Set([
-      'key_commit', 'shuffle_deck', 'unmask_share', 'action', 'reveal_key',
-      'show_cards', 'fold_key', 'rit_vote', 'im_ready', 'peek_accept', 'peek_decline',
+      'key_commit',
+      'shuffle_deck',
+      'unmask_share',
+      'action',
+      'reveal_key',
+      'show_cards',
+      'fold_key',
+      'rit_vote',
+      'im_ready',
+      'peek_accept',
+      'peek_decline',
     ]);
     const bucket = (rate: number) => {
       let tokens = rate;

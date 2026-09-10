@@ -94,6 +94,12 @@ composition, example-media rules, and responsive behavior live in its
 [surface brief](apps/web/.impeccable/surfaces/apps-web-src-pages-landing-landingpage-tsx.md)
 rather than changing the account interface's density or navigation.
 
+The administration workspace is a separate shell: a 240px sidebar (210px below
+1200px), a bounded content area, and section links for overview, dues, rooms,
+users, requests and platform settings. Below 900px navigation moves above the
+content; below 600px all six destinations remain visible in a two-column grid.
+Tables scroll inside their own positioned container rather than widening the page.
+
 ## Elevation & Depth
 
 Use Zeus tonal surfaces with restrained shadows on navigation and raised
@@ -123,6 +129,20 @@ Use the actual Zeus `ChartCard` and `ChartLegend` around the existing Recharts
 plots. Winnings are cumulative chips with a visible zero line and a domain that
 includes losses. Never substitute sample history. Include period filters,
 explicit empty states, and an accessible data table. Respect reduced motion.
+
+### Platform administration
+
+Keep settings inline, with the current value beside the editable percentage,
+explicit application scope, a whole-chip example, and an audit table. Save and
+reload states must show whether another session changed the underlying value.
+Use semantic secondary text tokens in custom CSS so both themes retain contrast;
+selected blue options use tinted blue explanatory text. Neutral admin panels use
+14px corners and 24px padding (18px on mobile), while shared controls retain Zeus
+SDK geometry and interaction states.
+
+The admin commission chart is a fixed 14-day SVG bar chart with real daily values,
+a visible zero baseline, UTC date labels, an explicit empty state, and an accessible
+daily-amounts table. No animation is needed for this operational snapshot.
 
 ### Playing cards
 

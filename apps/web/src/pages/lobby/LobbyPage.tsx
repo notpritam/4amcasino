@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { NEW_ROOM_COMMISSION_BPS, commissionRateLabel } from '@4am/shared';
+import { MAX_QUALIFYING_HANDS, commissionRateLabel } from '@4am/shared';
+import { useCommissionSettings } from '../../shared/useCommissionSettings.ts';
 import { api } from '../../shared/api.ts';
 import { useStore } from '../../shared/store.ts';
 import { Badge, Button, Dialog, Input, Panel } from '../../shared/ui/index.tsx';
@@ -23,6 +24,7 @@ interface RoomSummary {
 export function LobbyPage() {
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
+  const commission = useCommissionSettings(createOpen);
   const [joinCode, setJoinCode] = useState('');
   const [name, setName] = useState('');
   const [sb, setSb] = useState(10);
@@ -83,6 +85,7 @@ export function LobbyPage() {
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
+    if (!commission.settings || commission.error) return;
     try {
       const room = await api.createRoom(
         name,
@@ -91,6 +94,7 @@ export function LobbyPage() {
         strictAudit ? 'strict-audit' : undefined,
         actionSecs,
         minSettleHands,
+        commission.settings.revision,
       );
       const extras: Record<string, unknown> = {};
       if (meetLink.trim()) extras.meetLink = meetLink.trim();
@@ -98,6 +102,7 @@ export function LobbyPage() {
       if (Object.keys(extras).length) await api.roomExtras(room.id, extras);
       nav(`/room/${room.id}`);
     } catch (err) {
+      void commission.refresh();
       setError(err instanceof Error ? err.message : 'could not create room');
     }
   }
@@ -348,12 +353,12 @@ export function LobbyPage() {
             <Input
               type="number"
               min={0}
-              max={500}
+              max={MAX_QUALIFYING_HANDS}
               value={minSettleHands}
               onChange={(e) => setMinSettleHands(Math.max(0, +e.target.value))}
             />
             <span className="mt-1 block text-xs text-slate-400">
-              0 means everyone counts right away. The banker can change this later.
+              0 means everyone counts right away. Maximum 30 hands.
             </span>
           </label>
           <label className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
@@ -370,10 +375,23 @@ export function LobbyPage() {
           </label>
           {error && <p className="text-sm text-rose-600">{error}</p>}
           <p className="text-xs leading-relaxed text-slate-500">
-            Platform commission: {commissionRateLabel(NEW_ROOM_COMMISSION_BPS)} per pot, rounded
-            down to whole chips.
+            {commission.settings
+              ? `House cut: ${commissionRateLabel(commission.settings.commissionBps)} per pot, rounded down to whole chips.`
+              : 'Loading the current house cut…'}
           </p>
-          <Button type="submit" className="w-full">
+          {commission.error && (
+            <p role="alert" className="text-sm text-rose-600">
+              {commission.error}{' '}
+              <button type="button" className="underline" onClick={() => void commission.refresh()}>
+                Retry
+              </button>
+            </p>
+          )}
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={!commission.settings || !!commission.error}
+          >
             Create
           </Button>
         </form>

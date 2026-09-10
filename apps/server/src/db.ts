@@ -1,5 +1,10 @@
 import Database from 'better-sqlite3';
-import { LEGACY_ROOM_COMMISSION_BPS, NEW_ROOM_COMMISSION_BPS } from '@4am/shared';
+import {
+  LEGACY_ROOM_COMMISSION_BPS,
+  NEW_ROOM_COMMISSION_BPS,
+  MAX_QUALIFYING_HANDS,
+} from '@4am/shared';
+import { initializePlatformSettings } from './platformSettings.js';
 
 export type DB = Database.Database;
 
@@ -90,7 +95,7 @@ function migrate(db: DB): void {
   ensureColumn(db, 'users', 'avatar3d', 'TEXT');
   // 2026-08-24 redesign: cyber becomes the game's look for everyone, once.
   // Settings still offers light/dark, so a later explicit choice sticks.
-  db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
+  db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)');
   const cyberFlag = db.prepare("SELECT value FROM meta WHERE key = 'cyber-theme-migrated'").get();
   if (!cyberFlag) {
     db.prepare("UPDATE users SET theme = 'cyber'").run();
@@ -111,6 +116,10 @@ function migrate(db: DB): void {
   ensureColumn(db, 'rooms', 'action_secs', 'INTEGER');
   ensureColumn(db, 'rooms', 'co_banker_id', 'INTEGER');
   ensureColumn(db, 'rooms', 'min_settle_hands', 'INTEGER NOT NULL DEFAULT 0');
+  db.prepare('UPDATE rooms SET min_settle_hands = ? WHERE min_settle_hands > ?').run(
+    MAX_QUALIFYING_HANDS,
+    MAX_QUALIFYING_HANDS,
+  );
   ensureColumn(db, 'rooms', 'auto_approve_buys', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'rooms', 'seven_deuce_bonus', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'users', 'private_mode', 'INTEGER NOT NULL DEFAULT 0');
@@ -133,15 +142,21 @@ function migrate(db: DB): void {
   ensureColumn(db, 'rooms', 'spectate_token', 'TEXT');
   ensureColumn(db, 'rooms', 'allow_spectators', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'rooms', 'tv_replays', 'INTEGER NOT NULL DEFAULT 0');
-  // Existing rooms retain their original rate. New inserts default to 0.1%.
+  // Install the original per-room schema before the runtime settings migration.
   // Install and backfill atomically so a restart cannot mistake old rooms for new ones.
   db.transaction(() => {
     const columns = db.pragma('table_info(rooms)') as { name: string }[];
     if (!columns.some((c) => c.name === 'commission_bps')) {
-      ensureColumn(db, 'rooms', 'commission_bps', `INTEGER NOT NULL DEFAULT ${NEW_ROOM_COMMISSION_BPS}`);
+      ensureColumn(
+        db,
+        'rooms',
+        'commission_bps',
+        `INTEGER NOT NULL DEFAULT ${NEW_ROOM_COMMISSION_BPS}`,
+      );
       db.prepare('UPDATE rooms SET commission_bps = ?').run(LEGACY_ROOM_COMMISSION_BPS);
     }
   })();
+  initializePlatformSettings(db);
   ensureColumn(db, 'users', 'show_best_hand', 'INTEGER NOT NULL DEFAULT 1');
   // "deal me in without asking every hand" - the ready check exists so nobody is
   // dealt into a hand they walked away from, which is a per-player call

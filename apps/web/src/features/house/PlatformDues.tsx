@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { commissionRateLabel, type HouseRoom, type PlatformDuesReport } from '@4am/shared';
+import { isAdminSite } from '../../shared/adminSite.ts';
 import { api } from '../../shared/api.ts';
 import { fmt } from '../../shared/lib/cn.ts';
 import { Button, Input, Panel } from '../../shared/ui/index.tsx';
@@ -9,7 +10,10 @@ export function HouseRooms({ rooms }: { rooms: HouseRoom[] }) {
   return (
     <ul className="mt-3 space-y-2 text-sm">
       {rooms.map((room) => (
-        <li key={room.roomId} className="flex items-start justify-between gap-3">
+        <li
+          key={`${room.roomId}-${room.commissionBps}`}
+          className="flex items-start justify-between gap-3"
+        >
           <span className="min-w-0 break-words">
             {room.roomName}
             <span className="ml-2 text-xs text-slate-500">
@@ -155,7 +159,7 @@ export function PlatformDues({ initialReport }: { initialReport?: PlatformDuesRe
                       <div className="min-w-0">
                         <Link
                           className="break-words font-semibold text-indigo-600 underline-offset-4 hover:underline dark:text-indigo-300"
-                          to={`/players/${person.userId}`}
+                          to={`${isAdminSite() ? 'https://4amcasino.com' : ''}/players/${person.userId}`}
                         >
                           {person.displayName}
                         </Link>

@@ -148,6 +148,35 @@ docker run -p 8787:8787 -v 4amcasino-data:/data 4amcasino
 [Tailscale](https://tailscale.com) address. Friends on the same Wi-Fi can just open
 `http://<your-LAN-IP>:8787`.
 
+## Platform administration
+
+The platform account opens the dedicated dashboard at `https://admin.4amcasino.com`.
+The same dashboard is available at `https://4amcasino.com/admin` while the subdomain
+is being connected. Sign in separately on the admin hostname with the existing
+platform account; ordinary player accounts cannot access its data or controls.
+
+**Platform settings → House cut** changes the rate without a redeploy. The initial
+rate is 0.5%. Choose **All rooms** to change future hands in existing rooms too, or
+**New rooms only** to leave existing room rates alone. The editor records who made
+each change and prevents a stale browser tab from overwriting a newer setting.
+Completed and running hands keep their original rates. Settings and history are
+included in the existing database snapshots. Room qualification requirements are
+limited to 0–30 hands; older requirements above 30 are reduced automatically.
+
+The dashboard also includes revenue, user dues, a searchable account directory,
+room management, and pending requests. Amounts are chips; recorded payments are
+user-reported, so receipt must still be confirmed separately.
+
+To connect the admin subdomain on the existing Render service:
+
+1. In Cloudflare, add a **CNAME** record named `admin`, targeting
+   `fouramcasino.onrender.com`, with **DNS only** enabled.
+2. In Render → service → Settings → Custom Domains, add `admin.4amcasino.com`.
+3. Wait for Render to verify DNS and issue its certificate, then check the URL.
+
+The app already accepts the admin origin and routes its root to administration.
+No second service or database is needed.
+
 ## Repository layout
 
 ```

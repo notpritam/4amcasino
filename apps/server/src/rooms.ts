@@ -1,4 +1,6 @@
 import { randomBytes } from 'node:crypto';
+import { commissionSettings } from './platformSettings.js';
+import { MAX_QUALIFYING_HANDS } from '@4am/shared';
 import { EventEmitter } from 'node:events';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -44,7 +46,7 @@ export const roomEvents = new EventEmitter();
 
 const actionSecsSchema = z.union([z.literal(0), z.number().int().min(5).max(180)]); // 0 = no limit
 
-const minSettleSchema = z.number().int().min(0).max(500);
+const minSettleSchema = z.number().int().min(0).max(MAX_QUALIFYING_HANDS);
 
 const meetLinkSchema = z
   .string()
@@ -59,6 +61,7 @@ const createSchema = z.object({
   auditMode: z.enum(['private', 'strict-audit']).optional(),
   actionSecs: actionSecsSchema.optional(),
   minSettleHands: minSettleSchema.optional(),
+  commissionRevision: z.number().int().positive().optional(),
   meetLink: meetLinkSchema.optional(),
   visibility: z.enum(['private', 'public']).optional(),
   autoApproveBuys: z.boolean().optional(),
@@ -74,7 +77,9 @@ export function getRoom(db: DB, roomId: string): RoomRow | undefined {
 }
 
 export function isSpectator(db: DB, roomId: string, userId: number): boolean {
-  return !!db.prepare('SELECT 1 FROM spectators WHERE room_id = ? AND user_id = ?').get(roomId, userId);
+  return !!db
+    .prepare('SELECT 1 FROM spectators WHERE room_id = ? AND user_id = ?')
+    .get(roomId, userId);
 }
 
 export function isMember(db: DB, roomId: string, userId: number): boolean {
@@ -168,14 +173,50 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
   app.post('/api/rooms', authed, async (req, reply) => {
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
-    const { name, sb, bb, auditMode, actionSecs, minSettleHands, meetLink, visibility, autoApproveBuys } = parsed.data;
+    if (
+      parsed.data.commissionRevision !== undefined &&
+      parsed.data.commissionRevision !== commissionSettings(db).revision
+    )
+      return reply
+        .code(409)
+        .send({
+          error: 'The house cut changed. Review the updated rate and create the room again.',
+        });
+    const {
+      name,
+      sb,
+      bb,
+      auditMode,
+      actionSecs,
+      minSettleHands,
+      meetLink,
+      visibility,
+      autoApproveBuys,
+    } = parsed.data;
     if (bb < sb) return reply.code(400).send({ error: 'big blind must be >= small blind' });
     const id = randomBytes(6).toString('hex');
     const joinCode = newJoinCode();
     db.prepare(
-      `INSERT INTO rooms (id, name, join_code, host_id, banker_id, sb, bb, audit_mode, action_secs, min_settle_hands, meet_link, visibility, spectate_token, auto_approve_buys, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, name, joinCode, req.userId, req.userId, sb, bb, auditMode ?? 'private', actionSecs ?? null, minSettleHands ?? 0, meetLink || null, visibility ?? 'private', randomBytes(9).toString('hex'), autoApproveBuys ? 1 : 0, Date.now());
+      `INSERT INTO rooms (id, name, join_code, host_id, banker_id, sb, bb, audit_mode, action_secs, min_settle_hands, meet_link, visibility, spectate_token, auto_approve_buys, created_at, commission_bps)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      name,
+      joinCode,
+      req.userId,
+      req.userId,
+      sb,
+      bb,
+      auditMode ?? 'private',
+      actionSecs ?? null,
+      minSettleHands ?? 0,
+      meetLink || null,
+      visibility ?? 'private',
+      randomBytes(9).toString('hex'),
+      autoApproveBuys ? 1 : 0,
+      Date.now(),
+      commissionSettings(db).commissionBps,
+    );
     db.prepare('INSERT INTO room_players (room_id, user_id) VALUES (?, ?)').run(id, req.userId);
     return roomJson(db, getRoom(db, id)!);
   });
@@ -227,8 +268,12 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     const { id } = req.params as { id: string };
     const room = getRoom(db, id);
     if (!room) return reply.code(404).send({ error: 'no such room' });
-    if (room.visibility !== 'public') return reply.code(403).send({ error: 'this table is private' });
-    db.prepare('INSERT OR IGNORE INTO room_players (room_id, user_id) VALUES (?, ?)').run(id, req.userId);
+    if (room.visibility !== 'public')
+      return reply.code(403).send({ error: 'this table is private' });
+    db.prepare('INSERT OR IGNORE INTO room_players (room_id, user_id) VALUES (?, ?)').run(
+      id,
+      req.userId,
+    );
     db.prepare('DELETE FROM spectators WHERE room_id = ? AND user_id = ?').run(id, req.userId);
     roomEvents.emit('changed', id);
     return roomJson(db, room);
@@ -268,11 +313,12 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
         'SELECT id, status FROM buy_requests WHERE room_id = ? AND user_id = ? AND amount = ? AND ts > ? ORDER BY id DESC LIMIT 1',
       )
       .get(id, req.userId, parsed.data.amount, Date.now() - LIMITS.dedupWindowMs) as
-      | { id: number; status: string }
-      | undefined;
+      { id: number; status: string } | undefined;
     if (recent) return { id: recent.id, status: recent.status, duplicate: true };
     const info = db
-      .prepare('INSERT INTO buy_requests (room_id, user_id, amount, note, ts) VALUES (?, ?, ?, ?, ?)')
+      .prepare(
+        'INSERT INTO buy_requests (room_id, user_id, amount, note, ts) VALUES (?, ?, ?, ?, ?)',
+      )
       .run(id, req.userId, parsed.data.amount, parsed.data.note ?? null, Date.now());
     const requestId = Number(info.lastInsertRowid);
     if (!room.auto_approve_buys) roomEvents.emit('changed', id);
@@ -290,11 +336,9 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
           approvedBy: room.banker_id,
           note: parsed.data.note ?? undefined,
         });
-        db.prepare('UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?').run(
-          parsed.data.amount,
-          id,
-          buyerId,
-        );
+        db.prepare(
+          'UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?',
+        ).run(parsed.data.amount, id, buyerId);
       });
       apply();
       roomEvents.emit('changed', id);
@@ -330,8 +374,7 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     const request = db
       .prepare("SELECT * FROM buy_requests WHERE id = ? AND room_id = ? AND status = 'pending'")
       .get(parsed.data.requestId, id) as
-      | { id: number; user_id: number; amount: number; note: string | null }
-      | undefined;
+      { id: number; user_id: number; amount: number; note: string | null } | undefined;
     if (!request) return reply.code(404).send({ error: 'no such pending request' });
 
     const apply = db.transaction(() => {
@@ -348,11 +391,9 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
           approvedBy: req.userId,
           note: request.note ?? undefined,
         });
-        db.prepare('UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?').run(
-          request.amount,
-          id,
-          request.user_id,
-        );
+        db.prepare(
+          'UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?',
+        ).run(request.amount, id, request.user_id);
       }
     });
     apply();
@@ -393,8 +434,7 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     const entry = db
       .prepare('SELECT * FROM ledger WHERE id = ? AND room_id = ?')
       .get(parsed.data.entryId, id) as
-      | { id: number; user_id: number; delta: number; kind: string; entry_hash: string }
-      | undefined;
+      { id: number; user_id: number; delta: number; kind: string; entry_hash: string } | undefined;
     if (!entry) return reply.code(404).send({ error: 'no such ledger entry' });
     if (entry.kind !== 'purchase')
       return reply.code(400).send({ error: 'only purchases can be reverted' });
@@ -406,7 +446,9 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
       .prepare('SELECT stack FROM room_players WHERE room_id = ? AND user_id = ?')
       .get(id, entry.user_id) as { stack: number } | undefined;
     if (!player || player.stack < entry.delta)
-      return reply.code(400).send({ error: 'the player no longer has enough chips to revert this' });
+      return reply
+        .code(400)
+        .send({ error: 'the player no longer has enough chips to revert this' });
     const apply = db.transaction(() => {
       appendLedger(db, {
         roomId: id,
@@ -450,27 +492,43 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     // Auto-approve and visibility are the two settings that grant money or
     // access, so a backup banker must not be able to flip them - otherwise the
     // backup turns auto-approve on, buys itself a fortune, and turns it back off.
-    const privileged = parsed.data.autoApproveBuys !== undefined || parsed.data.visibility !== undefined;
+    const privileged =
+      parsed.data.autoApproveBuys !== undefined || parsed.data.visibility !== undefined;
     if (privileged && room.banker_id !== req.userId && room.host_id !== req.userId) {
       return reply.code(403).send({ error: 'only the host or the main banker can change that' });
     }
     if (parsed.data.actionSecs !== undefined)
       db.prepare('UPDATE rooms SET action_secs = ? WHERE id = ?').run(parsed.data.actionSecs, id);
     if (parsed.data.minSettleHands !== undefined)
-      db.prepare('UPDATE rooms SET min_settle_hands = ? WHERE id = ?').run(parsed.data.minSettleHands, id);
+      db.prepare('UPDATE rooms SET min_settle_hands = ? WHERE id = ?').run(
+        parsed.data.minSettleHands,
+        id,
+      );
     if (parsed.data.sevenDeuceBonus !== undefined)
-      db.prepare('UPDATE rooms SET seven_deuce_bonus = ? WHERE id = ?').run(parsed.data.sevenDeuceBonus, id);
+      db.prepare('UPDATE rooms SET seven_deuce_bonus = ? WHERE id = ?').run(
+        parsed.data.sevenDeuceBonus,
+        id,
+      );
     if (parsed.data.meetLink !== undefined)
-      db.prepare('UPDATE rooms SET meet_link = ? WHERE id = ?').run(parsed.data.meetLink || null, id);
+      db.prepare('UPDATE rooms SET meet_link = ? WHERE id = ?').run(
+        parsed.data.meetLink || null,
+        id,
+      );
     if (parsed.data.visibility !== undefined)
       db.prepare('UPDATE rooms SET visibility = ? WHERE id = ?').run(parsed.data.visibility, id);
     if (parsed.data.autoApproveBuys !== undefined)
-      db.prepare('UPDATE rooms SET auto_approve_buys = ? WHERE id = ?').run(parsed.data.autoApproveBuys ? 1 : 0, id);
+      db.prepare('UPDATE rooms SET auto_approve_buys = ? WHERE id = ?').run(
+        parsed.data.autoApproveBuys ? 1 : 0,
+        id,
+      );
     // TV replays: after every hand each player's per-hand key is saved to the
     // transcript so replays show ALL hole cards, WSOP broadcast style
     // (requested by notpritam, docs/FEATURES.md)
     if (parsed.data.tvReplays !== undefined)
-      db.prepare('UPDATE rooms SET tv_replays = ? WHERE id = ?').run(parsed.data.tvReplays ? 1 : 0, id);
+      db.prepare('UPDATE rooms SET tv_replays = ? WHERE id = ?').run(
+        parsed.data.tvReplays ? 1 : 0,
+        id,
+      );
     roomEvents.emit('changed', id);
     return { ok: true };
   });
@@ -578,7 +636,9 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     if (!getRoom(db, id)) return reply.code(404).send({ error: 'no such room' });
     if (!isMember(db, id, req.userId)) return reply.code(403).send({ error: 'not a member' });
     const row = db
-      .prepare('SELECT hand_id as handId, head, entries, ts FROM transcripts WHERE room_id = ? AND hand_id = ?')
+      .prepare(
+        'SELECT hand_id as handId, head, entries, ts FROM transcripts WHERE room_id = ? AND hand_id = ?',
+      )
       .get(id, handId) as { handId: string; head: string; entries: string; ts: number } | undefined;
     if (!row) return reply.code(404).send({ error: 'no such hand' });
     return { handId: row.handId, head: row.head, ts: row.ts, entries: JSON.parse(row.entries) };

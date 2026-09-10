@@ -3,7 +3,13 @@ import type { BettingState, PlayerAction, Street } from './betting.js';
 import type { CardId } from './cards.js';
 import type { LoungePosition } from './lounge.js';
 
-const hex = (len?: number) => (len ? z.string().length(len).regex(/^[0-9a-f]+$/) : z.string().regex(/^[0-9a-f]+$/));
+const hex = (len?: number) =>
+  len
+    ? z
+        .string()
+        .length(len)
+        .regex(/^[0-9a-f]+$/)
+    : z.string().regex(/^[0-9a-f]+$/);
 
 /** Hand ids are randomBytes(8); bound them so an unbounded string never reaches
  *  a map key or a DB lookup. */
@@ -15,7 +21,11 @@ const handId = z.string().min(1).max(64);
  *  them open let a single frame carry ~100MB of hex straight into
  *  BigInt('0x'+...), which is superlinear in V8 and blocks the one thread every
  *  live table shares. */
-const scalarHex = z.string().min(1).max(64).regex(/^[0-9a-f]+$/);
+const scalarHex = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[0-9a-f]+$/);
 
 export const dleqProofSchema = z.object({ A1: hex(64), A2: hex(64), z: scalarHex });
 
@@ -25,10 +35,36 @@ export const dleqProofSchema = z.object({ A1: hex(64), A2: hex(64), z: scalarHex
  *  the throw lands inside requestAnimationFrame, permanently killing the render
  *  loop for everyone at the table. */
 export const EMOTE_KINDS = [
-  'wave', 'dance', 'disco', 'robot', 'twirl', 'jump', 'clap', 'bow', 'flex',
-  'facepalm', 'rage', 'laugh', 'cry', 'shrug', 'heart', 'thumbs', 'headbang',
-  'moonwalk', 'spin', 'wiggle', 'salute', 'guitar', 'dab', 'chicken', 'pray',
-  'levitate', 'celebrate', 'shove', 'slap', 'chip',
+  'wave',
+  'dance',
+  'disco',
+  'robot',
+  'twirl',
+  'jump',
+  'clap',
+  'bow',
+  'flex',
+  'facepalm',
+  'rage',
+  'laugh',
+  'cry',
+  'shrug',
+  'heart',
+  'thumbs',
+  'headbang',
+  'moonwalk',
+  'spin',
+  'wiggle',
+  'salute',
+  'guitar',
+  'dab',
+  'chicken',
+  'pray',
+  'levitate',
+  'celebrate',
+  'shove',
+  'slap',
+  'chip',
 ] as const;
 
 export const playerActionSchema = z.object({
@@ -41,11 +77,20 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('join_room'), roomId: z.string() }),
   z.object({ t: z.literal('sit'), seat: z.number().int().min(0).max(8) }),
   z.object({ t: z.literal('leave_seat') }),
-  z.object({ t: z.literal('lounge_move'), x: z.number().finite().min(-11.2).max(11.2), z: z.number().finite().min(-7.5).max(7.5) }),
+  z.object({
+    t: z.literal('lounge_move'),
+    x: z.number().finite().min(-11.2).max(11.2),
+    z: z.number().finite().min(-7.5).max(7.5),
+  }),
   z.object({ t: z.literal('lounge_return') }),
   z.object({ t: z.literal('start_hand') }),
   z.object({ t: z.literal('key_commit'), handId: z.string(), commit: hex(64), sig: hex(128) }),
-  z.object({ t: z.literal('shuffle_deck'), handId: z.string(), deck: z.array(hex(64)).length(52), sig: hex(128) }),
+  z.object({
+    t: z.literal('shuffle_deck'),
+    handId: z.string(),
+    deck: z.array(hex(64)).length(52),
+    sig: hex(128),
+  }),
   z.object({
     t: z.literal('unmask_share'),
     handId: z.string(),
@@ -54,13 +99,24 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
     proof: dleqProofSchema,
     sig: hex(128),
   }),
-  z.object({ t: z.literal('action'), handId: z.string(), action: playerActionSchema, sig: hex(128) }),
+  z.object({
+    t: z.literal('action'),
+    handId: z.string(),
+    action: playerActionSchema,
+    sig: hex(128),
+  }),
   z.object({ t: z.literal('reveal_key'), handId, key: scalarHex, sig: hex(128) }),
   z.object({
     t: z.literal('show_cards'),
     handId: z.string(),
     shares: z
-      .array(z.object({ deckIndex: z.number().int().min(0).max(51), out: hex(64), proof: dleqProofSchema }))
+      .array(
+        z.object({
+          deckIndex: z.number().int().min(0).max(51),
+          out: hex(64),
+          proof: dleqProofSchema,
+        }),
+      )
       .min(1)
       .max(2),
     sig: hex(128),
@@ -80,7 +136,13 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
     handId: z.string(),
     offerId: z.string(),
     shares: z
-      .array(z.object({ deckIndex: z.number().int().min(0).max(51), out: hex(64), proof: dleqProofSchema }))
+      .array(
+        z.object({
+          deckIndex: z.number().int().min(0).max(51),
+          out: hex(64),
+          proof: dleqProofSchema,
+        }),
+      )
       .min(1)
       .max(2),
     sig: hex(128),
@@ -105,7 +167,9 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
   z.object({
     t: z.literal('rtc'),
     to: z.number().int(),
-    data: z.unknown().refine((d) => JSON.stringify(d ?? null).length <= 8192, 'rtc payload too large'),
+    data: z
+      .unknown()
+      .refine((d) => JSON.stringify(d ?? null).length <= 8192, 'rtc payload too large'),
   }),
   z.object({ t: z.literal('voice_state'), muted: z.boolean() }),
 ]);
@@ -171,23 +235,64 @@ export type ServerMsg =
   | { t: 'hello'; serverPublicKey: string }
   | {
       t: 'room_state';
-      room: { id: string; name: string; joinCode: string; hostId: number; bankerId: number; sb: number; bb: number; auditMode: string; actionTimeoutMs: number; actionSecs: number | null; coBankerId: number | null; minSettleHands: number; sevenDeuceBonus: number; voided: boolean; meetLink: string | null; autoApproveBuys: boolean; tvReplays: boolean; commissionBps?: number };
+      room: {
+        id: string;
+        name: string;
+        joinCode: string;
+        hostId: number;
+        bankerId: number;
+        sb: number;
+        bb: number;
+        auditMode: string;
+        actionTimeoutMs: number;
+        actionSecs: number | null;
+        coBankerId: number | null;
+        minSettleHands: number;
+        sevenDeuceBonus: number;
+        voided: boolean;
+        meetLink: string | null;
+        autoApproveBuys: boolean;
+        tvReplays: boolean;
+        commissionBps?: number;
+      };
       players: RoomStatePlayer[];
       handActive: boolean;
       lounge?: Record<number, LoungePosition>;
     }
   | { t: 'lounge_presence'; roomId: string; userId: number; position: LoungePosition | null }
   | { t: 'error'; message: string }
-  | { t: 'chat'; from: string; userId: number; text: string; kind: 'text' | 'sticker' | 'phrase'; ts: number }
+  | {
+      t: 'chat';
+      from: string;
+      userId: number;
+      text: string;
+      kind: 'text' | 'sticker' | 'phrase';
+      ts: number;
+    }
   | { t: 'poke'; fromUserId: number; fromName: string; targetSeat: number }
-  | { t: 'emote'; fromUserId: number; fromName: string; fromSeat: number | null; kind: string; targetSeat?: number }
+  | {
+      t: 'emote';
+      fromUserId: number;
+      fromName: string;
+      fromSeat: number | null;
+      kind: string;
+      targetSeat?: number;
+    }
   | { t: 'rtc'; from: number; data: unknown }
   | { t: 'voice_state'; userId: number; muted: boolean }
   | { t: 'auto_deal'; inMs: number }
   | { t: 'ready_check'; deadlineTs: number; eligible: number[]; ready: number[] }
   | { t: 'ready_end' }
   | { t: 'seven_deuce'; handId: string; seat: number; amount: number }
-  | { t: 'hand_start'; handId: string; seats: HandSeat[]; buttonSeat: number; sb: number; bb: number; auditMode: string }
+  | {
+      t: 'hand_start';
+      handId: string;
+      seats: HandSeat[];
+      buttonSeat: number;
+      sb: number;
+      bb: number;
+      auditMode: string;
+    }
   | { t: 'key_commit_applied'; handId: string; seat: number; commit: string }
   | { t: 'shuffle_turn'; handId: string; seat: number; deck: string[] }
   | { t: 'deck_state'; handId: string; seat: number; deck: string[] }
@@ -199,12 +304,26 @@ export type ServerMsg =
       forSeat: number | null;
       purpose: 'hole' | 'board' | 'showdown';
     }
-  | { t: 'share_applied'; handId: string; deckIndex: number; seat: number; out: string; forSeat: number | null }
+  | {
+      t: 'share_applied';
+      handId: string;
+      deckIndex: number;
+      seat: number;
+      out: string;
+      forSeat: number | null;
+    }
   | { t: 'your_card'; handId: string; deckIndex: number; point: string }
   | { t: 'board_open'; handId: string; deckIndex: number; card: CardId; run?: number }
   | { t: 'rit_offer'; handId: string; deadlineTs: number; voters: number[] }
   | { t: 'rit_result'; handId: string; runTwice: boolean; sharedBoard: CardId[] }
-  | { t: 'betting_state'; handId: string; actionSeq: number; state: BettingState; board: CardId[]; deadline: number | null }
+  | {
+      t: 'betting_state';
+      handId: string;
+      actionSeq: number;
+      state: BettingState;
+      board: CardId[];
+      deadline: number | null;
+    }
   | { t: 'action_applied'; handId: string; seat: number; action: PlayerAction; auto?: boolean }
   | {
       t: 'showdown';
@@ -217,9 +336,25 @@ export type ServerMsg =
         awards: [{ seat: number; amount: number }[], { seat: number; amount: number }[]];
       };
     }
-  | { t: 'hand_end'; handId: string; head: string; stacks: { seat: number; stack: number }[]; deltas: { seat: number; delta: number }[]; commission?: number }
+  | {
+      t: 'hand_end';
+      handId: string;
+      head: string;
+      stacks: { seat: number; stack: number }[];
+      deltas: { seat: number; delta: number }[];
+      commission?: number;
+      commissionBps?: number;
+    }
   | { t: 'cards_shown'; handId: string; seat: number; cards: CardId[] }
-  | { t: 'peek_offer'; offerId: string; handId: string; fromUserId: number; fromName: string; targetSeat: number; amount: number }
+  | {
+      t: 'peek_offer';
+      offerId: string;
+      handId: string;
+      fromUserId: number;
+      fromName: string;
+      targetSeat: number;
+      amount: number;
+    }
   | {
       t: 'peek_result';
       offerId: string;
@@ -231,6 +366,13 @@ export type ServerMsg =
     }
   | { t: 'hand_abort'; handId: string; reason: string; blamedSeat: number | null }
   | { t: 'need_keys'; handId: string }
-  | { t: 'transcript_entry'; handId: string; seq: number; type: string; from: string; head: string };
+  | {
+      t: 'transcript_entry';
+      handId: string;
+      seq: number;
+      type: string;
+      from: string;
+      head: string;
+    };
 
 export type { BettingState, PlayerAction, Street };

@@ -96,7 +96,7 @@ describe('platform dues report', () => {
     });
     expect(report.people[0].rooms).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ roomId: 'newroom', accrued: 10, commissionBps: 10 }),
+        expect.objectContaining({ roomId: 'newroom', accrued: 10, commissionBps: 50 }),
         expect.objectContaining({ roomId: 'legacy', accrued: 20, commissionBps: 100 }),
       ]),
     );

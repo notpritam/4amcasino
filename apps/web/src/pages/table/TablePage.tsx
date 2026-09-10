@@ -827,8 +827,8 @@ export function TablePage({
               </motion.span>
               {(hand.result?.commission ?? 0) > 0 && (
                 <motion.span variants={revealItem} className="text-xs text-slate-500">
-                  {commissionRateLabel(room?.room.commissionBps)} table commission ·{' '}
-                  {fmt(hand.result!.commission!)} to the house
+                  {commissionRateLabel(hand.result?.commissionBps ?? room?.room.commissionBps)}{' '}
+                  table commission · {fmt(hand.result!.commission!)} to the house
                 </motion.span>
               )}
               {!hand.showdown &&
@@ -984,8 +984,8 @@ export function TablePage({
             </span>
             {(hand.result?.commission ?? 0) > 0 && (
               <span className="text-[0.65rem] text-white/50">
-                {commissionRateLabel(room?.room.commissionBps)} commission ·{' '}
-                {fmt(hand.result!.commission!)} to the house
+                {commissionRateLabel(hand.result?.commissionBps ?? room?.room.commissionBps)}{' '}
+                commission · {fmt(hand.result!.commission!)} to the house
               </span>
             )}
             {!hand.showdown &&

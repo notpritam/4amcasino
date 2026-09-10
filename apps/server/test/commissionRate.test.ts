@@ -7,7 +7,7 @@ import { openDb } from '../src/db.js';
 import { appendLedger, verifyLedger } from '../src/ledger.js';
 
 describe('room commission rates', () => {
-  it('creates rooms at 0.1% and keeps the platform rate outside host settings', async () => {
+  it('creates rooms at 0.5% and keeps the platform rate outside host settings', async () => {
     const ctx = createApp(':memory:');
     try {
       const user = (
@@ -26,7 +26,7 @@ describe('room commission rates', () => {
       });
       expect(created.statusCode).toBe(200);
       const room = created.json();
-      expect(room.commissionBps).toBe(10);
+      expect(room.commissionBps).toBe(50);
       await ctx.app.inject({
         method: 'PUT',
         url: `/api/rooms/${room.id}/settings`,
@@ -38,9 +38,9 @@ describe('room commission rates', () => {
         url: `/api/rooms/${room.id}`,
         headers,
       });
-      expect(reloaded.json().commissionBps).toBe(10);
+      expect(reloaded.json().commissionBps).toBe(50);
       expect(ctx.db.prepare('SELECT commission_bps FROM rooms WHERE id = ?').get(room.id)).toEqual({
-        commission_bps: 10,
+        commission_bps: 50,
       });
     } finally {
       await ctx.app.close();
@@ -87,7 +87,7 @@ describe('room commission rates', () => {
       });
       seed('new');
       expect(db.prepare('SELECT commission_bps FROM rooms WHERE id = ?').get('new')).toEqual({
-        commission_bps: 10,
+        commission_bps: 50,
       });
       expect(db.prepare('SELECT * FROM ledger').all()).toEqual(ledger);
       expect(verifyLedger(db, 'legacy').ok).toBe(true);
@@ -96,7 +96,7 @@ describe('room commission rates', () => {
       db = openDb(path);
       expect(db.prepare('SELECT id, commission_bps FROM rooms ORDER BY id').all()).toEqual([
         { id: 'legacy', commission_bps: 100 },
-        { id: 'new', commission_bps: 10 },
+        { id: 'new', commission_bps: 50 },
       ]);
       expect(db.prepare('SELECT * FROM ledger').all()).toEqual(ledger);
     } finally {

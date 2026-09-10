@@ -5,6 +5,7 @@ import { cn, fmt } from '../../shared/lib/cn.ts';
 import { useAsyncGuard } from '../../shared/lib/useAsyncGuard.ts';
 import { Badge, Button, Dialog, Input } from '../../shared/ui/index.tsx';
 import { CaretDown, Coins, HandCoins, Tray } from '@phosphor-icons/react';
+import { MAX_QUALIFYING_HANDS } from '@4am/shared';
 
 interface BuyRequest {
   id: number;
@@ -281,7 +282,9 @@ export function BankControls({
                       setSendNote('');
                     }, 1200);
                   })
-                  .catch((err) => pushError(err instanceof Error ? err.message : 'transfer failed')),
+                  .catch((err) =>
+                    pushError(err instanceof Error ? err.message : 'transfer failed'),
+                  ),
               );
             }}
             className="space-y-3"
@@ -365,8 +368,8 @@ export function BankControls({
               className="mt-0.5"
             />
             <span>
-              TV replays: after every hand each player&apos;s hand key is saved, so replays show
-              ALL hole cards - broadcast style, ready to cut a video from. Folded cards stop being
+              TV replays: after every hand each player&apos;s hand key is saved, so replays show ALL
+              hole cards - broadcast style, ready to cut a video from. Folded cards stop being
               secret from this table&apos;s replays.
             </span>
           </label>
@@ -375,16 +378,29 @@ export function BankControls({
           <div className="mb-4 grid gap-3 sm:grid-cols-2">
             <label className="block text-sm">
               <span className="mb-1 block text-slate-500">
-                Hands required before winnings count in settle-up (0 = everyone counts)
+                Hands required before winnings count (0–30; 0 = everyone counts)
               </span>
               <Input
                 type="number"
                 min={0}
-                max={500}
+                max={MAX_QUALIFYING_HANDS}
                 defaultValue={room?.room.minSettleHands ?? 0}
-                onBlur={(e) =>
-                  void api.setMinSettleHands(roomId, Math.max(0, +e.target.value)).catch(() => {})
-                }
+                onBlur={(e) => {
+                  const value = Math.min(
+                    MAX_QUALIFYING_HANDS,
+                    Math.max(0, Math.floor(+e.target.value)),
+                  );
+                  e.currentTarget.value = String(value);
+                  void api
+                    .setMinSettleHands(roomId, value)
+                    .catch((err) =>
+                      pushError(
+                        err instanceof Error
+                          ? err.message
+                          : 'Could not update the hand requirement.',
+                      ),
+                    );
+                }}
               />
             </label>
             <label className="block text-sm">
@@ -442,10 +458,18 @@ export function BankControls({
                   </div>
                   {r.note && <div className="text-xs text-slate-500">{r.note}</div>}
                 </div>
-                <Button variant="danger" disabled={deciding.has(r.id)} onClick={() => void decide(r.id, false)}>
+                <Button
+                  variant="danger"
+                  disabled={deciding.has(r.id)}
+                  onClick={() => void decide(r.id, false)}
+                >
                   Reject
                 </Button>
-                <Button variant="success" disabled={deciding.has(r.id)} onClick={() => void decide(r.id, true)}>
+                <Button
+                  variant="success"
+                  disabled={deciding.has(r.id)}
+                  onClick={() => void decide(r.id, true)}
+                >
                   Approve
                 </Button>
               </div>

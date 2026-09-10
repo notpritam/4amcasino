@@ -27,7 +27,9 @@ describe('canonical casino domain', () => {
 
   it('redirects HEAD requests', async () => {
     const res = await ctx.app.inject({
-      method: 'HEAD', url: '/api/health', headers: { host: 'poker.notpritam.in' },
+      method: 'HEAD',
+      url: '/api/health',
+      headers: { host: 'poker.notpritam.in' },
     });
     expect(res.statusCode).toBe(308);
     expect(res.headers.location).toBe('https://4amcasino.com/api/health');
@@ -36,46 +38,64 @@ describe('canonical casino domain', () => {
 
   it('keeps server-wide OPTIONS requests on the fixed destination', async () => {
     const address = await ctx.app.listen({ host: '127.0.0.1', port: 0 });
-    const res = await new Promise<{ status: number | undefined; location: string | undefined }>((resolve, reject) => {
-      const req = request(address, {
-        method: 'OPTIONS', path: '*', headers: { host: 'poker.notpritam.in' },
-      }, (response) => {
-        response.resume();
-        resolve({ status: response.statusCode, location: response.headers.location });
-      });
-      req.on('error', reject);
-      req.end();
-    });
+    const res = await new Promise<{ status: number | undefined; location: string | undefined }>(
+      (resolve, reject) => {
+        const req = request(
+          address,
+          {
+            method: 'OPTIONS',
+            path: '*',
+            headers: { host: 'poker.notpritam.in' },
+          },
+          (response) => {
+            response.resume();
+            resolve({ status: response.statusCode, location: response.headers.location });
+          },
+        );
+        req.on('error', reject);
+        req.end();
+      },
+    );
     expect(res.status).toBe(308);
     expect(res.location).toBe('https://4amcasino.com/');
   });
 
   it('redirects a POST before executing the old-host request', async () => {
     const res = await ctx.app.inject({
-      method: 'POST', url: '/api/register', headers: { host: 'poker.notpritam.in' },
+      method: 'POST',
+      url: '/api/register',
+      headers: { host: 'poker.notpritam.in' },
       payload: { username: 'redirect_test', authKey: 'a'.repeat(64), publicKey: 'b'.repeat(64) },
     });
     expect(res.statusCode).toBe(308);
     expect(res.headers.location).toBe('https://4amcasino.com/api/register');
-    expect(ctx.db.prepare('SELECT id FROM users WHERE username = ?').get('redirect_test')).toBeUndefined();
+    expect(
+      ctx.db.prepare('SELECT id FROM users WHERE username = ?').get('redirect_test'),
+    ).toBeUndefined();
   });
 
   it('recognizes host capitalization, a trailing dot and an explicit port', async () => {
     const res = await ctx.app.inject({
-      url: '/api/health', headers: { host: 'POKER.NOTPRITAM.IN.:443' },
+      url: '/api/health',
+      headers: { host: 'POKER.NOTPRITAM.IN.:443' },
     });
     expect(res.statusCode).toBe(308);
     expect(res.headers.location).toBe('https://4amcasino.com/api/health');
   });
 
-  it.each(['4amcasino.com', 'www.4amcasino.com', 'fouramcasino.onrender.com', 'localhost:8787', 'poker.notpritam.in.example.org'])(
-    'does not redirect requests to %s', async (host) => {
-      const res = await ctx.app.inject({ url: '/api/health', headers: { host } });
-      expect(res.statusCode).toBe(200);
-      expect(res.headers.location).toBeUndefined();
-      expect(res.json().ok).toBe(true);
-    },
-  );
+  it.each([
+    '4amcasino.com',
+    'admin.4amcasino.com',
+    'www.4amcasino.com',
+    'fouramcasino.onrender.com',
+    'localhost:8787',
+    'poker.notpritam.in.example.org',
+  ])('does not redirect requests to %s', async (host) => {
+    const res = await ctx.app.inject({ url: '/api/health', headers: { host } });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers.location).toBeUndefined();
+    expect(res.json().ok).toBe(true);
+  });
 
   it('does not let a forwarded host trigger a redirect on the new domain', async () => {
     const res = await ctx.app.inject({
@@ -95,10 +115,12 @@ describe('canonical casino domain', () => {
     expect(res.headers.location).toBe('https://4amcasino.com/api/health');
   });
 
-  it.each(['https://4amcasino.com', 'https://www.4amcasino.com'])(
-    'allows API requests from %s without environment overrides', async (origin) => {
+  it.each(['https://4amcasino.com', 'https://www.4amcasino.com', 'https://admin.4amcasino.com'])(
+    'allows API requests from %s without environment overrides',
+    async (origin) => {
       const res = await ctx.app.inject({
-        method: 'OPTIONS', url: '/api/login',
+        method: 'OPTIONS',
+        url: '/api/login',
         headers: { origin, 'access-control-request-method': 'POST' },
       });
       expect(res.statusCode).toBe(204);
@@ -108,8 +130,12 @@ describe('canonical casino domain', () => {
 
   it('keeps unrelated API origins disallowed', async () => {
     const res = await ctx.app.inject({
-      method: 'OPTIONS', url: '/api/login',
-      headers: { origin: 'https://4amcasino.com.example.org', 'access-control-request-method': 'POST' },
+      method: 'OPTIONS',
+      url: '/api/login',
+      headers: {
+        origin: 'https://4amcasino.com.example.org',
+        'access-control-request-method': 'POST',
+      },
     });
     expect(res.headers['access-control-allow-origin']).toBeUndefined();
   });
@@ -117,18 +143,29 @@ describe('canonical casino domain', () => {
   it.each([
     ['https://4amcasino.com', 401],
     ['https://www.4amcasino.com', 401],
+    ['https://admin.4amcasino.com', 401],
     ['https://4amcasino.com.example.org', 403],
   ])('checks the game origin %s before requiring authentication', async (origin, expected) => {
     attachHub(ctx.app, ctx.db);
     const address = await ctx.app.listen({ host: '127.0.0.1', port: 0 });
     const status = await new Promise<number | undefined>((resolve, reject) => {
-      const req = request(`${address}/ws`, {
-        headers: {
-          host: '4amcasino.com', origin,
-          connection: 'Upgrade', upgrade: 'websocket',
-          'sec-websocket-version': '13', 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==',
+      const req = request(
+        `${address}/ws`,
+        {
+          headers: {
+            host: '4amcasino.com',
+            origin,
+            connection: 'Upgrade',
+            upgrade: 'websocket',
+            'sec-websocket-version': '13',
+            'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==',
+          },
         },
-      }, (res) => { res.resume(); resolve(res.statusCode); });
+        (res) => {
+          res.resume();
+          resolve(res.statusCode);
+        },
+      );
       req.on('error', reject);
       req.end();
     });

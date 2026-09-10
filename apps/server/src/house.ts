@@ -13,8 +13,9 @@ export function platformDues(db: DB, onlyUserId: number | null = null): Platform
       `
     WITH commissions AS (
       SELECT l.room_id AS roomId, l.ref, SUM(l.delta) AS rake,
-             r.name AS roomName, r.commission_bps AS commissionBps
+             r.name AS roomName, COALESCE(h.commission_bps, r.commission_bps) AS commissionBps
       FROM ledger l JOIN rooms r ON r.id = l.room_id
+      LEFT JOIN hand_commission_rates h ON h.room_id = l.room_id AND h.ref = l.ref
       WHERE l.kind = 'commission' AND r.voided = 0 AND r.archived = 0 AND r.deleted = 0
         AND NOT EXISTS (SELECT 1 FROM ledger v WHERE v.room_id = l.room_id AND v.kind = 'void-hand' AND v.ref = l.ref)
         AND (@userId IS NULL OR EXISTS (
@@ -95,9 +96,10 @@ export function platformDues(db: DB, onlyUserId: number | null = null): Platform
         rooms = new Map();
         roomsByUser.set(share.userId, rooms);
       }
-      const room = rooms.get(hand.room.roomId) ?? { ...hand.room };
+      const roomKey = JSON.stringify([hand.room.roomId, hand.room.commissionBps]);
+      const room = rooms.get(roomKey) ?? { ...hand.room };
       room.accrued += share.amount;
-      rooms.set(room.roomId, room);
+      rooms.set(roomKey, room);
     }
   }
   const payments = db

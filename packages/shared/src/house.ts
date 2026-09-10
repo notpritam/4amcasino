@@ -28,3 +28,33 @@ export interface PlatformDuesReport {
   people: PlatformDuesUser[];
   totals: HouseBalance & { usersOwing: number; unallocated: number };
 }
+
+export type CommissionScope = 'new_rooms' | 'all_rooms';
+
+export interface CommissionSettings {
+  commissionBps: number;
+  revision: number;
+  updatedAt: number;
+  updatedBy: number | null;
+  history: {
+    id: number;
+    previousBps: number | null;
+    commissionBps: number;
+    scope: CommissionScope;
+    affectedRooms: number;
+    changedBy: number | null;
+    changedByName: string;
+    createdAt: number;
+  }[];
+}
+
+export interface AdminOverview {
+  users: number;
+  rooms: number;
+  activeRooms: number;
+  hands: number;
+  pendingRequests: number;
+  commissionBps: number;
+  dues: PlatformDuesReport['totals'];
+  revenue: { date: string; commission: number }[];
+}

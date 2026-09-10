@@ -32,6 +32,9 @@ export function settleRake(
   args: { roomId: string; recipientId: number; rake: number; ref: string; commissionBps: number },
 ): void {
   if (args.rake <= 0) return;
+  db.prepare(
+    'INSERT OR IGNORE INTO hand_commission_rates (room_id, ref, commission_bps) VALUES (?, ?, ?)',
+  ).run(args.roomId, args.ref, args.commissionBps);
   db.prepare('INSERT OR IGNORE INTO room_players (room_id, user_id) VALUES (?, ?)').run(
     args.roomId,
     args.recipientId,
@@ -53,7 +56,12 @@ export function settleRake(
 
 export interface RewriteReport {
   roomsRewritten: string[];
-  roomsSkippedBankerSpent: { roomId: string; bankerId: number; reclaim: number; bankerStack: number }[];
+  roomsSkippedBankerSpent: {
+    roomId: string;
+    bankerId: number;
+    reclaim: number;
+    bankerStack: number;
+  }[];
 }
 
 /** One-time (idempotent) history rewrite: re-attributes every legacy
@@ -69,9 +77,7 @@ export function rewriteRakeToPlatform(db: DB, platformId: number): RewriteReport
 
   const tx = db.transaction(() => {
     const rooms = db
-      .prepare(
-        `SELECT DISTINCT room_id FROM ledger WHERE kind = 'commission' AND user_id != ?`,
-      )
+      .prepare(`SELECT DISTINCT room_id FROM ledger WHERE kind = 'commission' AND user_id != ?`)
       .all(platformId) as { room_id: string }[];
 
     for (const { room_id: roomId } of rooms) {
@@ -97,32 +103,28 @@ export function rewriteRakeToPlatform(db: DB, platformId: number): RewriteReport
       if (skipped) continue;
 
       for (const { user_id: bankerId, reclaim } of recipients) {
-        db.prepare('UPDATE room_players SET stack = stack - ? WHERE room_id = ? AND user_id = ?').run(
-          reclaim,
-          roomId,
-          bankerId,
-        );
+        db.prepare(
+          'UPDATE room_players SET stack = stack - ? WHERE room_id = ? AND user_id = ?',
+        ).run(reclaim, roomId, bankerId);
         db.prepare('INSERT OR IGNORE INTO room_players (room_id, user_id) VALUES (?, ?)').run(
           roomId,
           platformId,
         );
-        db.prepare('UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?').run(
-          reclaim,
-          roomId,
-          platformId,
-        );
+        db.prepare(
+          'UPDATE room_players SET stack = stack + ? WHERE room_id = ? AND user_id = ?',
+        ).run(reclaim, roomId, platformId);
       }
 
-      db.prepare(`UPDATE ledger SET user_id = ? WHERE room_id = ? AND kind = 'commission' AND user_id != ?`).run(
-        platformId,
-        roomId,
-        platformId,
-      );
+      db.prepare(
+        `UPDATE ledger SET user_id = ? WHERE room_id = ? AND kind = 'commission' AND user_id != ?`,
+      ).run(platformId, roomId, platformId);
 
       rechainRoom(db, roomId);
       const verified = verifyLedger(db, roomId);
       if (!verified.ok) {
-        throw new Error(`rewriteRakeToPlatform: ledger verification failed for room ${roomId} after rewrite`);
+        throw new Error(
+          `rewriteRakeToPlatform: ledger verification failed for room ${roomId} after rewrite`,
+        );
       }
 
       report.roomsRewritten.push(roomId);

@@ -5,3 +5,4 @@ export * from './wsProtocol.js';
 export * from './lounge.js';
 export * from './commission.js';
 export * from './house.js';
+export * from './roomRules.js';

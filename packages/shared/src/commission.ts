@@ -1,5 +1,5 @@
-/** One basis point = 0.01%. Rates are fixed when a room is created. */
-export const NEW_ROOM_COMMISSION_BPS = 10;
+/** One basis point = 0.01%. Initial default; the platform can change it at runtime. */
+export const NEW_ROOM_COMMISSION_BPS = 50;
 export const LEGACY_ROOM_COMMISSION_BPS = 100;
 
 /** Whole chips only: floor each pot before awarding it or splitting its boards. */

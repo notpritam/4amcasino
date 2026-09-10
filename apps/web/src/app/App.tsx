@@ -1,9 +1,10 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { useStore } from '../shared/store.ts';
 import { applyAppearance, loadPrefs } from '../shared/prefs.ts';
 import { peekPendingJoin } from '../shared/pendingJoin.ts';
 import { api } from '../shared/api.ts';
+import { adminDestination, isAdminSite } from '../shared/adminSite.ts';
 import { LandingPage } from '../pages/landing/LandingPage.tsx';
 
 const LoginPage = lazy(() =>
@@ -59,7 +60,16 @@ const AppShell = lazy(() =>
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const token = useStore((s) => s.auth.token);
-  if (!token) return <Navigate to="/login" replace />;
+  const location = useLocation();
+  if (!token) {
+    const admin = isAdminSite() || /^\/admin(?:\/|$)/.test(location.pathname);
+    return (
+      <Navigate
+        to={admin ? `/login?admin=1&next=${encodeURIComponent(location.pathname)}` : '/login'}
+        replace
+      />
+    );
+  }
   return children;
 }
 
@@ -69,9 +79,12 @@ function RequireAuth({ children }: { children: ReactNode }) {
  *  and forward. `?switch=1` opts out, so changing accounts is still possible. */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const token = useStore((s) => s.auth.token);
+  const location = useLocation();
   if (!token) return children;
-  const params = new URLSearchParams(window.location.search);
+  const params = new URLSearchParams(location.search);
   if (params.has('switch')) return children;
+  if (isAdminSite() || params.get('admin') === '1')
+    return <Navigate to={adminDestination(location.search)} replace />;
   const code = params.get('join') ?? peekPendingJoin();
   return <Navigate to={code ? `/j/${code}` : '/lobby'} replace />;
 }
@@ -110,139 +123,158 @@ export function App() {
   return (
     <BrowserRouter>
       <Suspense fallback={<RouteFallback />}>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route
-            path="/watch/:token"
-            element={
-              <RequireAuth>
-                <WatchPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/login"
-            element={
-              <RedirectIfAuthed>
-                <LoginPage />
-              </RedirectIfAuthed>
-            }
-          />
-          <Route
-            path="/lobby"
-            element={
-              <RequireAuth>
-                <AppShell>
-                  <LobbyPage />
-                </AppShell>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/room/:id"
-            element={
-              <RequireAuth>
-                {/* the rail is here too, but every link opens a new tab: leaving
-                    the page mid-hand would fold you by timeout */}
-                <AppShell newTab>
-                  <TablePage />
-                </AppShell>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/room/:id/3d"
-            element={
-              <RequireAuth>
-                <Table3DPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/room/:id/ledger"
-            element={
-              <RequireAuth>
-                <AppShell>
-                  <LedgerPage />
-                </AppShell>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/room/:id/hands"
-            element={
-              <RequireAuth>
-                <AppShell>
-                  <HandsPage />
-                </AppShell>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/room/:id/replay/:handId"
-            element={
-              <RequireAuth>
-                <AppShell>
-                  <ReplayPage />
-                </AppShell>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <RequireAuth>
-                <AppShell>
-                  <SettingsPage />
-                </AppShell>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/settle"
-            element={
-              <RequireAuth>
-                <AppShell>
-                  <SettlePage />
-                </AppShell>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/leaderboard"
-            element={
-              <RequireAuth>
-                <AppShell>
-                  <LeaderboardPage />
-                </AppShell>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/players/:id"
-            element={
-              <RequireAuth>
-                <AppShell>
-                  <PlayerPage />
-                </AppShell>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/admin"
-            element={
-              <RequireAuth>
-                <AppShell>
+        {isAdminSite() ? (
+          <Routes>
+            <Route
+              path="/login"
+              element={
+                <RedirectIfAuthed>
+                  <LoginPage />
+                </RedirectIfAuthed>
+              }
+            />
+            <Route
+              path="*"
+              element={
+                <RequireAuth>
                   <AdminPage />
-                </AppShell>
-              </RequireAuth>
-            }
-          />
-          <Route path="/fair" element={<FairPage />} />
-          {/* share link: works logged out, joins the table on the way back in */}
-          <Route path="/j/:code" element={<JoinPage />} />
-          <Route path="*" element={<Navigate to="/lobby" replace />} />
-        </Routes>
+                </RequireAuth>
+              }
+            />
+          </Routes>
+        ) : (
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route
+              path="/watch/:token"
+              element={
+                <RequireAuth>
+                  <WatchPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/login"
+              element={
+                <RedirectIfAuthed>
+                  <LoginPage />
+                </RedirectIfAuthed>
+              }
+            />
+            <Route
+              path="/lobby"
+              element={
+                <RequireAuth>
+                  <AppShell>
+                    <LobbyPage />
+                  </AppShell>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/room/:id"
+              element={
+                <RequireAuth>
+                  {/* the rail is here too, but every link opens a new tab: leaving
+                    the page mid-hand would fold you by timeout */}
+                  <AppShell newTab>
+                    <TablePage />
+                  </AppShell>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/room/:id/3d"
+              element={
+                <RequireAuth>
+                  <Table3DPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/room/:id/ledger"
+              element={
+                <RequireAuth>
+                  <AppShell>
+                    <LedgerPage />
+                  </AppShell>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/room/:id/hands"
+              element={
+                <RequireAuth>
+                  <AppShell>
+                    <HandsPage />
+                  </AppShell>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/room/:id/replay/:handId"
+              element={
+                <RequireAuth>
+                  <AppShell>
+                    <ReplayPage />
+                  </AppShell>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <RequireAuth>
+                  <AppShell>
+                    <SettingsPage />
+                  </AppShell>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/settle"
+              element={
+                <RequireAuth>
+                  <AppShell>
+                    <SettlePage />
+                  </AppShell>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/leaderboard"
+              element={
+                <RequireAuth>
+                  <AppShell>
+                    <LeaderboardPage />
+                  </AppShell>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/players/:id"
+              element={
+                <RequireAuth>
+                  <AppShell>
+                    <PlayerPage />
+                  </AppShell>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/admin/*"
+              element={
+                <RequireAuth>
+                  <AdminPage />
+                </RequireAuth>
+              }
+            />
+            <Route path="/fair" element={<FairPage />} />
+            {/* share link: works logged out, joins the table on the way back in */}
+            <Route path="/j/:code" element={<JoinPage />} />
+            <Route path="*" element={<Navigate to="/lobby" replace />} />
+          </Routes>
+        )}
       </Suspense>
     </BrowserRouter>
   );

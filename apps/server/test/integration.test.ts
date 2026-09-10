@@ -19,7 +19,7 @@ import {
   signContent,
 } from '@4am/mental-poker';
 import type { CardId, PlayerAction, ServerMsg } from '@4am/shared';
-import { createUser } from '../src/auth.js';
+import { createSession, createUser } from '../src/auth.js';
 import { setPlatformUserId } from '../src/platform.js';
 
 type Strategy = 'passive' | 'fold-first' | 'allin-first';
@@ -231,7 +231,12 @@ class TestClient {
           this.handKey !== null
         ) {
           const key = this.handKey.toString(16);
-          this.send({ t: 'fold_key', handId: this.handId, key, sig: this.signed('fold_key', { key }) });
+          this.send({
+            t: 'fold_key',
+            handId: this.handId,
+            key,
+            sig: this.signed('fold_key', { key }),
+          });
         }
         break;
       }
@@ -276,7 +281,10 @@ class TestClient {
         const me = st.seats.find((s) => s.seat === this.seat)!;
         if (this.strategy === 'fold-first') this.act({ type: 'fold' });
         else if (this.strategy === 'allin-first' && me.stack + me.committed > st.currentBet)
-          this.act({ type: st.currentBet === 0 ? 'bet' : 'raise', amount: me.stack + me.committed });
+          this.act({
+            type: st.currentBet === 0 ? 'bet' : 'raise',
+            amount: me.stack + me.committed,
+          });
         else if (st.currentBet === me.committed) this.act({ type: 'check' });
         else this.act({ type: 'call' });
         break;
@@ -336,7 +344,14 @@ let clients: TestClient[] = [];
 
 beforeEach(async () => {
   ctx = createApp(':memory:');
-  attachHub(ctx.app, ctx.db, { cryptoTimeoutMs: 1500, actionTimeoutMs: 1500, autoDealMs: 800, readyCheckMs: 1500, ritVoteMs: 1500, runItTwice: true });
+  attachHub(ctx.app, ctx.db, {
+    cryptoTimeoutMs: 1500,
+    actionTimeoutMs: 1500,
+    autoDealMs: 800,
+    readyCheckMs: 1500,
+    ritVoteMs: 1500,
+    runItTwice: true,
+  });
   await ctx.app.listen({ port: 0 });
   const addr = ctx.app.server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${addr.port}`;
@@ -435,7 +450,9 @@ describe('full hand integration', () => {
     await host.api(`/api/rooms/${room.id}/approve`, { requestId: req.id, approve: true });
     await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null)));
 
-    const hostDelta = players[0]!.handEnd!.deltas.find((d: { seat: number }) => d.seat === 0)!.delta;
+    const hostDelta = players[0]!.handEnd!.deltas.find(
+      (d: { seat: number }) => d.seat === 0,
+    )!.delta;
     const state = await host.api(`/api/rooms/${room.id}`);
     const me = state.players.find((p: { username: string }) => p.username === 'heala');
     // 1000 buy-in at setup, plus the hand's result, plus the mid-hand 500
@@ -596,9 +613,7 @@ describe('full hand integration', () => {
     expect(keys).toHaveLength(3);
     // bob folded, so he never revealed at showdown - the key reveal decrypts him
     const holes = hand.entries.filter((e: { type: string }) => e.type === 'hole_cards');
-    const bobSeatHole = holes.find(
-      (e: { payload: { seat: number } }) => e.payload.seat === 1,
-    );
+    const bobSeatHole = holes.find((e: { payload: { seat: number } }) => e.payload.seat === 1);
     expect(bobSeatHole).toBeDefined();
     expect(new Set(bobSeatHole.payload.cards)).toEqual(new Set(players[1]!.myCards));
     // and the stored transcript still verifies end to end
@@ -617,22 +632,22 @@ describe('full hand integration', () => {
     // preflop all-in: run 1 gets its five cards, run 2 five fresh ones
     expect(players[0]!.board).toHaveLength(5);
     expect(players[0]!.board2).toHaveLength(5);
-    const all = [
-      ...players[0]!.board,
-      ...players[0]!.board2,
-      ...players.flatMap((p) => p.myCards),
-    ];
+    const all = [...players[0]!.board, ...players[0]!.board2, ...players.flatMap((p) => p.myCards)];
     expect(new Set(all).size).toBe(all.length);
-    // both halves settle: the 2,000 pot pays its 0.1% commission to the banker,
+    // both halves settle: the 2,000 pot pays its 0.5% commission to the banker,
     // the rest returns through the awards - every chip still accounted for
     const deltas = players[0]!.handEnd!.deltas;
-    expect(players[0]!.handEnd!.commission).toBe(2);
-    expect(deltas.reduce((s, x) => s + x.delta, 0)).toBe(-2);
+    expect(players[0]!.handEnd!.commission).toBe(10);
+    expect(deltas.reduce((s, x) => s + x.delta, 0)).toBe(-10);
     const state = await host.api(`/api/rooms/${room.id}`);
     expect(state.players.reduce((t: number, p: { stack: number }) => t + p.stack, 0)).toBe(2000);
     const hand = await host.api(`/api/rooms/${room.id}/hands/${players[0]!.handEnd!.handId}`);
-    expect(hand.entries.find((e: { type: string }) => e.type === 'rit_result').payload.runTwice).toBe(true);
-    expect(hand.entries.find((e: { type: string }) => e.type === 'settlement').payload.board2).toHaveLength(5);
+    expect(
+      hand.entries.find((e: { type: string }) => e.type === 'rit_result').payload.runTwice,
+    ).toBe(true);
+    expect(
+      hand.entries.find((e: { type: string }) => e.type === 'settlement').payload.board2,
+    ).toHaveLength(5);
     const ledger = await host.api(`/api/rooms/${room.id}/ledger`);
     expect(ledger.verified.ok).toBe(true);
   }, 20000);
@@ -648,35 +663,42 @@ describe('full hand integration', () => {
     expect(players[0]!.board2).toHaveLength(0);
   }, 20000);
 
-  it('new rooms pay 0.1% to the platform, conserving chips on the ledger', async () => {
+  it('new rooms pay 0.5% to the platform, conserving chips on the ledger', async () => {
     const { players, room, host } = await setupRoom(['coma', 'comb'], ['allin-first', 'passive']);
-    expect(room.commissionBps).toBe(10);
-    expect(host.roomState?.room.commissionBps).toBe(10);
+    expect(room.commissionBps).toBe(50);
+    expect(host.roomState?.room.commissionBps).toBe(50);
     const { userId: platformId } = createUser(ctx.db, 'platform', 'a'.repeat(64), 'b'.repeat(64));
     setPlatformUserId(ctx.db, platformId);
     host.send({ t: 'start_hand' });
     await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null, 15000)));
     expect(players[0]!.handAbort).toBeNull();
-    // 2,000 in the middle -> 2 raked, credited to the platform.
-    expect(players[0]!.handEnd!.commission).toBe(2);
+    // 2,000 in the middle -> 10 raked, credited to the platform.
+    expect(players[0]!.handEnd!.commission).toBe(10);
     const ledger = await host.api(`/api/rooms/${room.id}/ledger`);
     const commission = ledger.entries.filter((e: { kind: string }) => e.kind === 'commission');
     expect(commission).toHaveLength(1);
     expect(commission[0].userId).toBe(platformId);
-    expect(commission[0].delta).toBe(2);
-    expect(commission[0].note).toContain('0.1%');
+    expect(commission[0].delta).toBe(10);
+    expect(commission[0].note).toContain('0.5%');
     expect(ledger.verified.ok).toBe(true);
     // room total unchanged: the rake moved, it did not vanish
     const state = await host.api(`/api/rooms/${room.id}`);
-    expect(state.players.reduce((t: number, p: { stack: number }) => t + p.stack, 0)).toBe(1998);
-    expect(ctx.db.prepare('SELECT SUM(stack) AS total FROM room_players WHERE room_id = ?').get(room.id))
-      .toEqual({ total: 2000 });
+    expect(state.players.reduce((t: number, p: { stack: number }) => t + p.stack, 0)).toBe(1990);
+    expect(
+      ctx.db.prepare('SELECT SUM(stack) AS total FROM room_players WHERE room_id = ?').get(room.id),
+    ).toEqual({ total: 2000 });
     const transcript = await host.api(`/api/rooms/${room.id}/hands/${players[0]!.handEnd!.handId}`);
-    expect(transcript.entries.find((e: { type: string }) => e.type === 'hand_start').payload.commissionBps).toBe(10);
+    expect(
+      transcript.entries.find((e: { type: string }) => e.type === 'hand_start').payload
+        .commissionBps,
+    ).toBe(50);
   }, 20000);
 
-  it('legacy rooms still settle at 1%', async () => {
-    const { players, room, host } = await setupRoom(['oldcoma', 'oldcomb'], ['allin-first', 'passive']);
+  it('rooms assigned 1% still settle at that rate', async () => {
+    const { players, room, host } = await setupRoom(
+      ['oldcoma', 'oldcomb'],
+      ['allin-first', 'passive'],
+    );
     ctx.db.prepare('UPDATE rooms SET commission_bps = 100 WHERE id = ?').run(room.id);
     host.send({ t: 'start_hand' });
     await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null, 15000)));
@@ -685,12 +707,49 @@ describe('full hand integration', () => {
     const state = await host.api(`/api/rooms/${room.id}`);
     expect(state.commissionBps).toBe(100);
     const ledger = await host.api(`/api/rooms/${room.id}/ledger`);
-    expect(ledger.entries.find((e: { kind: string }) => e.kind === 'commission')).toMatchObject({ delta: 20, note: '1% table commission - keeps the lights on' });
+    expect(ledger.entries.find((e: { kind: string }) => e.kind === 'commission')).toMatchObject({
+      delta: 20,
+      note: '1% table commission - keeps the lights on',
+    });
     expect(ledger.verified.ok).toBe(true);
   }, 20000);
 
+  it('keeps a running hand at its original rate and applies an admin change to the next deal', async () => {
+    const { players, room, host } = await setupRoom(['ratea', 'rateb']);
+    const { userId } = createUser(ctx.db, 'ratehouse', 'a'.repeat(64), 'b'.repeat(64));
+    setPlatformUserId(ctx.db, userId);
+    const token = createSession(ctx.db, userId);
+    host.send({ t: 'start_hand' });
+    await host.waitFor(() => host.handId !== null);
+    const res = await ctx.app.inject({
+      method: 'PUT',
+      url: '/api/admin/settings/commission',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { commissionBps: 100, scope: 'all_rooms', revision: 1 },
+    });
+    expect(res.statusCode).toBe(200);
+    await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null, 15000)));
+    expect(host.handAbort).toBeNull();
+    expect(host.handEnd!.commissionBps).toBe(50);
+    const firstId = host.handEnd!.handId;
+    expect(ctx.db.prepare('SELECT commission_bps FROM rooms WHERE id = ?').get(room.id)).toEqual({
+      commission_bps: 100,
+    });
+    host.send({ t: 'start_hand' });
+    await host.waitFor(() => host.handEnd !== null && host.handEnd.handId !== firstId, 15000);
+    expect(host.handEnd!.commissionBps).toBe(100);
+    const transcript = await host.api(`/api/rooms/${room.id}/hands/${host.handEnd!.handId}`);
+    expect(
+      transcript.entries.find((e: { type: string }) => e.type === 'hand_start').payload
+        .commissionBps,
+    ).toBe(100);
+  }, 30000);
+
   it('small pots won by folding incur no fractional or minimum commission', async () => {
-    const { players, room, host } = await setupRoom(['foldcoma', 'foldcomb'], ['fold-first', 'passive']);
+    const { players, room, host } = await setupRoom(
+      ['foldcoma', 'foldcomb'],
+      ['fold-first', 'passive'],
+    );
     host.send({ t: 'start_hand' });
     await Promise.all(players.map((p) => p.waitFor(() => p.handEnd !== null, 15000)));
     expect(players[0]!.handAbort).toBeNull();
@@ -698,8 +757,9 @@ describe('full hand integration', () => {
     const ledger = await host.api(`/api/rooms/${room.id}/ledger`);
     expect(ledger.entries.filter((e: { kind: string }) => e.kind === 'commission')).toEqual([]);
     expect(ledger.verified.ok).toBe(true);
-    expect(ctx.db.prepare('SELECT SUM(stack) AS total FROM room_players WHERE room_id = ?').get(room.id))
-      .toEqual({ total: 2000 });
+    expect(
+      ctx.db.prepare('SELECT SUM(stack) AS total FROM room_players WHERE room_id = ?').get(room.id),
+    ).toEqual({ total: 2000 });
   }, 20000);
 
   it('a leaver during the shuffle aborts fast and the redeal skips them', async () => {
@@ -710,7 +770,9 @@ describe('full hand integration', () => {
     const t0 = Date.now();
     players[2]!.disconnect();
     await Promise.all(
-      players.slice(0, 2).map((p) => p.waitFor(() => p.handAbort !== null || p.handEnd !== null, 12000)),
+      players
+        .slice(0, 2)
+        .map((p) => p.waitFor(() => p.handAbort !== null || p.handEnd !== null, 12000)),
     );
     // the pre-betting grace is ~4s - nothing like the old multi-retry stall
     expect(Date.now() - t0).toBeLessThan(9000);
@@ -721,7 +783,9 @@ describe('full hand integration', () => {
     const firstId = players[0]!.handId;
     host.send({ t: 'start_hand' });
     await Promise.all(
-      players.slice(0, 2).map((p) => p.waitFor(() => p.handEnd !== null && p.handId !== firstId, 15000)),
+      players
+        .slice(0, 2)
+        .map((p) => p.waitFor(() => p.handEnd !== null && p.handId !== firstId, 15000)),
     );
     const seats = players[0]!.handEnd!.stacks.map((x) => x.seat).sort();
     expect(seats).toEqual([0, 1]);
@@ -762,9 +826,7 @@ describe('full hand integration', () => {
     expect(owed).toBeGreaterThan(0);
 
     const mine = await loser.api('/api/me/debts');
-    const row = mine.debts.find(
-      (d: { otherUserId: number }) => d.otherUserId === winner.userId,
-    );
+    const row = mine.debts.find((d: { otherUserId: number }) => d.otherUserId === winner.userId);
     expect(row.direction).toBe('owe');
     expect(row.amount).toBe(owed);
 
@@ -777,7 +839,10 @@ describe('full hand integration', () => {
     expect(mirror.amount).toBe(owed);
 
     // one side marking is only half the handshake
-    const first = await loser.api('/api/settlements', { roomId: room.id, otherUserId: winner.userId });
+    const first = await loser.api('/api/settlements', {
+      roomId: room.id,
+      otherUserId: winner.userId,
+    });
     expect(first.settled).toBe(false);
     const waiting = await winner.api('/api/me/debts');
     expect(
@@ -786,7 +851,10 @@ describe('full hand integration', () => {
     ).toBe(true);
 
     // both sides in: resolved on the platform, gone from the open list
-    const second = await winner.api('/api/settlements', { roomId: room.id, otherUserId: loser.userId });
+    const second = await winner.api('/api/settlements', {
+      roomId: room.id,
+      otherUserId: loser.userId,
+    });
     expect(second.settled).toBe(true);
     const after = await loser.api('/api/me/debts');
     expect(
@@ -922,7 +990,12 @@ describe('player leave resilience', () => {
     await folder.waitFor(() => folder.sawOwnFold);
     // a bogus key, correctly signed: the commitment check must throw it out
     const key = '1234abcd';
-    folder.send({ t: 'fold_key', handId: folder.handId, key, sig: folder.signed('fold_key', { key }) });
+    folder.send({
+      t: 'fold_key',
+      handId: folder.handId,
+      key,
+      sig: folder.signed('fold_key', { key }),
+    });
     folder.disconnect();
 
     const rest = [players[0]!, players[2]!];

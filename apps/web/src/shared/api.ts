@@ -1,4 +1,6 @@
 import { useStore } from './store.ts';
+import type { AdminOverview, CommissionScope, CommissionSettings } from '@4am/shared';
+import { isAdminSite } from './adminSite.ts';
 
 /** Fetch with retries on 502/503/504 and network failure, GETs only. Redeploys
  *  take the server down for a few seconds; reads ride the gap out instead of
@@ -37,8 +39,13 @@ async function req(path: string, body?: unknown, method?: string): Promise<any> 
     !path.startsWith('/api/register')
   ) {
     // stale session (e.g. the server redeployed and reset its data): sign out cleanly
+    const admin = isAdminSite() || /^\/admin(?:\/|$)/.test(location.pathname);
+    const next = location.pathname;
     useStore.getState().logout();
-    if (!location.pathname.startsWith('/login')) location.assign('/login?expired=1');
+    if (!location.pathname.startsWith('/login'))
+      location.assign(
+        `/login?expired=1${admin ? `&admin=1&next=${encodeURIComponent(next)}` : ''}`,
+      );
     throw new Error('session expired');
   }
   if (!res.ok) throw new Error(json.error ?? `request failed (${res.status})`);
@@ -51,7 +58,27 @@ export const api = {
   login: (username: string, authKey: string) => req('/api/login', { username, authKey }),
   me: () => req('/api/me'),
   myRooms: () => req('/api/my-rooms'),
-  createRoom: (name: string, sb: number, bb: number, auditMode?: string, actionSecs?: number, minSettleHands?: number) =>
+  platformSettings: () =>
+    req('/api/platform/settings') as Promise<
+      Pick<CommissionSettings, 'commissionBps' | 'revision' | 'updatedAt'>
+    >,
+  adminSettings: () => req('/api/admin/settings') as Promise<CommissionSettings>,
+  adminChangeCommission: (commissionBps: number, scope: CommissionScope, revision: number) =>
+    req('/api/admin/settings/commission', { commissionBps, scope, revision }, 'PUT') as Promise<
+      CommissionSettings & { affectedRooms: number }
+    >,
+  adminOverview: () => req('/api/admin/overview') as Promise<AdminOverview>,
+  adminUsers: (q = '', offset = 0) =>
+    req(`/api/admin/users?q=${encodeURIComponent(q)}&offset=${offset}`),
+  createRoom: (
+    name: string,
+    sb: number,
+    bb: number,
+    auditMode?: string,
+    actionSecs?: number,
+    minSettleHands?: number,
+    commissionRevision?: number,
+  ) =>
     req('/api/rooms', {
       name,
       sb,
@@ -59,6 +86,7 @@ export const api = {
       ...(auditMode ? { auditMode } : {}),
       ...(actionSecs !== undefined ? { actionSecs } : {}),
       ...(minSettleHands ? { minSettleHands } : {}),
+      ...(commissionRevision !== undefined ? { commissionRevision } : {}),
     }),
   joinRoom: (joinCode: string) => req('/api/rooms/join', { joinCode }),
   getRoom: (id: string) => req(`/api/rooms/${id}`),
@@ -68,7 +96,8 @@ export const api = {
   approve: (roomId: string, requestId: number, approve: boolean) =>
     req(`/api/rooms/${roomId}/approve`, { requestId, approve }),
   room: (id: string) => req(`/api/rooms/${id}`),
-  revertPurchase: (roomId: string, entryId: number) => req(`/api/rooms/${roomId}/revert`, { entryId }),
+  revertPurchase: (roomId: string, entryId: number) =>
+    req(`/api/rooms/${roomId}/revert`, { entryId }),
   setCoBanker: (roomId: string, userId: number | null) =>
     req(`/api/rooms/${roomId}/co-banker`, { userId }, 'PUT'),
   session: (roomId: string) => req(`/api/rooms/${roomId}/session`),
@@ -76,20 +105,28 @@ export const api = {
   playStyle: (userId: number) => req(`/api/users/${userId}/style`),
   friends: () => req('/api/friends'),
   addFriend: (username: string) => req('/api/friends/request', { username }),
-  respondFriend: (userId: number, accept: boolean) => req('/api/friends/respond', { userId, accept }),
+  respondFriend: (userId: number, accept: boolean) =>
+    req('/api/friends/respond', { userId, accept }),
   removeFriend: (userId: number) => req(`/api/friends/${userId}`, undefined, 'DELETE'),
   inviteFriend: (roomId: string, userId: number) => req(`/api/rooms/${roomId}/invite`, { userId }),
   invites: () => req('/api/invites'),
-  respondInvite: (inviteId: number, accept: boolean) => req(`/api/invites/${inviteId}/respond`, { accept }),
+  respondInvite: (inviteId: number, accept: boolean) =>
+    req(`/api/invites/${inviteId}/respond`, { accept }),
   voidRoom: (roomId: string, voided: boolean) => req(`/api/rooms/${roomId}/void`, { voided }),
   // retire a finished table: it leaves the room list and stops counting towards
   // stats, but nothing is deleted and debts stay owed (requested by notpritam).
   // Both archive and delete are now requests: they queue for platform approval
   // instead of taking effect immediately.
   archiveRoom: (roomId: string, archived: boolean) =>
-    req(`/api/rooms/${roomId}/archive`, { archived }) as Promise<{ pending: true; requestId: number }>,
+    req(`/api/rooms/${roomId}/archive`, { archived }) as Promise<{
+      pending: true;
+      requestId: number;
+    }>,
   deleteRoom: (roomId: string, note?: string) =>
-    req(`/api/rooms/${roomId}/delete`, note ? { note } : {}) as Promise<{ pending: true; requestId: number }>,
+    req(`/api/rooms/${roomId}/delete`, note ? { note } : {}) as Promise<{
+      pending: true;
+      requestId: number;
+    }>,
   publicRooms: () => req('/api/rooms/public'),
   joinPublic: (roomId: string) => req(`/api/rooms/${roomId}/join-public`, {}),
   spectateSettings: (roomId: string, allow?: boolean) =>
@@ -123,12 +160,8 @@ export const api = {
   recoveryStatus: () => req('/api/me/recovery'),
   setRecovery: (currentAuthKey: string, recoveryAuthKey: string | null) =>
     req('/api/me/recovery', { currentAuthKey, recoveryAuthKey }, 'PUT'),
-  recover: (
-    username: string,
-    recoveryAuthKey: string,
-    newAuthKey: string,
-    newPublicKey: string,
-  ) => req('/api/recover', { username, recoveryAuthKey, newAuthKey, newPublicKey }),
+  recover: (username: string, recoveryAuthKey: string, newAuthKey: string, newPublicKey: string) =>
+    req('/api/recover', { username, recoveryAuthKey, newAuthKey, newPublicKey }),
   logout: () => req('/api/logout', {}),
   sessions: () => req('/api/me/sessions'),
   revokeOtherSessions: () => req('/api/me/sessions/revoke-others', {}),

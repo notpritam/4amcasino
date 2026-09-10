@@ -16,9 +16,19 @@ import { forgive, hitNamed, LIMITS, rateLimit } from './limits.js';
 import { isPlatform } from './platform.js';
 
 const registerSchema = z.object({
-  username: z.string().min(2).max(24).regex(/^[a-zA-Z0-9_]+$/),
-  authKey: z.string().length(64).regex(/^[0-9a-f]+$/),
-  publicKey: z.string().length(64).regex(/^[0-9a-f]+$/),
+  username: z
+    .string()
+    .min(2)
+    .max(24)
+    .regex(/^[a-zA-Z0-9_]+$/),
+  authKey: z
+    .string()
+    .length(64)
+    .regex(/^[0-9a-f]+$/),
+  publicKey: z
+    .string()
+    .length(64)
+    .regex(/^[0-9a-f]+$/),
 });
 const loginSchema = registerSchema.omit({ publicKey: true });
 
@@ -55,8 +65,12 @@ export function createApp(
   const allowedOrigins = [
     'https://4amcasino.com',
     'https://www.4amcasino.com',
+    'https://admin.4amcasino.com',
     'https://poker.notpritam.in',
-    ...(process.env.ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    ...(process.env.ALLOWED_ORIGINS ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
   ];
   void app.register(cors, {
     origin: (origin, cb) => {
@@ -112,18 +126,18 @@ export function createApp(
     // sign up from the same wifi inside ten minutes, and they all share one IP.
     { preHandler: rateLimit({ name: 'register', limit: 40, windowMs: 60 * 60_000, by: 'ip' }) },
     async (req, reply) => {
-    const parsed = registerSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
-    const { username, authKey, publicKey } = parsed.data;
-    try {
-      const { userId, joinNumber } = createUser(db, username, authKey, publicKey);
-      return { userId, joinNumber, token: createSession(db, userId) };
-    } catch (e) {
-      if (e instanceof Error && e.message.includes('UNIQUE')) {
-        return reply.code(409).send({ error: 'username taken' });
+      const parsed = registerSchema.safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send({ error: 'invalid input' });
+      const { username, authKey, publicKey } = parsed.data;
+      try {
+        const { userId, joinNumber } = createUser(db, username, authKey, publicKey);
+        return { userId, joinNumber, token: createSession(db, userId) };
+      } catch (e) {
+        if (e instanceof Error && e.message.includes('UNIQUE')) {
+          return reply.code(409).send({ error: 'username taken' });
+        }
+        throw e;
       }
-      throw e;
-    }
     },
   );
 

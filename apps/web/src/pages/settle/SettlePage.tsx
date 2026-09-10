@@ -1,6 +1,7 @@
 import { PlatformDues, HouseRooms } from '../../features/house/PlatformDues.tsx';
 import type { HouseDues, PlatformDuesReport } from '@4am/shared';
-import { NEW_ROOM_COMMISSION_BPS, commissionRateLabel } from '@4am/shared';
+import { commissionRateLabel } from '@4am/shared';
+import { useCommissionSettings } from '../../shared/useCommissionSettings.ts';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../shared/api.ts';
@@ -86,7 +87,12 @@ function ProofFields({
     <>
       <label className="block text-sm">
         <span className="mb-1 block text-slate-500">Remark</span>
-        <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder={placeholder} />
+        <Input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={300}
+          placeholder={placeholder}
+        />
       </label>
       <label className="block text-sm">
         <span className="mb-1 block text-slate-500">Photo of the transfer (optional)</span>
@@ -103,6 +109,7 @@ function ProofFields({
 }
 
 export function SettlePage() {
+  const commission = useCommissionSettings();
   const [view, setView] = useState<SettleView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<NetLine | null>(null);
@@ -208,8 +215,11 @@ export function SettlePage() {
             <h2 className="font-display text-base font-semibold">Your platform dues</h2>
             <p className="mt-0.5 max-w-md text-xs leading-relaxed text-slate-500">
               Your share of the platform commission deducted from pots you won. New rooms charge{' '}
-              {commissionRateLabel(NEW_ROOM_COMMISSION_BPS)}; earlier rooms keep their original
-              rate. This total reflects the actual deductions.
+              {commission.settings
+                ? commissionRateLabel(commission.settings.commissionBps)
+                : 'the current platform rate'}
+              . Each hand uses its room’s rate when dealt. This total reflects the actual
+              deductions.
             </p>
           </div>
           <div className="text-right">
@@ -318,7 +328,12 @@ function SettleDialog({
       // every room they and I still have open between us
       let anySettled = false;
       for (const r of line.rooms) {
-        const res = await api.markSettled(r.roomId, line.otherUserId, note || undefined, proof ?? undefined);
+        const res = await api.markSettled(
+          r.roomId,
+          line.otherUserId,
+          note || undefined,
+          proof ?? undefined,
+        );
         anySettled ||= !!res.settled;
       }
       setMsg(
