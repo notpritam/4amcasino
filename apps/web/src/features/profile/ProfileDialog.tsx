@@ -189,7 +189,7 @@ export function ProfileEditor({
     <>
       <div className="text-sm">
         <span className="mb-2 block text-slate-500">Deck style</span>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {BACKS.map((b) => (
             <button
               key={b}

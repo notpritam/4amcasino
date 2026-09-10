@@ -33,6 +33,7 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | Save hand: download the full signed hand record (transcript + players) as JSON from the replay page | **notpritam** |
 | Ready check: auto-deal never starts betting until everyone clicks "I'm ready"; 20 seconds, then it deals without the stragglers | **notpritam** |
 | Misclick guard: Fold / Check-Call / Raise hold fixed positions in every state and go dead for a beat whenever the options change | **notpritam** |
+| Custom poker shortcuts: account-saved Fold, Check, Call, Bet/Raise, half-pot, pot, and all-in bindings; record, select, clear, disable, or restore in Settings or at the table. Shared keyboard handling across desktop, phone, and 3D; typed amount plus Enter confirms sizing shortcuts | **notpritam** |
 | Run it twice: when everyone is all-in before the river the players vote (15s, unanimous); the remaining streets deal twice from the untouched deck and every pot splits between the boards | **notpritam** |
 | Showdown shows every player's cards: the result banner lists each player with THEIR two cards, the hand they made, and their net - not just the winning five | **notpritam** |
 | Thunder reveal: lightning flash + thunder crack on every showdown, in 2D and the 3D world | **notpritam** |

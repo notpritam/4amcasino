@@ -97,7 +97,18 @@ export function App() {
     applyAppearance();
   }, []);
   useEffect(() => {
-    if (token) void loadPrefs(); // refresh prefs from the server
+    if (!token) return;
+    void loadPrefs();
+    const refresh = () => void loadPrefs({ onlyHotkeys: true });
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === '4am-hotkeys-changed') refresh();
+    };
+    window.addEventListener('focus', refresh);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('storage', onStorage);
+    };
   }, [token]);
   useEffect(() => {
     // The login response never carries platform status or leaderboard

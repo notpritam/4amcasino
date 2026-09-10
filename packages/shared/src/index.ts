@@ -6,3 +6,5 @@ export * from './lounge.js';
 export * from './commission.js';
 export * from './house.js';
 export * from './roomRules.js';
+
+export * from './pokerHotkeys.js';

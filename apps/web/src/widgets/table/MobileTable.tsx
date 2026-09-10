@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, type RefObject } from 'react';
+import { usePokerHotkeys } from '../../features/table/usePokerHotkeys.ts';
+import { pokerActionLatch } from '../../features/table/pokerHotkeys.ts';
+import { PokerShortcutButton } from '../../features/settings/PokerShortcutButton.tsx';
 import NumberFlow from '@number-flow/react';
 import {
   HAND_CATEGORY_NAMES,
@@ -117,6 +120,7 @@ function OpponentColumn({ p, urgent }: { p: SeatView; urgent: boolean }) {
 }
 
 function MobileActions({
+  rootRef,
   mySeat,
   isHost,
   statusText,
@@ -124,9 +128,13 @@ function MobileActions({
   mySeat: number | null;
   isHost: boolean;
   statusText: string | null;
+  rootRef: RefObject<HTMLDivElement>;
 }) {
   const hand = useStore((s) => s.hand);
   const room = useStore((s) => s.room);
+  const connected = useStore((s) => s.wsConnected);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const actionLatch = useRef(pokerActionLatch);
   const [raiseOpen, setRaiseOpen] = useState(false);
   const [raiseTo, setRaiseTo] = useState(0);
   const [sentAtSeq, setSentAtSeq] = useState<number | null>(null);
@@ -143,7 +151,7 @@ function MobileActions({
   useEffect(() => {
     if (myTurn && la) setRaiseTo(la.minRaiseTo);
     if (!myTurn) setRaiseOpen(false);
-  }, [myTurn, la?.minRaiseTo]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [myTurn, la?.minRaiseTo, hand.actionSeq, hand.handId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pending = sentAtSeq !== null;
   useEffect(() => {
@@ -151,19 +159,63 @@ function MobileActions({
   }, [hand.actionSeq, myTurn, sentAtSeq]);
   useEffect(() => {
     if (sentAtSeq === null) return;
-    const t = setTimeout(() => setSentAtSeq(null), 6000);
+    const sentHand = hand.handId;
+    const t = setTimeout(() => {
+      setSentAtSeq(null);
+      if (sentHand) actionLatch.current.release(sentHand, sentAtSeq);
+    }, 6000);
     return () => clearTimeout(t);
-  }, [sentAtSeq]);
+  }, [sentAtSeq, hand.handId]);
   const send = (a: Parameters<typeof act>[0]) => {
+    if (
+      !hand.handId ||
+      !myTurn ||
+      !connected ||
+      pending ||
+      settling ||
+      !actionLatch.current.claim(hand.handId, hand.actionSeq)
+    )
+      return;
     setSentAtSeq(hand.actionSeq);
-    act(a);
+    amountRef.current?.blur();
+    try {
+      act(a);
+    } catch (error) {
+      actionLatch.current.release(hand.handId, hand.actionSeq);
+      setSentAtSeq(null);
+      useStore
+        .getState()
+        .pushError(error instanceof Error ? error.message : 'Could not send your action.');
+    }
   };
 
   // misclick guard: buttons go dead for a beat when the options change,
   // so a tap aimed at the old state cannot fire the new button
   const settling = useSettling(
-    `${myTurn}:${la?.canCheck ?? '-'}:${la?.callAmount ?? '-'}:${st?.currentBet ?? '-'}`,
+    `${hand.handId}:${hand.actionSeq}:${myTurn}:${la?.canCheck ?? '-'}:${la?.callAmount ?? '-'}:${st?.currentBet ?? '-'}`,
   );
+
+  const amountValid =
+    !!la && Number.isInteger(raiseTo) && raiseTo >= la.minRaiseTo && raiseTo <= la.maxRaiseTo;
+  const submitRaise = () => {
+    if (myTurn && la?.canRaise && st && amountValid)
+      send({ type: st.currentBet === 0 ? 'bet' : 'raise', amount: raiseTo });
+  };
+  const { binding, amountInput } = usePokerHotkeys({
+    mySeat,
+    myTurn,
+    pending,
+    settling,
+    raiseTo,
+    onAmount: (amount) => {
+      setRaiseTo(amount);
+      setRaiseOpen(true);
+    },
+    send,
+    onConfirm: submitRaise,
+    rootRef,
+    amountRef,
+  });
 
   // pre-deal ready check
   const myUserId = useStore((s) => s.auth.userId);
@@ -322,6 +374,30 @@ function MobileActions({
               </button>
             ))}
           </div>
+          <label className="flex flex-wrap items-center gap-2 text-xs text-white">
+            Amount
+            <input
+              ref={amountRef}
+              type="number"
+              inputMode="numeric"
+              min={la.minRaiseTo}
+              max={la.maxRaiseTo}
+              step={1}
+              value={Number.isNaN(raiseTo) ? '' : raiseTo}
+              disabled={pending || settling}
+              aria-label="Bet or raise amount"
+              aria-keyshortcuts={binding('raise')}
+              {...amountInput}
+              onChange={(e) => setRaiseTo(e.target.value === '' ? NaN : +e.target.value)}
+              className="min-h-10 w-28 rounded-lg border border-white/25 bg-white/10 px-2 text-sm"
+            />
+            <span>Enter to confirm</span>
+          </label>
+          {!amountValid && (
+            <p role="status" className="text-xs text-white/70">
+              Enter a whole-chip amount from {fmt(la.minRaiseTo)} to {fmt(la.maxRaiseTo)}.
+            </p>
+          )}
           <input
             type="range"
             min={la.minRaiseTo}
@@ -333,14 +409,8 @@ function MobileActions({
             aria-label="Raise amount"
           />
           <button
-            disabled={pending}
-            onClick={() =>
-              send(
-                st.currentBet === 0
-                  ? { type: 'bet', amount: raiseTo }
-                  : { type: 'raise', amount: raiseTo },
-              )
-            }
+            disabled={pending || settling || !amountValid}
+            onClick={submitRaise}
             className="w-full rounded-full bg-white py-2.5 text-sm font-bold text-slate-900 active:scale-[0.98] disabled:opacity-50"
           >
             {st.currentBet === 0 ? `Bet ${fmt(raiseTo)}` : `Raise to ${fmt(raiseTo)}`}
@@ -356,12 +426,16 @@ function MobileActions({
       <div className={cn('flex gap-2', (pending || settling) && 'pointer-events-none opacity-50')}>
         <button
           onClick={() => send({ type: 'fold' })}
+          disabled={pending || settling}
+          aria-keyshortcuts={binding('fold')}
           className={cn(ghost, 'border-rose-500/40 text-rose-300')}
         >
           Fold
         </button>
         <button
           onClick={() => send(la.canCheck ? { type: 'check' } : { type: 'call' })}
+          disabled={pending || settling}
+          aria-keyshortcuts={binding(la.canCheck ? 'check' : 'call')}
           className={ghost}
         >
           {la.canCheck ? 'Check' : `Call ${fmt(la.callAmount)}`}
@@ -402,6 +476,7 @@ export function MobileTable({
   statusText: string | null;
   dimBoard: boolean;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const myCommitted = useStore(
     (s) => s.hand.betting?.seats.find((x) => x.seat === mySeat)?.committed ?? 0,
   );
@@ -412,7 +487,7 @@ export function MobileTable({
   const strength = me && me.inHand ? strengthLabel(myCards, board) : null;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3 text-white">
+    <div ref={rootRef} className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3 text-white">
       {/* opponents */}
       <div className="flex justify-center gap-2 overflow-x-auto pb-1">
         {opponents.length === 0 ? (
@@ -472,7 +547,10 @@ export function MobileTable({
       </div>
 
       {/* actions */}
-      <MobileActions mySeat={mySeat} isHost={isHost} statusText={statusText} />
+      <MobileActions mySeat={mySeat} isHost={isHost} statusText={statusText} rootRef={rootRef} />
+      <div className="mt-2 flex justify-end">
+        <PokerShortcutButton className="text-white/70! hover:bg-white/10!" />
+      </div>
 
       {/* hole cards + identity tile */}
       <div className="mt-4 flex items-end justify-between gap-3">

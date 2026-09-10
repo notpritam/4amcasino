@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import NumberFlow from '@number-flow/react';
-import { legalActions, type PlayerAction } from '@4am/shared';
+import { legalActions, type PokerHotkeyAction, type PlayerAction } from '@4am/shared';
 import { act, imReady, showMyCards, startHand } from '../../shared/gameClient.ts';
 import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
 import { Coins, HandWaving, HourglassMedium, Wallet } from '@phosphor-icons/react';
+import { PokerShortcutButton } from '../../features/settings/PokerShortcutButton.tsx';
+import { usePokerHotkeys } from '../../features/table/usePokerHotkeys.ts';
+import { pokerActionLatch } from '../../features/table/pokerHotkeys.ts';
 import { Button } from '../../shared/ui/index.tsx';
 import { myToCall, togglePreAction } from '../../features/table/preActions.ts';
 import { useSettling } from '../../features/table/useSettling.ts';
@@ -26,6 +29,19 @@ export function ActionBar({
   const room = useStore((s) => s.room);
   const myUserId = useStore((s) => s.auth.userId);
   const [raiseTo, setRaiseTo] = useState(0);
+  const connected = useStore((s) => s.wsConnected);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const actionLatch = useRef(pokerActionLatch);
+  const hint = (action: PokerHotkeyAction) =>
+    binding(action) ? (
+      <kbd
+        aria-hidden="true"
+        className="ml-1 hidden rounded border border-current/30 px-1 font-sans text-[10px] opacity-80 md:inline-block"
+      >
+        {binding(action)}
+      </kbd>
+    ) : null;
 
   const st = hand.betting;
   const la = useMemo(() => (st ? legalActions(st) : null), [st]);
@@ -41,7 +57,7 @@ export function ActionBar({
 
   useEffect(() => {
     if (myTurn && la) setRaiseTo(la.minRaiseTo);
-  }, [myTurn, la?.minRaiseTo]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [myTurn, la?.minRaiseTo, hand.actionSeq, hand.handId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handIdle = !hand.handId || handOver;
   const sb = room?.room.sb ?? 1;
@@ -76,20 +92,61 @@ export function ActionBar({
   }, [hand.actionSeq, myTurn, sentAtSeq]);
   useEffect(() => {
     if (sentAtSeq === null) return;
-    const t = setTimeout(() => setSentAtSeq(null), 6000);
+    const sentHand = hand.handId;
+    const t = setTimeout(() => {
+      setSentAtSeq(null);
+      if (sentHand) actionLatch.current.release(sentHand, sentAtSeq);
+    }, 6000);
     return () => clearTimeout(t);
-  }, [sentAtSeq]);
+  }, [sentAtSeq, hand.handId]);
   const send = (a: PlayerAction) => {
+    if (
+      !hand.handId ||
+      !myTurn ||
+      !connected ||
+      pending ||
+      settling ||
+      !actionLatch.current.claim(hand.handId, hand.actionSeq)
+    )
+      return;
     setSentAtSeq(hand.actionSeq);
-    act(a);
+    amountRef.current?.blur();
+    try {
+      act(a);
+    } catch (error) {
+      actionLatch.current.release(hand.handId, hand.actionSeq);
+      setSentAtSeq(null);
+      useStore
+        .getState()
+        .pushError(error instanceof Error ? error.message : 'Could not send your action.');
+    }
   };
 
   // misclick guard: the moment my options change (my turn arrives, a raise
   // lands, Check becomes Call) the buttons go dead for a beat, so a click
   // aimed at the old state cannot fire the new button
   const settling = useSettling(
-    `${myTurn}:${la?.canCheck ?? '-'}:${la?.callAmount ?? '-'}:${st?.currentBet ?? '-'}`,
+    `${hand.handId}:${hand.actionSeq}:${myTurn}:${la?.canCheck ?? '-'}:${la?.callAmount ?? '-'}:${st?.currentBet ?? '-'}`,
   );
+
+  const amountValid =
+    !!la && Number.isInteger(raiseTo) && raiseTo >= la.minRaiseTo && raiseTo <= la.maxRaiseTo;
+  const submitRaise = () => {
+    if (!myTurn || !la?.canRaise || !st || !amountValid) return;
+    send({ type: st.currentBet === 0 ? 'bet' : 'raise', amount: raiseTo });
+  };
+  const { binding, amountInput } = usePokerHotkeys({
+    mySeat,
+    myTurn,
+    pending,
+    settling,
+    raiseTo,
+    onAmount: setRaiseTo,
+    send,
+    onConfirm: submitRaise,
+    rootRef,
+    amountRef,
+  });
 
   // pre-deal ready check: no auto-dealt hand starts until everyone clicked
   const rc = handIdle ? hand.readyCheck : null;
@@ -165,12 +222,18 @@ export function ActionBar({
               'border-0 bg-white/15! text-white! hover:bg-white/25! dark:bg-white/15! dark:text-white! dark:hover:bg-white/25!',
             armedFold && 'ring-2 ring-indigo-500',
           )}
-          title={myTurn ? undefined : 'Arms now, acts on your turn'}
+          aria-keyshortcuts={myTurn ? binding('fold') : undefined}
+          title={
+            myTurn
+              ? 'Fold' + (binding('fold') ? ` (${binding('fold')})` : '')
+              : 'Arms now, acts on your turn'
+          }
           onClick={() =>
             myTurn ? send({ type: 'fold' }) : togglePreAction('check-fold', st!, mySeat!)
           }
         >
           {!myTurn && canCk ? 'Check / Fold' : 'Fold'}
+          {myTurn && hint('fold')}
         </Button>
         <Button
           variant="success"
@@ -180,7 +243,14 @@ export function ActionBar({
             !myTurn && 'opacity-90',
             armedCall && 'ring-2 ring-indigo-500',
           )}
-          title={myTurn ? undefined : 'Arms now, acts on your turn'}
+          aria-keyshortcuts={myTurn ? binding(canCk ? 'check' : 'call') : undefined}
+          title={
+            myTurn
+              ? binding(canCk ? 'check' : 'call')
+                ? `Shortcut: ${binding(canCk ? 'check' : 'call')}`
+                : undefined
+              : 'Arms now, acts on your turn'
+          }
           onClick={() =>
             myTurn
               ? send(canCk ? { type: 'check' } : { type: 'call' })
@@ -188,10 +258,11 @@ export function ActionBar({
           }
         >
           {canCk ? 'Check' : `Call ${fmt(toCall)}`}
+          {myTurn && hint(canCk ? 'check' : 'call')}
         </Button>
         <Button
           variant="secondary"
-          disabled={lock || !myTurn || !la?.canRaise}
+          disabled={lock || !myTurn || !la?.canRaise || !amountValid}
           className={cn(
             'poker-raise-button',
             myTurn &&
@@ -200,14 +271,7 @@ export function ActionBar({
               'border-0 bg-white! text-indigo-700! hover:bg-indigo-50! dark:bg-white! dark:text-indigo-700! dark:hover:bg-indigo-50!',
           )}
           title={myTurn ? undefined : 'Raising unlocks on your turn'}
-          onClick={() => {
-            if (!myTurn || !la?.canRaise) return;
-            send(
-              st!.currentBet === 0
-                ? { type: 'bet', amount: Math.min(raiseTo, la.maxRaiseTo) }
-                : { type: 'raise', amount: Math.min(raiseTo, la.maxRaiseTo) },
-            );
-          }}
+          onClick={submitRaise}
         >
           {myTurn && la?.canRaise
             ? st!.currentBet === 0
@@ -221,6 +285,7 @@ export function ActionBar({
 
   return (
     <div
+      ref={rootRef}
       className={cn(
         'poker-action-bar rounded-2xl p-4',
         presentation === 'overlay' && 'poker-action-overlay lounge-glass',
@@ -376,6 +441,33 @@ export function ActionBar({
               </button>
             ))}
           </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-xs">
+              {st?.currentBet === 0 ? 'Bet amount' : 'Raise to'}
+              {hint('raise')}
+              <input
+                ref={amountRef}
+                type="number"
+                inputMode="numeric"
+                min={la.minRaiseTo}
+                max={la.maxRaiseTo}
+                step={1}
+                value={Number.isNaN(raiseTo) ? '' : raiseTo}
+                aria-label="Bet or raise amount"
+                aria-keyshortcuts={binding('raise')}
+                disabled={pending || settling}
+                {...amountInput}
+                onChange={(e) => setRaiseTo(e.target.value === '' ? NaN : +e.target.value)}
+                className="min-h-9 w-28 min-w-0 rounded-lg border border-white/30 bg-white/10 px-2 text-sm text-white outline-none focus:ring-2 focus:ring-white/70"
+              />
+              <span className="text-[11px]">Enter to confirm</span>
+            </label>
+          </div>
+          {!amountValid && (
+            <p role="status" className="text-xs">
+              Enter a whole-chip amount from {fmt(la.minRaiseTo)} to {fmt(la.maxRaiseTo)}.
+            </p>
+          )}
           <div className="flex items-center gap-3">
             <span className="font-display text-sm">{fmt(la.minRaiseTo)}</span>
             <input
@@ -392,6 +484,9 @@ export function ActionBar({
           </div>
         </div>
       )}
+      <div className="mt-2 flex justify-end">
+        <PokerShortcutButton className={myTurn ? 'text-white! hover:bg-white/10!' : undefined} />
+      </div>
     </div>
   );
 }

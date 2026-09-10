@@ -5,6 +5,7 @@ import {
   RiLinksLine,
   RiLogoutBoxLine,
   RiSunLine,
+  RiKeyboardLine,
 } from '@remixicon/react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -15,6 +16,7 @@ import { Button, Input, Spinner } from '../../shared/ui/index.tsx';
 import { cn } from '../../shared/lib/cn.ts';
 import { ProfileEditor } from '../../features/profile/ProfileDialog.tsx';
 import { AccountSecurity } from '../../features/account/AccountSecurity.tsx';
+import { KeyboardShortcuts } from '../../features/settings/KeyboardShortcuts.tsx';
 import { SettingsCard } from '../../features/settings/SettingsCard.tsx';
 import { AppearanceToggle } from '../../shared/ui/AppearanceToggle.tsx';
 
@@ -25,6 +27,7 @@ import { AppearanceToggle } from '../../shared/ui/AppearanceToggle.tsx';
 const SECTIONS = [
   { id: 'profile', label: 'Profile', icon: RiUser3Line },
   { id: 'table', label: 'Table & play', icon: RiPokerClubsLine },
+  { id: 'shortcuts', label: 'Keyboard shortcuts', icon: RiKeyboardLine },
   { id: 'appearance', label: 'Appearance', icon: RiSunLine },
   { id: 'account', label: 'Account & security', icon: RiShieldKeyholeLine },
   { id: 'merge', label: 'Merge accounts', icon: RiLinksLine },
@@ -217,6 +220,10 @@ export function SettingsPage() {
 
         <div className="min-w-0 flex-1 space-y-6">
           <ProfileEditor sectioned />
+
+          <SettingsCard id="shortcuts" title="Keyboard shortcuts" icon={<RiKeyboardLine className="size-4" aria-hidden />} desc="Your quick actions, saved to your account.">
+            <KeyboardShortcuts />
+          </SettingsCard>
 
           <SettingsCard
             id="appearance"

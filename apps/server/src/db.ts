@@ -161,6 +161,7 @@ function migrate(db: DB): void {
   // "deal me in without asking every hand" - the ready check exists so nobody is
   // dealt into a hand they walked away from, which is a per-player call
   ensureColumn(db, 'users', 'auto_ready', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'users', 'poker_hotkeys', 'TEXT');
   // account recovery: hash of the one-time recovery code, salted like a password
   // (requested by notpritam, docs/FEATURES.md)
   // Signup order, as its own fact rather than something inferred from the

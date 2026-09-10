@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { DEFAULT_POKER_HOTKEYS, parsePokerHotkeys, type PokerHotkeys } from '@4am/shared';
 import type { BettingState, CardId, LoungePosition, PlayerAction, ServerMsg } from '@4am/shared';
 
 type RoomStateMsg = Extract<ServerMsg, { t: 'room_state' }>;
@@ -17,6 +18,7 @@ export interface ChatMsg {
 }
 
 export interface Prefs {
+  pokerHotkeys: PokerHotkeys;
   displayName: string;
   bio: string;
   hasAvatar: boolean;
@@ -33,6 +35,7 @@ export interface Prefs {
 }
 
 export const defaultPrefs: Prefs = {
+  pokerHotkeys: DEFAULT_POKER_HOTKEYS,
   displayName: '',
   bio: '',
   hasAvatar: false,
@@ -158,6 +161,8 @@ interface Store {
   wsConnected: boolean;
   setWsConnected: (v: boolean) => void;
 
+  pokerHotkeysFor: number | null;
+  setPokerHotkeys: (p: PokerHotkeys, userId: number) => void;
   prefs: Prefs;
   setPrefs: (p: Partial<Prefs>) => void;
 
@@ -174,7 +179,12 @@ export const useStore = create<Store>()(
   persist(
     (set) => ({
       auth: { token: null, userId: null, username: null, identity: null },
-      setAuth: (auth) => set({ auth }),
+      setAuth: (auth) =>
+        set((s) => ({
+          auth,
+          pokerHotkeysFor:
+            s.auth.token === auth.token && s.auth.userId === auth.userId ? s.pokerHotkeysFor : null,
+        })),
       logout: () =>
         set({
           auth: { token: null, userId: null, username: null, identity: null },
@@ -182,6 +192,7 @@ export const useStore = create<Store>()(
           lounge: {},
           chat: [],
           hand: emptyHand,
+          pokerHotkeysFor: null,
         }),
 
       room: null,
@@ -212,6 +223,13 @@ export const useStore = create<Store>()(
       wsConnected: false,
       setWsConnected: (wsConnected) => set({ wsConnected }),
 
+      pokerHotkeysFor: null,
+      setPokerHotkeys: (pokerHotkeys, userId) =>
+        set((s) =>
+          s.auth.userId === userId
+            ? { pokerHotkeysFor: userId, prefs: { ...s.prefs, pokerHotkeys } }
+            : {},
+        ),
       prefs: defaultPrefs,
       setPrefs: (p) => set((s) => ({ prefs: { ...s.prefs, ...p } })),
 
@@ -226,11 +244,14 @@ export const useStore = create<Store>()(
         return {
           ...current,
           ...(p ?? {}),
+          pokerHotkeysFor: null,
           // new pref fields must survive rehydration from an older stored shape
           prefs: Object.fromEntries(
             Object.entries(defaultPrefs).map(([key, fallback]) => [
               key,
-              p?.prefs?.[key as keyof Prefs] ?? fallback,
+              key === 'pokerHotkeys'
+                ? (parsePokerHotkeys(p?.prefs?.pokerHotkeys) ?? fallback)
+                : (p?.prefs?.[key as keyof Prefs] ?? fallback),
             ]),
           ) as unknown as Prefs,
         };

@@ -5,14 +5,29 @@ import type { DB } from './db.js';
 import { requireUser } from './auth.js';
 import { isPlatform, platformUserId } from './platform.js';
 import { canBank, getRoom, isMember, roomEvents } from './rooms.js';
-import { describeScore, evaluate7 } from '@4am/shared';
+import { DEFAULT_POKER_HOTKEYS, parsePokerHotkeys, describeScore, evaluate7 } from '@4am/shared';
 
 const MAX_AVATAR_BYTES = 300_000;
 const AVATAR_MIMES = ['image/png', 'image/jpeg', 'image/webp'] as const;
 
+function storedPokerHotkeys(raw: string | null) {
+  if (raw === null) return DEFAULT_POKER_HOTKEYS;
+  try {
+    const parsed = parsePokerHotkeys(JSON.parse(raw));
+    if (parsed) return parsed;
+  } catch {
+    /* A damaged preference must not break the rest of the profile. */
+  }
+  return { ...DEFAULT_POKER_HOTKEYS, enabled: false };
+}
+
 export const CARD_BACKS = ['indigo', 'crimson', 'emerald', 'slate'] as const;
 
 const profileSchema = z.object({
+  pokerHotkeys: z
+    .unknown()
+    .refine((value) => parsePokerHotkeys(value) !== null, 'Invalid keyboard shortcuts')
+    .optional(),
   displayName: z.string().trim().min(1).max(24).optional(),
   bio: z.string().trim().max(280).optional(),
   cardBack: z.enum(CARD_BACKS).optional(),
@@ -55,7 +70,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
   app.get('/api/profile', authed, async (req) => {
     const row = db
       .prepare(
-        'SELECT id, username, display_name, bio, avatar_version, card_back, four_color, theme, avatar3d, quick_phrases, private_mode, auto_join_invites, auto_ready, avatar IS NOT NULL as hasAvatar FROM users WHERE id = ?',
+        'SELECT id, username, display_name, bio, avatar_version, card_back, four_color, theme, avatar3d, quick_phrases, private_mode, auto_join_invites, auto_ready, poker_hotkeys, avatar IS NOT NULL as hasAvatar FROM users WHERE id = ?',
       )
       .get(req.userId) as {
       id: number;
@@ -71,6 +86,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       private_mode: number;
       auto_join_invites: number;
       auto_ready: number;
+      poker_hotkeys: string | null;
       hasAvatar: number;
     };
     return {
@@ -88,6 +104,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       privateMode: !!row.private_mode,
       autoJoinInvites: !!row.auto_join_invites,
       autoReady: !!row.auto_ready,
+      pokerHotkeys: storedPokerHotkeys(row.poker_hotkeys),
     };
   });
 
@@ -95,8 +112,16 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
     const parsed = profileSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid profile' });
     const { displayName, bio, cardBack, fourColor, theme, quickPhrases, privateMode } = parsed.data;
+    if (parsed.data.pokerHotkeys !== undefined)
+      db.prepare('UPDATE users SET poker_hotkeys = ? WHERE id = ?').run(
+        JSON.stringify(parsed.data.pokerHotkeys),
+        req.userId,
+      );
     if (privateMode !== undefined)
-      db.prepare('UPDATE users SET private_mode = ? WHERE id = ?').run(privateMode ? 1 : 0, req.userId);
+      db.prepare('UPDATE users SET private_mode = ? WHERE id = ?').run(
+        privateMode ? 1 : 0,
+        req.userId,
+      );
     if (parsed.data.autoJoinInvites !== undefined)
       db.prepare('UPDATE users SET auto_join_invites = ? WHERE id = ?').run(
         parsed.data.autoJoinInvites ? 1 : 0,
@@ -113,9 +138,14 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
         req.userId,
       );
     if (parsed.data.avatar3d !== undefined) {
-      db.prepare('UPDATE users SET avatar3d = ? WHERE id = ?').run(parsed.data.avatar3d, req.userId);
+      db.prepare('UPDATE users SET avatar3d = ? WHERE id = ?').run(
+        parsed.data.avatar3d,
+        req.userId,
+      );
       // the character changed: every table they sit at repaints live
-      const memberRooms = db.prepare('SELECT room_id FROM room_players WHERE user_id = ?').all(req.userId) as { room_id: string }[];
+      const memberRooms = db
+        .prepare('SELECT room_id FROM room_players WHERE user_id = ?')
+        .all(req.userId) as { room_id: string }[];
       for (const r of memberRooms) roomEvents.emit('changed', r.room_id);
     }
     if (theme !== undefined)

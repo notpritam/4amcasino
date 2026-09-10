@@ -1564,6 +1564,7 @@ export function TablePage({
 
         {menuOpen && (
           <div
+            data-poker-hotkeys-blocked
             className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60"
             onClick={() => setMenuOpen(false)}
           >
@@ -1673,7 +1674,7 @@ export function TablePage({
         )}
 
         {chatOpen && (
-          <div className="fixed inset-0 z-40 flex flex-col bg-slate-950 p-3">
+          <div data-poker-hotkeys-blocked className="fixed inset-0 z-40 flex flex-col bg-slate-950 p-3">
             <div className="mb-2 flex justify-end">
               <Button variant="secondary" onClick={() => setChatOpen(false)}>
                 <X size={16} /> Close
