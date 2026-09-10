@@ -1,3 +1,4 @@
+import { PlatformDues } from '../../features/house/PlatformDues.tsx';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
@@ -11,7 +12,7 @@ import {
   Trophy,
   UserPlus,
 } from '@phosphor-icons/react';
-import type { CardId } from '@4am/shared';
+import type { CardId, HouseDues } from '@4am/shared';
 import { api } from '../../shared/api.ts';
 import { useStore } from '../../shared/store.ts';
 import { cn, fmt } from '../../shared/lib/cn.ts';
@@ -52,6 +53,7 @@ interface PlayerProfile {
   /** The platform's own account: the table's bank, not a player to rank
    *  against. Its profile trades win/loss framing for house framing. */
   isPlatform: boolean;
+  house?: HouseDues;
   /** 1-based position on the global leaderboard, or null out of range. */
   leaderboardRank: number | null;
   /** Null when viewing a private profile you don't own: winnings are hidden. */
@@ -954,6 +956,17 @@ export function PlayerPage() {
               />
             </div>
           )}
+          {own && p.house && (
+            <div>
+              <StatRow label="Platform due" value={fmt(p.house.outstanding)} />
+              <Link
+                to="/settle"
+                className="mt-3 inline-block text-sm text-indigo-600 hover:underline dark:text-indigo-300"
+              >
+                View platform dues in Settle up
+              </Link>
+            </div>
+          )}
           {!p.isPlatform && <BestHandCard userId={p.userId} own={own} />}
           {!own && <PlayerActions userId={p.userId} name={p.username} />}
         </div>
@@ -961,6 +974,7 @@ export function PlayerPage() {
         {/* middle: the money and the game */}
         <div className="min-w-0 space-y-5">
           {own && !p.isPlatform && <SettleUpPanel />}
+          {own && p.isPlatform && <PlatformDues />}
           {p.isPlatform ? (
             <Panel>
               <div className="mb-2 flex items-center gap-2">
@@ -968,9 +982,8 @@ export function PlayerPage() {
                 <h2 className="font-display font-semibold">The table's bank</h2>
               </div>
               <p className="text-sm text-slate-600 dark:text-slate-300">
-                This account holds the pot, pays out buy-ins, and settles debts across every room.
-                It isn't a player chasing the leaderboard, so its balance is the house's, not a
-                rival's.
+                This is the platform account that receives table commission. Its owner can review
+                amounts due from each user in Admin, on this profile, and in Settle up.
               </p>
             </Panel>
           ) : (

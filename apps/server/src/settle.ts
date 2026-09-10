@@ -3,6 +3,8 @@ import { z } from 'zod';
 import type { DB } from './db.js';
 import { requireUser } from './auth.js';
 import { rateLimit } from './limits.js';
+import { houseDues, platformDues } from './house.js';
+import { isPlatform } from './platform.js';
 
 /** Settling up, made obvious (requested by notpritam, docs/FEATURES.md).
  *
@@ -95,46 +97,6 @@ export function registerSettleRoutes(
     'SELECT COALESCE(display_name, username) as name, avatar_version as avatarVersion FROM users WHERE id = ?',
   );
 
-  /** Your share of the commission.
-   *
-   *  The rake comes off the pot before it is awarded, so the players who won
-   *  those pots are the ones who actually paid it. We attribute each hand's
-   *  commission across its winners in proportion to what they took - which is
-   *  exactly how it came out of the chips. */
-  function houseDues(userId: number): { accrued: number; paid: number; outstanding: number } {
-    const commissions = db
-      .prepare(
-        `SELECT l.ref as ref, SUM(l.delta) as rake FROM ledger l
-         JOIN rooms r ON r.id = l.room_id
-         WHERE l.kind = 'commission' AND r.voided = 0 AND r.archived = 0 AND r.deleted = 0
-           AND l.ref IS NOT NULL
-           AND EXISTS (SELECT 1 FROM ledger m WHERE m.ref = l.ref AND m.kind = 'hand-settlement' AND m.user_id = ?)
-           AND NOT EXISTS (SELECT 1 FROM ledger v WHERE v.room_id = l.room_id AND v.kind = 'void-hand' AND v.ref = l.ref)
-         GROUP BY l.ref`,
-      )
-      .all(userId) as { ref: string; rake: number }[];
-
-    let accrued = 0;
-    const winStmt = db.prepare(
-      "SELECT user_id as userId, delta FROM ledger WHERE ref = ? AND kind = 'hand-settlement' AND delta > 0",
-    );
-    for (const c of commissions) {
-      const winners = winStmt.all(c.ref) as { userId: number; delta: number }[];
-      const total = winners.reduce((s, w) => s + w.delta, 0);
-      const mine = winners.find((w) => w.userId === userId)?.delta ?? 0;
-      if (total > 0 && mine > 0) accrued += Math.round((c.rake * mine) / total);
-    }
-
-    const paid = (
-      db
-        .prepare(
-          'SELECT COALESCE(SUM(amount), 0) as total FROM house_payments WHERE user_id = ?',
-        )
-        .get(userId) as { total: number }
-    ).total;
-    return { accrued, paid, outstanding: Math.max(0, accrued - paid) };
-  }
-
   /** One line per person, plus the redirects that would close two debts at once. */
   app.get('/api/me/settle', authed, async (req) => {
     const debts = openDebts(req.userId);
@@ -208,7 +170,8 @@ export function registerSettleRoutes(
       people,
       redirects,
       totals: { owedToMe: totalOwed, iOwe: totalOwe, net: totalOwed - totalOwe },
-      house: houseDues(req.userId),
+      house: houseDues(db, req.userId),
+      ...(isPlatform(db, req.userId) ? { platformHouse: platformDues(db) } : {}),
     };
   });
 
@@ -229,7 +192,7 @@ export function registerSettleRoutes(
     const friendRequests = db
       .prepare("SELECT COUNT(*) as n FROM friends WHERE target_id = ? AND status = 'pending'")
       .get(req.userId) as { n: number };
-    const house = houseDues(req.userId);
+    const house = houseDues(db, req.userId);
     return {
       settlementsAwaitingMe: awaitingMe.n,
       openDebts: debts.length,
@@ -305,7 +268,7 @@ export function registerSettleRoutes(
       db.prepare(
         'INSERT INTO house_payments (user_id, amount, note, proof, proof_mime, ts) VALUES (?, ?, ?, ?, ?, ?)',
       ).run(req.userId, parsed.data.amount, parsed.data.note ?? null, bytes, mime, Date.now());
-      return { ok: true, house: houseDues(req.userId) };
+      return { ok: true, house: houseDues(db, req.userId) };
     },
   );
 
@@ -315,7 +278,7 @@ export function registerSettleRoutes(
         'SELECT id, amount, note, confirmed, ts FROM house_payments WHERE user_id = ? ORDER BY ts DESC LIMIT 50',
       )
       .all(req.userId);
-    return { ...houseDues(req.userId), payments };
+    return { ...houseDues(db, req.userId), payments };
   });
 
   return;

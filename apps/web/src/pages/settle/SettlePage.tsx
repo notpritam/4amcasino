@@ -1,3 +1,5 @@
+import { PlatformDues, HouseRooms } from '../../features/house/PlatformDues.tsx';
+import type { HouseDues, PlatformDuesReport } from '@4am/shared';
 import { NEW_ROOM_COMMISSION_BPS, commissionRateLabel } from '@4am/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -32,7 +34,8 @@ interface SettleView {
   people: NetLine[];
   redirects: Redirect[];
   totals: { owedToMe: number; iOwe: number; net: number };
-  house: { accrued: number; paid: number; outstanding: number };
+  house: HouseDues;
+  platformHouse?: PlatformDuesReport;
 }
 
 /** Downscale a photo of a transfer to something worth storing. */
@@ -51,7 +54,11 @@ function Money({ value, className }: { value: number; className?: string }) {
     <span
       className={cn(
         'font-display font-bold tabular-nums',
-        value > 0 ? 'text-emerald-600 dark:text-emerald-400' : value < 0 ? 'text-rose-600 dark:text-rose-400' : '',
+        value > 0
+          ? 'text-emerald-600 dark:text-emerald-400'
+          : value < 0
+            ? 'text-rose-600 dark:text-rose-400'
+            : '',
         className,
       )}
     >
@@ -119,6 +126,20 @@ export function SettlePage() {
     );
   }
 
+  if (view.platformHouse) {
+    return (
+      <div className="mx-auto max-w-5xl p-4 sm:p-6">
+        <header className="mb-6">
+          <h1 className="font-display text-2xl font-bold">Settle up</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Platform commission due from users, with recorded payments and room details.
+          </p>
+        </header>
+        <PlatformDues initialReport={view.platformHouse} />
+      </div>
+    );
+  }
+
   const { totals, house } = view;
 
   return (
@@ -132,15 +153,15 @@ export function SettlePage() {
 
       <div className="mb-6 grid gap-3 sm:grid-cols-3">
         <Panel className="p-4">
-          <div className="text-xs uppercase tracking-wide text-slate-400">You are owed</div>
+          <div className="text-xs uppercase tracking-wide text-slate-400">Players owe you</div>
           <Money value={totals.owedToMe} className="text-2xl" />
         </Panel>
         <Panel className="p-4">
-          <div className="text-xs uppercase tracking-wide text-slate-400">You owe</div>
+          <div className="text-xs uppercase tracking-wide text-slate-400">You owe players</div>
           <Money value={-totals.iOwe} className="text-2xl" />
         </Panel>
         <Panel className="p-4">
-          <div className="text-xs uppercase tracking-wide text-slate-400">Net position</div>
+          <div className="text-xs uppercase tracking-wide text-slate-400">Player balance</div>
           <Money value={totals.net} className="text-2xl" />
         </Panel>
       </div>
@@ -184,7 +205,7 @@ export function SettlePage() {
       <Panel className="mb-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="font-display text-base font-semibold">The house</h2>
+            <h2 className="font-display text-base font-semibold">Your platform dues</h2>
             <p className="mt-0.5 max-w-md text-xs leading-relaxed text-slate-500">
               Your share of the platform commission deducted from pots you won. New rooms charge{' '}
               {commissionRateLabel(NEW_ROOM_COMMISSION_BPS)}; earlier rooms keep their original
@@ -197,10 +218,21 @@ export function SettlePage() {
               {fmt(house.outstanding)}
             </span>
             <div className="text-xs text-slate-400">
-              {fmt(house.accrued)} accrued · {fmt(house.paid)} paid
+              {fmt(house.accrued)} accrued · {fmt(house.paid)} recorded payments
             </div>
           </div>
         </div>
+        {(house.rooms?.length ?? 0) > 0 && (
+          <details className="mt-4 text-sm">
+            <summary className="w-fit cursor-pointer text-indigo-600 hover:underline dark:text-indigo-300">
+              Commission by room
+            </summary>
+            <HouseRooms rooms={house.rooms} />
+          </details>
+        )}
+        {house.credit > 0 && (
+          <p className="mt-3 text-sm text-slate-500">Recorded credit: {fmt(house.credit)}</p>
+        )}
         <Button className="mt-3" variant="secondary" onClick={() => setHouseOpen(true)}>
           Record a payment
         </Button>
@@ -210,7 +242,7 @@ export function SettlePage() {
       {view.people.length === 0 ? (
         <Panel>
           <p className="text-sm text-slate-500">
-            Nothing outstanding anywhere. Every table you have played is square.
+            No outstanding payments between players. Your platform dues are shown above.
           </p>
         </Panel>
       ) : (

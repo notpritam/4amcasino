@@ -172,6 +172,7 @@ export const api = {
   mergeRequest: (fromUsername: string, intoUsername: string, note?: string) =>
     req('/api/me/merge-request', { fromUsername, intoUsername, ...(note ? { note } : {}) }),
   // platform-only console: room lifecycle requests, account merges, and user admin
+  adminHouse: () => req('/api/admin/house'),
   adminLifecycle: () => req('/api/admin/lifecycle'),
   adminDecideLifecycle: (id: number, approve: boolean) =>
     req(`/api/admin/lifecycle/${id}`, { approve }),

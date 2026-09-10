@@ -1,3 +1,4 @@
+import { houseDues } from './house.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from './db.js';
@@ -282,6 +283,7 @@ export function registerProfileRoutes(app: FastifyInstance, db: DB): void {
       memberCount: total,
       stats,
       leaderboardRank: leaderboardRankOf(db, id),
+      ...(isSelf && !isPlatform(db, id) ? { house: houseDues(db, id) } : {}),
       isPlatform: isPlatform(db, id),
       rivals,
       transactions,

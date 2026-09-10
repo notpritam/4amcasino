@@ -7,6 +7,7 @@ import { roomEvents } from './rooms.js';
 import { mergeAccounts } from './merge.js';
 import { rekey } from './account.js';
 import { activeHands } from './liveHands.js';
+import { platformDues } from './house.js';
 
 const authKey = z.string().length(64).regex(/^[0-9a-f]+$/);
 const pubKey = z.string().length(64).regex(/^[0-9a-f]+$/);
@@ -52,6 +53,8 @@ function balanceSummary(db: DB, userId: number): { balance: number; rooms: numbe
  *  but only take effect once approved here. Rejecting leaves the room as-is. */
 export function registerAdminRoutes(app: FastifyInstance, db: DB): void {
   const platformOnly = { preHandler: requirePlatform(db) };
+
+  app.get('/api/admin/house', platformOnly, async () => platformDues(db));
 
   app.get('/api/admin/lifecycle', platformOnly, async () => {
     const rows = db

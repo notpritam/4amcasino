@@ -1,3 +1,4 @@
+import { PlatformDues } from '../../features/house/PlatformDues.tsx';
 import { type FormEvent, type ReactNode, memo, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../shared/api.ts';
@@ -758,9 +759,10 @@ export function AdminPage() {
           Admin
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Platform-only. Room requests, account merges, and user accounts.
+          Platform dues, room requests, account merges, and user accounts.
         </p>
       </header>
+      <PlatformDues />
       <LifecycleSection />
       <MergeSection />
       <RoomsSection />
