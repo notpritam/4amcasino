@@ -38,11 +38,23 @@ export function createApp(
     bodyLimit: LIMITS.bodyBytes,
   };
   const app = Fastify(serverOptions);
+  // Keep existing bookmarks and room invites working after the domain move.
+  // Match the actual Host, not a caller-controlled X-Forwarded-Host. Prefixing
+  // the raw path with a fixed origin also keeps // paths on our destination.
+  app.addHook('onRequest', async (req, reply) => {
+    const host = req.headers.host?.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
+    if (host === 'poker.notpritam.in') {
+      const path = req.raw.url?.startsWith('/') ? req.raw.url : '/';
+      return reply.redirect(`https://4amcasino.com${path}`, 308);
+    }
+  });
   // Reflecting every origin let any page on the internet call the credential
   // routes and read the answer, which spreads a login-guessing campaign across
   // its visitors' IPs and defeats a per-IP limit. Auth is Bearer-only so there
   // was never CSRF exposure, but the allowlist costs nothing.
   const allowedOrigins = [
+    'https://4amcasino.com',
+    'https://www.4amcasino.com',
     'https://poker.notpritam.in',
     ...(process.env.ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
   ];

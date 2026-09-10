@@ -19,6 +19,7 @@ function originAllowed(origin: string | undefined): boolean {
   // meaningful as a defence against a *page* on another origin - which always
   // sends one. Denying here would lock out every non-browser client instead.
   if (!origin) return true;
+  if (origin === 'https://4amcasino.com' || origin === 'https://www.4amcasino.com') return true;
   const extra = (process.env.ALLOWED_ORIGINS ?? '')
     .split(',')
     .map((s) => s.trim())

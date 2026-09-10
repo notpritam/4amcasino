@@ -1,6 +1,6 @@
 # 4AM Casino
 
-Encrypted Texas Hold'em for friend groups, live at https://poker.notpritam.in.
+Encrypted Texas Hold'em for friend groups, live at https://4amcasino.com.
 
 - **What it is:** play-money poker night that runs on cryptography instead of trust.
   Mental poker (commutative masking on ristretto255 + DLEQ proofs) means nobody -

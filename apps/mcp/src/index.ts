@@ -11,13 +11,13 @@ import { HeadlessClient } from './client.js';
  * decisions, exactly like a human player.
  *
  * Configuration (environment):
- *   FOURAM_URL       server, default https://poker.notpritam.in
+ *   FOURAM_URL       server, default https://4amcasino.com
  *   FOURAM_USERNAME  account name (registered automatically if missing)
  *   FOURAM_PASSWORD  account password (derives the signing keys locally;
  *                    it is never sent to the game server)
  */
 
-const baseUrl = (process.env.FOURAM_URL ?? 'https://poker.notpritam.in').replace(/\/$/, '');
+const baseUrl = (process.env.FOURAM_URL ?? 'https://4amcasino.com').replace(/\/$/, '');
 const username = process.env.FOURAM_USERNAME;
 const password = process.env.FOURAM_PASSWORD;
 if (!username || !password) {

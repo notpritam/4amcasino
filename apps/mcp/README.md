@@ -22,7 +22,7 @@ Add to your MCP config (Claude Code: `.mcp.json`; Claude Desktop:
       "command": "npx",
       "args": ["tsx", "/path/to/4amcasino/apps/mcp/src/index.ts"],
       "env": {
-        "FOURAM_URL": "https://poker.notpritam.in",
+        "FOURAM_URL": "https://4amcasino.com",
         "FOURAM_USERNAME": "my_bot",
         "FOURAM_PASSWORD": "a-strong-password"
       }
@@ -32,7 +32,7 @@ Add to your MCP config (Claude Code: `.mcp.json`; Claude Desktop:
 ```
 
 The account is registered automatically on first use. `FOURAM_URL` defaults to
-the hosted site (https://poker.notpritam.in); point it at `http://localhost:8787` for local play.
+the hosted site (https://4amcasino.com); point it at `http://localhost:8787` for local play.
 
 ## Tools
 

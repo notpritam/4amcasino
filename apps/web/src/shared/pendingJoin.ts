@@ -1,7 +1,7 @@
 /** Share links that survive the login round trip (requested by notpritam,
  *  docs/FEATURES.md).
  *
- *  You send a friend `poker.notpritam.in/j/ABC123`. If they are logged out we
+ *  You send a friend `4amcasino.com/j/ABC123`. If they are logged out we
  *  park the code here, walk them through login or registration, and drop them
  *  straight into the table on the other side. sessionStorage rather than a
  *  route param so a reload, a tab restore, or a bounce through /login?expired=1

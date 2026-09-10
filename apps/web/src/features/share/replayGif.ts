@@ -114,7 +114,7 @@ function drawStep(
   ctx.fillStyle = '#475569';
   ctx.textAlign = 'right';
   ctx.font = '500 11px "JetBrains Mono", monospace';
-  ctx.fillText('poker.notpritam.in · provably fair', W - 24, H - 12);
+  ctx.fillText('4amcasino.com · provably fair', W - 24, H - 12);
 }
 
 export async function renderReplayGif(

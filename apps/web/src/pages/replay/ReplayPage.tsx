@@ -73,7 +73,7 @@ export function ReplayPage() {
       // the GIF downloads; the intent opens with the words - attach and post
       window.open(
         `https://twitter.com/intent/tweet?text=${encodeURIComponent(
-          'This hand at 4AM Casino ♠ provably fair poker with friends - poker.notpritam.in',
+          'This hand at 4AM Casino ♠ provably fair poker with friends - 4amcasino.com',
         )}`,
         '_blank',
       );

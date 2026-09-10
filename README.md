@@ -2,7 +2,7 @@
 
 **Provably-fair Texas Hold'em for friend groups. Nobody sees a card they shouldn't — not even the server. Now with a 3D casino you can walk around in.**
 
-[**Play it live →**](https://poker.notpritam.in) · [How it's fair (60s animated tour)](https://poker.notpritam.in/fair) · [Give an AI a seat](apps/mcp/README.md) · [MIT licensed](LICENSE)
+[**Play it live →**](https://4amcasino.com) · [How it's fair (60s animated tour)](https://4amcasino.com/fair) · [Give an AI a seat](apps/mcp/README.md) · [MIT licensed](LICENSE)
 
 ![The 4AM Casino landing page](docs/media/landing.jpg)
 
@@ -71,7 +71,7 @@ guarantees hold for bots — nobody, not even the server, sees the agent's cards
 ## How the cards stay secret
 
 The live app walks through this with animations at
-[poker.notpritam.in/fair](https://poker.notpritam.in/fair). The short version:
+[4amcasino.com/fair](https://4amcasino.com/fair). The short version:
 
 - **Shuffle**: each hand, every player in turn multiplies all 52 card points by a secret key
   and permutes them. After all players have gone, the deck's order is unknown to everyone.
@@ -127,8 +127,14 @@ can't run it.
 choose **New → Blueprint**, pick this repository, and deploy. On the free tier the service
 sleeps after ~15 min idle and storage is ephemeral (the ledger resets on every deploy); the
 `starter` plan with the 1 GB disk block gives a persistent ledger, which is how
-[poker.notpritam.in](https://poker.notpritam.in) runs. The server also supports an optional
+[4amcasino.com](https://4amcasino.com) runs. The server also supports an optional
 MongoDB snapshot layer (`MONGO_URL`) that continuously backs up and restores the database.
+
+The primary domain is `4amcasino.com`. Requests to `poker.notpritam.in` receive
+a permanent 308 redirect with their path and query preserved. Keep the old
+domain's DNS and Render custom-domain entry in place so these redirects and
+its HTTPS certificate keep working. Existing MCP configurations should use
+`FOURAM_URL=https://4amcasino.com` to send authenticated requests directly.
 
 **Docker (any VPS, Fly.io, Railway):**
 
