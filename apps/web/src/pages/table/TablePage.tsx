@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { AutoDealDialog } from '../../features/table/AutoDealDialog.tsx';
+import { pokerOverlayOpen } from '../../features/table/pokerHotkeys.ts';
 import { motion, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
@@ -177,6 +178,7 @@ export function TablePage({
   const errors = useStore((s) => s.errors);
   const dismissError = useStore((s) => s.dismissError);
   const [resultDismissed, setResultDismissed] = useState(false);
+  const showResult = (hand.result !== null || hand.abort !== null) && !resultDismissed;
   const [joinError, setJoinError] = useState<string | null>(null);
   const [brokeDismissed, setBrokeDismissed] = useState(false);
   const [joinSlow, setJoinSlow] = useState(false);
@@ -372,6 +374,26 @@ export function TablePage({
     if (hand.result || hand.abort) setResultDismissed(false);
   }, [hand.result, hand.abort]);
 
+  useEffect(() => {
+    if (!showResult || !room) return;
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (
+        event.key !== 'Escape' ||
+        event.defaultPrevented ||
+        event.repeat ||
+        event.isComposing ||
+        pokerOverlayOpen()
+      )
+        return;
+      event.preventDefault();
+      // Dismiss only the recap, without also closing docked chat or 3D controls.
+      event.stopPropagation();
+      setResultDismissed(true);
+    };
+    document.addEventListener('keydown', dismissOnEscape, true);
+    return () => document.removeEventListener('keydown', dismissOnEscape, true);
+  }, [showResult, room?.room.id]);
+
   // confetti when you win a pot
   useEffect(() => {
     if (!hand.result || mySeat === null) return;
@@ -565,7 +587,6 @@ export function TablePage({
   const opponents = seatViews.filter((s) => s.seat !== mySeat && (!handLive || s.inHand));
   const takenSeats = new Set(seatViews.map((s) => s.seat));
   const secs = remaining !== null ? Math.max(0, Math.ceil(remaining / 1000)) : null;
-  const showResult = (hand.result !== null || hand.abort !== null) && !resultDismissed;
   const notInHand = handLive && mySeat !== null && !hand.seats.some((s) => s.seat === mySeat);
   const meSittingOut = !!room.players.find((p) => p.userId === auth.userId)?.sittingOut;
   const seatName = (seat: number) =>
@@ -751,6 +772,8 @@ export function TablePage({
             setResultDismissed(true);
           }}
           aria-label="Dismiss result"
+          aria-keyshortcuts="Escape"
+          title="Dismiss result (Esc)"
           className="absolute right-3 top-3 rounded-md p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
         >
           <X size={16} />
@@ -916,6 +939,8 @@ export function TablePage({
           setResultDismissed(true);
         }}
         aria-label="Dismiss result"
+        aria-keyshortcuts="Escape"
+        title="Dismiss result (Esc)"
         className="absolute right-2 top-2 rounded-md p-1 text-white/50 active:bg-white/10"
       >
         <X size={14} />

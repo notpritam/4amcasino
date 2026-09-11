@@ -30,3 +30,13 @@ BASE_URL=http://localhost:5174 node apps/web/test/browser/post-hand-deal.mjs
 ```
 
 An external installation can be supplied using `PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs`. Set `BROWSER_EXECUTABLE` to use an existing Chromium binary. `MODES=2d` or `MODES=3d` limits scope. `NO_WEBGL=1` exercises the fallback layout only; omit it for the rendering check. The script creates its own synthetic session and requires no credentials or existing room.
+
+## Escape dismissal — 12 September 2026
+
+The shared table controller now lets Escape dismiss the visible winning/result recap in 2D, phone and 3D views. It uses the same state as the existing close button. Open dialogs/menus retain priority; held or composing Escape events are ignored. A handled Escape does not also close docked chat or reset the 3D controls. Both close buttons advertise the key in their tooltip and accessibility metadata.
+
+The browser regression failed before the fix because the result remained visible after Escape. It now passes all 24 result/view/viewport combinations, checks that the next result reappears and can still be closed by pointer, verifies top-dialog priority and docked-chat preservation, and confirms no game message is sent by Escape. Existing Deal reachability, floating-card containment and 3D viewport checks also pass. Evidence: `/tmp/4am-result-escape.log` and `/tmp/4am-result-escape/`.
+
+All 163 web tests, the web typecheck and production web/server builds passed. Existing bundle-size warnings remain.
+
+This follow-up remains local alongside the auto-deal change; no deployment was performed.

@@ -55,7 +55,13 @@ const room = {
 const browser = await chromium.launch({
   headless: true,
   executablePath: process.env.BROWSER_EXECUTABLE,
-  args: process.env.NO_WEBGL ? ['--disable-webgl'] : ['--enable-webgl', '--ignore-gpu-blocklist'],
+  args: process.env.NO_WEBGL
+    ? ['--disable-webgl']
+    : [
+        '--enable-webgl',
+        '--ignore-gpu-blocklist',
+        ...(process.platform === 'darwin' ? ['--use-angle=metal'] : []),
+      ],
 });
 const errors = [];
 try {
@@ -212,8 +218,14 @@ try {
         if (kind !== 'abort') {
           const rate = `${room.room.commissionBps / 100}%`;
           const label = page.getByText(new RegExp(`${rate} (table )?commission`));
-          const visibleLabels = await Promise.all((await label.all()).map((item) => item.isVisible()));
-          assert.equal(visibleLabels.filter(Boolean).length, 1, `${mode}: result shows the room's ${rate} rate`);
+          const visibleLabels = await Promise.all(
+            (await label.all()).map((item) => item.isVisible()),
+          );
+          assert.equal(
+            visibleLabels.filter(Boolean).length,
+            1,
+            `${mode}: result shows the room's ${rate} rate`,
+          );
         }
         const visible = async (locator) => {
           const list = [];
@@ -254,7 +266,67 @@ try {
           assert.deepEqual(await page.locator('.lounge-canvas canvas').boundingBox(), canvas);
         if (kind === 'showdown')
           await page.screenshot({ path: `${out}/${mode}-${viewport.width}.png` });
-        await dismiss[0].click();
+        if (kind === 'showdown' && viewport.width === 1440) {
+          // A settings dialog above the recap owns the first Escape.
+          await page
+            .getByRole('button', { name: 'Edit keyboard shortcuts', exact: true })
+            .filter({ visible: true })
+            .click();
+          const shortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts', exact: true });
+          await shortcuts.waitFor();
+          await page.keyboard.press('Escape');
+          await shortcuts.waitFor({ state: 'hidden' });
+          assert.equal(
+            (await visible(page.getByRole('button', { name: 'Dismiss result', exact: true })))
+              .length,
+            1,
+            'Escape closes only the top dialog',
+          );
+        }
+        await page.evaluate(() => {
+          document.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Escape', repeat: true, bubbles: true }),
+          );
+          document.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true }),
+          );
+        });
+        await frames();
+        assert.equal(
+          (await visible(page.getByRole('button', { name: 'Dismiss result', exact: true }))).length,
+          1,
+          'Held/composing Escape does not dismiss a recap',
+        );
+        if (
+          mode === '2d' &&
+          viewport.width >= 768 &&
+          !(await page.getByRole('complementary', { name: 'Table chat', exact: true }).isVisible())
+        ) {
+          await page.getByRole('button', { name: /^Toggle chat/ }).click();
+        }
+        const sendsBeforeEscape = sent.length;
+        const chatBeforeEscape = await page
+          .getByRole('complementary', { name: 'Table chat', exact: true })
+          .isVisible();
+        await page.keyboard.press('Escape');
+        await frames();
+        assert.equal(
+          (await visible(page.getByRole('button', { name: 'Dismiss result', exact: true }))).length,
+          0,
+          'Escape dismisses the post-hand result',
+        );
+        assert.equal(sent.length, sendsBeforeEscape, 'Escape sends no game action');
+        if (chatBeforeEscape)
+          assert.equal(
+            await page.getByRole('complementary', { name: 'Table chat', exact: true }).isVisible(),
+            true,
+            'Dismissing the result preserves docked chat',
+          );
+        // A fresh result is shown again, and its existing close button still works.
+        await fixture(kind);
+        await (
+          await visible(page.getByRole('button', { name: 'Dismiss result', exact: true }))
+        )[0].click();
         assert.equal(
           (await visible(page.getByRole('button', { name: 'Dismiss result', exact: true }))).length,
           0,
@@ -287,7 +359,7 @@ try {
           );
         }
         console.log(
-          `${mode} ${viewport.width}×${viewport.height} ${kind}: visible, clickable Deal; single dismissible recap`,
+          `${mode} ${viewport.width}×${viewport.height} ${kind}: reachable Deal; Escape and button dismiss recap`,
         );
       }
     }
