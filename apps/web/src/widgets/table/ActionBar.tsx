@@ -336,10 +336,14 @@ export function ActionBar({
                 ? balance === 0
                   ? 'Out of chips. Chips menu → Buy points.'
                   : hand.autoDealAt && hand.autoDealAt > Date.now()
-                    ? 'Auto-dealing…'
-                    : isHost
-                      ? 'Deal when ready.'
-                      : 'Host deals soon…'
+                    ? 'Automatic ready check soon…'
+                    : room?.autoDealPaused
+                      ? 'Auto-deal paused. Table menu → Auto-deal.'
+                      : isHost
+                        ? 'Deal when ready.'
+                        : room?.room.autoDeal
+                          ? 'Waiting for two online players with chips…'
+                          : 'Host deals soon…'
                 : disconnected.length > 0
                   ? `Holding ~40s for ${disconnected.join(', ')}…`
                   : st

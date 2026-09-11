@@ -22,7 +22,7 @@ describe('table utility menu', () => {
     ).toEqual([
       { id: 'people', actions: ['invite', 'watch', 'video'] },
       { id: 'records', actions: ['standings', 'ledger', 'hands'] },
-      { id: 'table', actions: ['sit-out', 'timer'] },
+      { id: 'table', actions: ['auto-deal', 'sit-out', 'timer'] },
       { id: 'preferences', actions: ['preferences'] },
     ]);
   });

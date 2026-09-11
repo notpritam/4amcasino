@@ -188,6 +188,9 @@ function handle(msg: ServerMsg): void {
       return;
     case 'room_state': {
       store.setRoom(msg);
+      // Authoritative snapshot restores countdown/readiness after a reconnect.
+      if (msg.autoDealAt !== undefined)
+        store.patchHand({ autoDealAt: msg.autoDealAt, readyCheck: msg.readyCheck ?? null });
       // after a reconnect (deploy or network drop): if the server no longer has
       // our hand, stop showing it as live instead of freezing the table
       if (wsClient.consumeResync() && !msg.handActive) {
@@ -467,7 +470,7 @@ function handle(msg: ServerMsg): void {
     }
 
     case 'auto_deal': {
-      store.patchHand({ autoDealAt: Date.now() + msg.inMs });
+      store.patchHand({ autoDealAt: msg.inMs > 0 ? Date.now() + msg.inMs : null });
       return;
     }
 
@@ -475,6 +478,7 @@ function handle(msg: ServerMsg): void {
       const prev = useStore.getState().hand.readyCheck;
       if (!prev) play('turn'); // ping once when the check opens, not on every update
       store.patchHand({
+        autoDealAt: null,
         readyCheck: { deadlineTs: msg.deadlineTs, eligible: msg.eligible, ready: msg.ready },
       });
       return;

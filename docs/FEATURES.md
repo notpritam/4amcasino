@@ -32,6 +32,7 @@ core (see `/api/rooms/:id/hands` for the pattern).
 | TV replays: banker toggle that saves every player's hand key post-hand; the server decrypts folded hole cards into the transcript and replays show ALL cards from the deal, WSOP broadcast style | **notpritam** |
 | Save hand: download the full signed hand record (transcript + players) as JSON from the replay page | **notpritam** |
 | Ready check: auto-deal never starts betting until everyone clicks "I'm ready"; 20 seconds, then it deals without the stragglers | **notpritam** |
+| Room auto-deal switch in both table views; prefers the online, seated host, automatically chooses a funded online fallback, preserves readiness, and pauses when too few players are ready | **notpritam** |
 | Misclick guard: Fold / Check-Call / Raise hold fixed positions in every state and go dead for a beat whenever the options change | **notpritam** |
 | Custom poker shortcuts: account-saved Fold, Check, Call, Bet/Raise, half-pot, pot, and all-in bindings; record, select, clear, disable, or restore in Settings or at the table. Shared keyboard handling across desktop, phone, and 3D; typed amount plus Enter confirms sizing shortcuts | **notpritam** |
 | Run it twice: when everyone is all-in before the river the players vote (15s, unanimous); the remaining streets deal twice from the untouched deck and every pot splits between the boards | **notpritam** |

@@ -297,7 +297,7 @@ function MobileActions({
           </p>
         ) : hand.autoDealAt && hand.autoDealAt > Date.now() ? (
           <p className="py-2 text-center text-sm text-white/50">
-            Next hand deals itself in a moment. Menu → sit out if you need a break.
+            Automatic ready check soon. Menu → sit out if you need a break.
           </p>
         ) : isHost ? (
           <button
@@ -307,7 +307,13 @@ function MobileActions({
             Start hand
           </button>
         ) : (
-          <p className="py-2 text-center text-sm text-white/50">Waiting for the host to deal.</p>
+          <p className="py-2 text-center text-sm text-white/50">
+            {room?.autoDealPaused
+              ? 'Auto-deal paused. Table menu → Auto-deal.'
+              : room?.room.autoDeal
+                ? 'Waiting for two online players with chips.'
+                : 'Waiting for the host to deal.'}
+          </p>
         )}
       </div>
     );

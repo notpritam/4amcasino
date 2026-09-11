@@ -81,7 +81,7 @@ interface HandView {
   /** Paid-peek offers waiting for my answer, and reveals only I can see. */
   peekOffers: { offerId: string; fromUserId: number; fromName: string; amount: number }[];
   peekResults: Record<number, CardId[]>;
-  /** When the server will deal the next hand by itself (host online). */
+  /** When the server opens the next automatic ready check. */
   autoDealAt: number | null;
   /** Pre-deal ready check: nobody is dealt in without clicking I'm ready. */
   readyCheck: { deadlineTs: number; eligible: number[]; ready: number[] } | null;

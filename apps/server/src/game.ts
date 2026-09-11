@@ -48,7 +48,7 @@ export interface GameOpts {
   actionTimeoutMs: number;
   /** Extra chances a stalled player gets before the hand aborts (default 3). */
   cryptoRetries?: number;
-  /** Delay before the next hand deals itself while the host is online (default 15s). */
+  /** Delay before an enabled automatic ready check (default 15s). */
   autoDealMs?: number;
   /** How long the pre-deal ready check waits before dealing without stragglers (default 20s). */
   readyCheckMs?: number;
@@ -159,6 +159,10 @@ export class GameRoom {
   >();
   private sevenDeucePaid = new Set<string>();
   private autoDeal: NodeJS.Timeout | null = null;
+  private autoDealAt: number | null = null;
+  private autoDealPaused = false;
+  private autoDealEligibility = '';
+  private reconcilingAutoDeal = false;
   // no hand auto-starts until everyone is ready: a 20s ready check runs
   // before each auto-deal, and whoever has not clicked by the deadline is
   // left out of that hand (requested by notpritam, docs/FEATURES.md)
@@ -213,15 +217,6 @@ export class GameRoom {
       // a folded player walking away must never strand the hand
       this.hand?.onPlayerGone(userId);
       this.scheduleHostHandover(userId);
-      // and the ready check must never wait on someone who already left
-      const rc = this.readyCheck;
-      if (rc && rc.eligible.has(userId)) {
-        rc.eligible.delete(userId);
-        rc.ready.delete(userId);
-        if (rc.eligible.size < 2) this.cancelReadyCheck();
-        else if (rc.ready.size === rc.eligible.size) this.resolveReadyCheck();
-        else this.broadcastReadyCheck();
-      }
     }
   }
 
@@ -280,27 +275,81 @@ export class GameRoom {
     activeHands.delete(this.roomId);
     if (this.autoDeal) clearTimeout(this.autoDeal);
     this.autoDeal = null;
+    this.autoDealAt = null;
     this.cancelReadyCheck(false);
   }
 
-  /** While the host is online the next hand deals itself after a short break. */
-  private scheduleAutoDeal(): void {
+  private cancelAutoDeal(): void {
     if (this.autoDeal) clearTimeout(this.autoDeal);
-    const delay = this.opts.autoDealMs ?? 15_000;
+    const announced = this.autoDealAt !== null;
+    this.autoDeal = null;
+    this.autoDealAt = null;
+    if (announced) this.broadcast({ t: 'auto_deal', inMs: 0 });
+  }
+
+  /** A fallback coordinates auto-deal only; it grants no host/banking powers. */
+  private autoDealerId(): number | null {
     const room = getRoom(this.db, this.roomId);
-    if (!room || !this.sockets.has(room.host_id)) return;
+    if (!room?.auto_deal || room.archived) return null;
+    const eligible = this.eligiblePlayers();
+    return (eligible.find((p) => p.userId === room.host_id) ?? eligible[0])?.userId ?? null;
+  }
+
+  /** Reconcile settings, presence and seating without restarting an existing timer. */
+  private reconcileAutoDeal(): void {
+    if (this.reconcilingAutoDeal) return;
+    this.reconcilingAutoDeal = true;
+    try {
+      const room = getRoom(this.db, this.roomId);
+      const eligible = this.eligiblePlayers();
+      const key = JSON.stringify([room?.auto_deal, room?.archived, eligible.map((p) => p.userId)]);
+      if (key !== this.autoDealEligibility) this.autoDealPaused = false;
+      this.autoDealEligibility = key;
+      if (this.hand || !room?.auto_deal || room.archived || eligible.length < 2) {
+        this.cancelAutoDeal();
+        this.cancelReadyCheck();
+        return;
+      }
+      const rc = this.readyCheck;
+      if (rc) {
+        const ids = new Set(eligible.map((p) => p.userId));
+        let changed = false;
+        for (const id of rc.eligible) {
+          if (!ids.has(id)) {
+            rc.eligible.delete(id);
+            rc.ready.delete(id);
+            changed = true;
+          }
+        }
+        if (rc.eligible.size < 2) {
+          this.cancelReadyCheck();
+          this.autoDealPaused = true;
+        } else if (rc.ready.size === rc.eligible.size) this.resolveReadyCheck();
+        else if (changed) this.broadcastReadyCheck();
+        return;
+      }
+      if (!this.autoDealPaused) this.scheduleAutoDeal();
+    } finally {
+      this.reconcilingAutoDeal = false;
+    }
+  }
+
+  private scheduleAutoDeal(): void {
+    if (this.autoDeal || this.hand || this.readyCheck) return;
+    const delay = this.opts.autoDealMs ?? 15_000;
+    if (this.autoDealerId() === null || this.eligiblePlayers().length < 2) return;
+    this.autoDealAt = Date.now() + delay;
     this.autoDeal = setTimeout(() => {
       this.autoDeal = null;
+      this.autoDealAt = null;
       if (this.hand || !this.db.open) return;
-      const current = getRoom(this.db, this.roomId);
-      if (!current || !this.sockets.has(current.host_id)) return;
       this.beginReadyCheck();
     }, delay);
     this.broadcast({ t: 'auto_deal', inMs: delay });
   }
 
   private eligiblePlayers() {
-    return roomPlayers(this.db, this.roomId)
+    return presentablePlayers(this.db, this.roomId)
       .filter((p) => p.seat !== null && !p.sittingOut && p.stack > 0 && this.sockets.has(p.userId))
       .sort((a, b) => a.seat! - b.seat!);
   }
@@ -310,7 +359,10 @@ export class GameRoom {
   private beginReadyCheck(): void {
     if (this.hand || this.readyCheck) return;
     const eligible = this.eligiblePlayers();
-    if (eligible.length < 2) return;
+    if (eligible.length < 2 || this.autoDealerId() === null) {
+      this.broadcastRoomState();
+      return;
+    }
     const ms = this.opts.readyCheckMs ?? 20_000;
     const deadline = Date.now() + ms;
     // Players who asked to be dealt in automatically count as ready the moment
@@ -336,6 +388,7 @@ export class GameRoom {
     this.broadcastReadyCheck();
     // everyone at the table opted in: skip the wait entirely
     if (autoReady.size === ids.length) this.resolveReadyCheck();
+    else this.broadcastRoomState();
   }
 
   private broadcastReadyCheck(): void {
@@ -363,8 +416,15 @@ export class GameRoom {
     clearTimeout(rc.timer);
     this.readyCheck = null;
     this.broadcast({ t: 'ready_end' });
-    // deal with whoever answered the call; the rest are out of this one
-    if (rc.ready.size >= 2) this.startHand(true, rc.ready);
+    // Recheck consent against current seating/presence, including the fallback.
+    const ready = new Set(
+      this.eligiblePlayers()
+        .filter((p) => rc.ready.has(p.userId))
+        .map((p) => p.userId),
+    );
+    if (ready.size >= 2 && this.autoDealerId() !== null) this.startHand(true, ready);
+    else this.autoDealPaused = true;
+    this.broadcastRoomState();
   }
 
   private cancelReadyCheck(announce = true): void {
@@ -383,8 +443,14 @@ export class GameRoom {
     for (const ws of this.sockets.values()) ws.send(data);
   }
 
+  settingsChanged(restartAutoDeal = false): void {
+    if (restartAutoDeal) this.autoDealPaused = false;
+    this.broadcastRoomState();
+  }
+
   broadcastRoomState(): void {
     if (!this.db.open) return; // server shutting down
+    this.reconcileAutoDeal();
     const room = getRoom(this.db, this.roomId);
     if (!room) return;
     const players = presentablePlayers(this.db, this.roomId).map((p) => ({
@@ -420,6 +486,8 @@ export class GameRoom {
         minSettleHands: room.min_settle_hands,
         autoApproveBuys: !!room.auto_approve_buys,
         tvReplays: !!room.tv_replays,
+        autoDeal: !!room.auto_deal,
+        autoDealerId: this.autoDealerId(),
         commissionBps: this.hand?.commissionBps ?? room.commission_bps,
         sevenDeuceBonus: room.seven_deuce_bonus,
         voided: !!room.voided,
@@ -428,6 +496,15 @@ export class GameRoom {
       players,
       handActive: this.hand !== null,
       lounge: Object.fromEntries(this.lounge),
+      autoDealAt: this.autoDealAt,
+      autoDealPaused: this.autoDealPaused,
+      readyCheck: this.readyCheck
+        ? {
+            deadlineTs: this.readyCheck.deadline,
+            eligible: [...this.readyCheck.eligible],
+            ready: [...this.readyCheck.ready],
+          }
+        : null,
     };
     // spectators watch the table but never see the join code
     const memberIds = new Set(players.map((p) => p.userId));
@@ -605,10 +682,7 @@ export class GameRoom {
             message: 'this table is archived - unarchive it to deal again',
           });
         if (this.hand) return this.send(userId, { t: 'error', message: 'hand already running' });
-        if (this.autoDeal) {
-          clearTimeout(this.autoDeal);
-          this.autoDeal = null;
-        }
+        this.cancelAutoDeal();
         this.cancelReadyCheck();
         this.startHand();
         return;
@@ -653,6 +727,7 @@ export class GameRoom {
 
   private startHand(auto = false, onlyIds?: Set<number>): void {
     const room = getRoom(this.db, this.roomId)!;
+    if (this.hand || room.archived) return;
     const eligible = this.eligiblePlayers().filter((p) => !onlyIds || onlyIds.has(p.userId));
     if (eligible.length < 2) {
       if (!auto)
@@ -662,6 +737,8 @@ export class GameRoom {
         });
       return;
     }
+    this.cancelAutoDeal();
+    this.autoDealPaused = false;
     const seats = eligible.map((p) => p.seat!);
     // rotate the button to the next occupied seat
     let button: number;
@@ -705,6 +782,7 @@ export class GameRoom {
         this.lastButton = button;
         this.lastHandShow = this.hand?.showSnapshot() ?? null;
         this.hand = null;
+        this.autoDealPaused = false;
         // showdown winners already revealed their cards: the 7-2 bounty applies now
         const snap = this.lastHandShow;
         if (snap) {
@@ -714,7 +792,6 @@ export class GameRoom {
           }
         }
         this.broadcastRoomState();
-        this.scheduleAutoDeal();
       },
     );
     this.hand.begin();

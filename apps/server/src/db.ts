@@ -142,6 +142,8 @@ function migrate(db: DB): void {
   ensureColumn(db, 'rooms', 'spectate_token', 'TEXT');
   ensureColumn(db, 'rooms', 'allow_spectators', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'rooms', 'tv_replays', 'INTEGER NOT NULL DEFAULT 0');
+  // Existing rooms already continued automatically after hands.
+  ensureColumn(db, 'rooms', 'auto_deal', 'INTEGER NOT NULL DEFAULT 1');
   // Install the original per-room schema before the runtime settings migration.
   // Install and backfill atomically so a restart cannot mistake old rooms for new ones.
   db.transaction(() => {

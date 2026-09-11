@@ -253,11 +253,17 @@ export type ServerMsg =
         meetLink: string | null;
         autoApproveBuys: boolean;
         tvReplays: boolean;
+        /** Optional while clients/servers roll between releases. */
+        autoDeal?: boolean;
+        autoDealerId?: number | null;
         commissionBps?: number;
       };
       players: RoomStatePlayer[];
       handActive: boolean;
       lounge?: Record<number, LoungePosition>;
+      autoDealAt?: number | null;
+      autoDealPaused?: boolean;
+      readyCheck?: { deadlineTs: number; eligible: number[]; ready: number[] } | null;
     }
   | { t: 'lounge_presence'; roomId: string; userId: number; position: LoungePosition | null }
   | { t: 'error'; message: string }

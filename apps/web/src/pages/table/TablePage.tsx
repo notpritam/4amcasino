@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { AutoDealDialog } from '../../features/table/AutoDealDialog.tsx';
 import { motion, useReducedMotion } from 'motion/react';
 import {
   ArrowLeft,
@@ -195,6 +196,7 @@ export function TablePage({
   }, []);
   const [chatSeenCount, setChatSeenCount] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [autoDealOpen, setAutoDealOpen] = useState(false);
   const [peekAmtStr, setPeekAmtStr] = useState('');
   const [peekSent, setPeekSent] = useState<Record<number, boolean>>({});
   const [shareOpen, setShareOpen] = useState(false);
@@ -1056,6 +1058,23 @@ export function TablePage({
   const closeUtilityMenu = () => setMenuOpen(false);
   const utilityAction = (action: TableUtilityAction) => {
     switch (action) {
+      case 'auto-deal':
+        return (
+          <button
+            type="button"
+            role="menuitem"
+            className={utilityItemClass}
+            onClick={() => {
+              closeUtilityMenu();
+              setAutoDealOpen(true);
+            }}
+          >
+            <Play size={18} /> Auto-deal
+            <span className="ml-auto text-xs text-slate-500 dark:text-slate-400">
+              {room.room.autoDeal === false ? 'Off' : 'On'}
+            </span>
+          </button>
+        );
       case 'invite':
         return (
           <button
@@ -1218,6 +1237,7 @@ export function TablePage({
   );
   const sharedDialogs = (
     <>
+      <AutoDealDialog open={autoDealOpen} onClose={() => setAutoDealOpen(false)} />
       <BrokeBuyInDialog
         roomId={roomId!}
         open={amBroke && !brokeDismissed}
@@ -1649,6 +1669,18 @@ export function TablePage({
                   <Eye size={16} /> Watch-only share link
                 </Button>
               )}
+              {!amSpectator && (
+                <Button
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setAutoDealOpen(true);
+                  }}
+                >
+                  <Play size={16} /> Auto-deal · {room.room.autoDeal === false ? 'Off' : 'On'}
+                </Button>
+              )}
               {isHost && (
                 <label className="flex items-center justify-between text-sm text-white/70">
                   Turn timer{handLive && ' (next hand)'}
@@ -1674,7 +1706,10 @@ export function TablePage({
         )}
 
         {chatOpen && (
-          <div data-poker-hotkeys-blocked className="fixed inset-0 z-40 flex flex-col bg-slate-950 p-3">
+          <div
+            data-poker-hotkeys-blocked
+            className="fixed inset-0 z-40 flex flex-col bg-slate-950 p-3"
+          >
             <div className="mb-2 flex justify-end">
               <Button variant="secondary" onClick={() => setChatOpen(false)}>
                 <X size={16} /> Close

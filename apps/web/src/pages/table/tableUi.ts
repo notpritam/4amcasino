@@ -17,6 +17,7 @@ export type TableUtilityAction =
   | 'hands'
   | 'sit-out'
   | 'timer'
+  | 'auto-deal'
   | 'preferences';
 
 export interface TableUtilityGroup {
@@ -43,6 +44,7 @@ export function tableUtilityGroups({
   if (hasMeetLink) people.push('video');
 
   const table: TableUtilityAction[] = [];
+  if (!amSpectator) table.push('auto-deal');
   if (hasSeat) table.push('sit-out');
   if (isHost) table.push('timer');
 

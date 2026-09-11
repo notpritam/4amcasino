@@ -32,6 +32,7 @@ export interface RoomRow {
   allow_spectators: number;
   auto_approve_buys: number;
   tv_replays: number;
+  auto_deal: number;
   commission_bps: number;
   created_at: number;
 }
@@ -156,6 +157,7 @@ function roomJson(db: DB, room: RoomRow) {
     allowSpectators: !!room.allow_spectators,
     autoApproveBuys: !!room.auto_approve_buys,
     tvReplays: !!room.tv_replays,
+    autoDeal: !!room.auto_deal,
     commissionBps: room.commission_bps,
     players: presentablePlayers(db, room.id).map((p) => ({
       ...p,
@@ -177,11 +179,9 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
       parsed.data.commissionRevision !== undefined &&
       parsed.data.commissionRevision !== commissionSettings(db).revision
     )
-      return reply
-        .code(409)
-        .send({
-          error: 'The house cut changed. Review the updated rate and create the room again.',
-        });
+      return reply.code(409).send({
+        error: 'The house cut changed. Review the updated rate and create the room again.',
+      });
     const {
       name,
       sb,
@@ -481,6 +481,7 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
         visibility: z.enum(['private', 'public']).optional(),
         autoApproveBuys: z.boolean().optional(),
         tvReplays: z.boolean().optional(),
+        autoDeal: z.boolean().optional(),
       })
       .safeParse(req.body);
     if (!parsed.success)
@@ -489,6 +490,8 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
     if (!room) return reply.code(404).send({ error: 'no such room' });
     if (room.host_id !== req.userId && !canBank(room, req.userId))
       return reply.code(403).send({ error: 'host or banker only' });
+    if (parsed.data.autoDeal !== undefined && room.host_id !== req.userId)
+      return reply.code(403).send({ error: 'only the host can change auto-deal' });
     // Auto-approve and visibility are the two settings that grant money or
     // access, so a backup banker must not be able to flip them - otherwise the
     // backup turns auto-approve on, buys itself a fortune, and turns it back off.
@@ -529,7 +532,12 @@ export function registerRoomRoutes(app: FastifyInstance, db: DB): void {
         parsed.data.tvReplays ? 1 : 0,
         id,
       );
-    roomEvents.emit('changed', id);
+    if (parsed.data.autoDeal !== undefined)
+      db.prepare('UPDATE rooms SET auto_deal = ? WHERE id = ?').run(
+        parsed.data.autoDeal ? 1 : 0,
+        id,
+      );
+    roomEvents.emit('changed', id, { restartAutoDeal: parsed.data.autoDeal === true });
     return { ok: true };
   });
 

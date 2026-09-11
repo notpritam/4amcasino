@@ -582,6 +582,20 @@ describe('full hand integration', () => {
     expect(players[0]!.handEnd!.handId).not.toBe(firstHandId);
   }, 20000);
 
+  it('auto-deals and settles the next hand with a fallback after the host disconnects', async () => {
+    const { players, host } = await setupRoom(['fallbacka', 'fallbackb', 'fallbackc'], ['fold-first', 'passive', 'passive']);
+    host.send({ t: 'start_hand' });
+    await Promise.all(players.map(p => p.waitFor(() => p.handEnd !== null)));
+    const firstHandId = players[1]!.handEnd!.handId;
+    host.disconnect();
+    await Promise.all(players.slice(1).map(p => p.waitFor(() => p.handEnd !== null && p.handEnd.handId !== firstHandId, 15000)));
+    expect(players[1]!.roomState!.room.autoDealerId).toBe(players[1]!.userId);
+    expect(players[1]!.roomState!.room.hostId).toBe(host.userId);
+    expect(players[1]!.handEnd!.stacks.map(s => s.seat).sort()).toEqual([1, 2]);
+    const ledger = await players[1]!.api(`/api/rooms/${players[1]!.roomState!.room.id}/ledger`);
+    expect(ledger.verified.ok).toBe(true);
+  }, 20000);
+
   it('a player who ignores the ready check is left out of the auto-dealt hand', async () => {
     const { players, host } = await setupRoom(['reada', 'readb', 'readc']);
     host.send({ t: 'start_hand' });

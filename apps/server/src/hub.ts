@@ -97,7 +97,8 @@ export function attachHub(
     wss.handleUpgrade(req, socket, head, (ws) => handleConnection(ws, userId));
   });
 
-  const onRoomChanged = (roomId: string) => rooms.get(roomId)?.broadcastRoomState();
+  const onRoomChanged = (roomId: string, options?: { restartAutoDeal?: boolean }) =>
+    rooms.get(roomId)?.settingsChanged(options?.restartAutoDeal);
   roomEvents.on('changed', onRoomChanged);
 
   app.addHook('onClose', async () => {
