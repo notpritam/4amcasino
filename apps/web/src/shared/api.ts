@@ -1,5 +1,6 @@
 import { useStore } from './store.ts';
 import type { AdminOverview, CommissionScope, CommissionSettings } from '@4am/shared';
+import type { TournamentState, TournamentSummary, PlayerAction } from '@4am/shared';
 import { isAdminSite } from './adminSite.ts';
 
 /** Fetch with retries on 502/503/504 and network failure, GETs only. Redeploys
@@ -15,7 +16,7 @@ async function send(path: string, method: string, body?: unknown): Promise<Respo
       const res = await fetch(path, {
         method,
         headers: {
-          'content-type': 'application/json',
+          ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
           ...(token ? { authorization: `Bearer ${token}` } : {}),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -53,6 +54,52 @@ async function req(path: string, body?: unknown, method?: string): Promise<any> 
 }
 
 export const api = {
+  tournaments: () => req('/api/tournaments') as Promise<{ tournaments: TournamentSummary[] }>,
+  tournament: (id: string) =>
+    req(`/api/tournaments/${encodeURIComponent(id)}`) as Promise<TournamentState>,
+  createTournament: (body: Record<string, unknown>) =>
+    req('/api/tournaments', body) as Promise<{ id: string }>,
+  enrollTournament: (id: string, agentName: string, kind: 'human' | 'agent') =>
+    req(`/api/tournaments/${id}/enroll`, { agentName, kind }),
+  withdrawTournament: (id: string) => req(`/api/tournaments/${id}/withdraw`, {}),
+  controlTournament: (id: string, action: string) =>
+    req(`/api/tournaments/${id}/control`, { action }),
+  tournamentAction: (
+    id: string,
+    handNumber: number,
+    actionSeq: number,
+    requestId: string,
+    action: PlayerAction,
+  ) => req(`/api/tournaments/${id}/actions`, { handNumber, actionSeq, requestId, action }),
+  tournamentAward: (id: string, userId: number, note: string) =>
+    req(`/api/tournaments/${id}/awards`, { userId, note }, 'PUT'),
+  tournamentResults: (id: string, after = 0) =>
+    req(`/api/tournaments/${id}/results?after=${after}`),
+  agentScopes: () =>
+    req('/api/me/agent-scopes') as Promise<{
+      scopes: { id: string; name: string; kind: 'room' | 'tournament' }[];
+    }>,
+  agentGrants: () =>
+    req('/api/me/agent-grants') as Promise<{
+      grants: {
+        id: string;
+        label: string;
+        scopeKind: string;
+        scopeId: string;
+        canPlay: number;
+        expiresAt: number;
+        revokedAt: number | null;
+      }[];
+    }>,
+  createAgentGrant: (body: {
+    label: string;
+    scopeKind: 'room' | 'tournament';
+    scopeId: string;
+    canPlay: boolean;
+    days: number;
+  }) =>
+    req('/api/me/agent-grants', body) as Promise<{ id: string; token: string; expiresAt: number }>,
+  revokeAgentGrant: (id: string) => req(`/api/me/agent-grants/${id}`, undefined, 'DELETE'),
   register: (username: string, authKey: string, publicKey: string) =>
     req('/api/register', { username, authKey, publicKey }),
   login: (username: string, authKey: string) => req('/api/login', { username, authKey }),

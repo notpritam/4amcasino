@@ -15,6 +15,8 @@ import {
   RiLogoutBoxLine,
   RiMenuLine,
   RiArrowRightSLine,
+  RiRobot2Line,
+  RiFlag2Line,
 } from '@remixicon/react';
 import { api } from '../../shared/api.ts';
 import { useStore } from '../../shared/store.ts';
@@ -105,6 +107,8 @@ export function AppShell({ children, newTab = false }: { children: ReactNode; ne
   const primary: Destination[] = [
     { to: '/lobby', label: 'Lobby', icon: RiHome5Line },
     { to: '/leaderboard', label: 'Leaderboard', icon: RiTrophyLine },
+    { to: '/tournaments', label: 'Tournaments', icon: RiFlag2Line },
+    { to: '/agents', label: 'Agent access', icon: RiRobot2Line },
     {
       to: '/settle',
       label: 'Settle up',
@@ -124,7 +128,9 @@ export function AppShell({ children, newTab = false }: { children: ReactNode; ne
     icon: RiPokerClubsLine,
   }));
   const all = [...primary, ...tableLinks, ...secondary];
-  const pageName = all.find((item) => item.to === loc.pathname)?.label ?? 'Table';
+  const pageName =
+    all.find((item) => item.to === loc.pathname)?.label ??
+    (loc.pathname.startsWith('/tournaments/') ? 'Tournament' : 'Table');
   const waiting = (pending?.invites ?? 0) + (pending?.friendRequests ?? 0);
 
   function toggleSidebar() {
@@ -147,7 +153,9 @@ export function AppShell({ children, newTab = false }: { children: ReactNode; ne
     }
   }
   const row = (item: Destination, rail = false) => {
-    const active = loc.pathname === item.to;
+    const active =
+      loc.pathname === item.to ||
+      (item.to === '/tournaments' && loc.pathname.startsWith('/tournaments/'));
     const Icon = item.icon;
     const name = item.label + (item.badge ? ' (' + item.badge + ' waiting)' : '');
     return (

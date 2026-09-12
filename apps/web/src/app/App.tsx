@@ -4,6 +4,7 @@ import { useStore } from '../shared/store.ts';
 import { applyAppearance, loadPrefs } from '../shared/prefs.ts';
 import { peekPendingJoin } from '../shared/pendingJoin.ts';
 import { api } from '../shared/api.ts';
+import { authDestination } from '../shared/authDestination.ts';
 import { adminDestination, isAdminSite } from '../shared/adminSite.ts';
 import { LandingPage } from '../pages/landing/LandingPage.tsx';
 
@@ -57,6 +58,12 @@ const AdminPage = lazy(() =>
 const AppShell = lazy(() =>
   import('../widgets/nav/AppShell.tsx').then((module) => ({ default: module.AppShell })),
 );
+const TournamentsPage = lazy(() =>
+  import('../pages/tournaments/TournamentsPage.tsx').then((m) => ({ default: m.TournamentsPage })),
+);
+const AgentsPage = lazy(() =>
+  import('../pages/agents/AgentsPage.tsx').then((m) => ({ default: m.AgentsPage })),
+);
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const token = useStore((s) => s.auth.token);
@@ -65,7 +72,13 @@ function RequireAuth({ children }: { children: ReactNode }) {
     const admin = isAdminSite() || /^\/admin(?:\/|$)/.test(location.pathname);
     return (
       <Navigate
-        to={admin ? `/login?admin=1&next=${encodeURIComponent(location.pathname)}` : '/login'}
+        to={
+          admin
+            ? `/login?admin=1&next=${encodeURIComponent(location.pathname)}`
+            : authDestination(`next=${encodeURIComponent(location.pathname)}`)
+              ? `/login?next=${encodeURIComponent(location.pathname)}`
+              : '/login'
+        }
         replace
       />
     );
@@ -86,7 +99,9 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
   if (isAdminSite() || params.get('admin') === '1')
     return <Navigate to={adminDestination(location.search)} replace />;
   const code = params.get('join') ?? peekPendingJoin();
-  return <Navigate to={code ? `/j/${code}` : '/lobby'} replace />;
+  return (
+    <Navigate to={code ? `/j/${code}` : (authDestination(location.search) ?? '/lobby')} replace />
+  );
 }
 
 export function App() {
@@ -238,6 +253,36 @@ export function App() {
                 <RequireAuth>
                   <AppShell>
                     <SettingsPage />
+                  </AppShell>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/tournaments"
+              element={
+                <RequireAuth>
+                  <AppShell>
+                    <TournamentsPage />
+                  </AppShell>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/tournaments/:id"
+              element={
+                <RequireAuth>
+                  <AppShell>
+                    <TournamentsPage />
+                  </AppShell>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/agents"
+              element={
+                <RequireAuth>
+                  <AppShell>
+                    <AgentsPage />
                   </AppShell>
                 </RequireAuth>
               }

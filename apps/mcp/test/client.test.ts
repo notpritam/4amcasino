@@ -3,6 +3,8 @@ import type { AddressInfo } from 'node:net';
 import { createApp } from '../../server/src/app.js';
 import { attachHub } from '../../server/src/hub.js';
 import { HeadlessClient } from '../src/client.js';
+import { scrypt } from '@noble/hashes/scrypt';
+import { bytesToHex } from '@noble/hashes/utils';
 
 let ctx: ReturnType<typeof createApp>;
 let baseUrl: string;
@@ -23,61 +25,83 @@ afterEach(async () => {
 });
 
 describe('headless MCP client', () => {
-  it('registers, buys in, and plays a full hand to showdown through the real crypto', async () => {
-    const host = new HeadlessClient(baseUrl, 'agent_host', 'pw-agent-host');
-    const bob = new HeadlessClient(baseUrl, 'agent_bob', 'pw-agent-bob');
-    clients.push(host, bob);
-    await host.login();
-    await bob.login();
+  it.each(['account', 'delegated'])(
+    'plays a full hand to showdown through real crypto with %s credentials',
+    async (mode) => {
+      const host = new HeadlessClient(baseUrl, 'agent_host', 'pw-agent-host');
+      let bob = new HeadlessClient(baseUrl, 'agent_bob', 'pw-agent-bob');
+      clients.push(host, bob);
+      await host.login();
+      await bob.login();
 
-    const room = await host.api('/api/rooms', { name: 'Bot Table', sb: 10, bb: 20 });
-    await host.connect(room.id as string);
-    await bob.joinByCode(room.joinCode as string);
+      const room = await host.api('/api/rooms', { name: 'Bot Table', sb: 10, bb: 20 });
+      await host.connect(room.id as string);
+      await bob.joinByCode(room.joinCode as string);
 
-    host.send({ t: 'sit', seat: 0 });
-    bob.send({ t: 'sit', seat: 1 });
-    for (const c of [host, bob]) {
-      const req = await c.api(`/api/rooms/${room.id}/buy`, { amount: 1000 });
-      await host.api(`/api/rooms/${room.id}/approve`, { requestId: req.id, approve: true });
-    }
-    await new Promise((r) => setTimeout(r, 200));
-    host.send({ t: 'start_hand' });
-
-    // passive play: check when free, call otherwise, until the hand resolves
-    const start = Date.now();
-    while (Date.now() - start < 30_000) {
-      if (host.result && bob.result) break;
+      host.send({ t: 'sit', seat: 0 });
+      bob.send({ t: 'sit', seat: 1 });
       for (const c of [host, bob]) {
-        await c.waitForTurn(300);
-        if (c.myTurn()) {
-          try {
-            c.act({ type: 'check' });
-          } catch {
+        const req = await c.api(`/api/rooms/${room.id}/buy`, { amount: 1000 });
+        await host.api(`/api/rooms/${room.id}/approve`, { requestId: req.id, approve: true });
+      }
+      await new Promise((r) => setTimeout(r, 200));
+      if (mode === 'delegated') {
+        const grant = await bob.api('/api/me/agent-grants', {
+          scopeKind: 'room',
+          scopeId: room.id,
+          label: 'Crypto regression agent',
+          canPlay: true,
+        });
+        bob.close();
+        bob = new HeadlessClient(baseUrl, '', '');
+        clients.push(bob);
+        await bob.loginWithGrant(
+          grant.token,
+          bytesToHex(
+            scrypt('pw-agent-bob', '4am/id/agent_bob', { N: 2 ** 15, r: 8, p: 1, dkLen: 32 }),
+          ),
+        );
+        await expect(bob.api(`/api/rooms/${room.id}/buy`, { amount: 1000 })).rejects.toThrow();
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      host.send({ t: 'start_hand' });
+
+      // passive play: check when free, call otherwise, until the hand resolves
+      const start = Date.now();
+      while (Date.now() - start < 30_000) {
+        if (host.result && bob.result) break;
+        for (const c of [host, bob]) {
+          await c.waitForTurn(300);
+          if (c.myTurn()) {
             try {
-              c.act({ type: 'call' });
+              c.act({ type: 'check' });
             } catch {
-              /* state advanced under us; loop again */
+              try {
+                c.act({ type: 'call' });
+              } catch {
+                /* state advanced under us; loop again */
+              }
             }
           }
         }
       }
-    }
 
-
-    expect(host.abort).toBeNull();
-    expect(bob.abort).toBeNull();
-    expect(host.result).not.toBeNull();
-    expect(host.myCards).toHaveLength(2);
-    expect(bob.myCards).toHaveLength(2);
-    expect(host.board).toHaveLength(5);
-    expect(host.board).toEqual(bob.board);
-    const stacks = host.result!.stacks.reduce((s, x) => s + x.stack, 0);
-    expect(stacks).toBe(2000);
-    // the state summary reads like something an agent can act on
-    const summary = host.stateSummary();
-    expect(summary).toContain('Bot Table');
-    expect(summary).toContain('You held:');
-  }, 45_000);
+      expect(host.abort).toBeNull();
+      expect(bob.abort).toBeNull();
+      expect(host.result).not.toBeNull();
+      expect(host.myCards).toHaveLength(2);
+      expect(bob.myCards).toHaveLength(2);
+      expect(host.board).toHaveLength(5);
+      expect(host.board).toEqual(bob.board);
+      const stacks = host.result!.stacks.reduce((s, x) => s + x.stack, 0);
+      expect(stacks).toBe(2000);
+      // the state summary reads like something an agent can act on
+      const summary = host.stateSummary();
+      expect(summary).toContain('Bot Table');
+      expect(summary).toContain('You held:');
+    },
+    45_000,
+  );
 
   it('act() refuses out-of-turn and illegal moves with readable errors', async () => {
     const solo = new HeadlessClient(baseUrl, 'agent_solo', 'pw-agent-solo');

@@ -7,6 +7,7 @@ import { userForToken, touchPresence } from './auth.js';
 import { isMember, isSpectator, roomEvents } from './rooms.js';
 import { GameRoom, type GameOpts } from './game.js';
 import { LIMITS } from './limits.js';
+import { agentMaySend, resolveAgentGrant } from './agentAccess.js';
 
 // 10s per attempt with 3 retries: a stalled player gets a fixed ~40s to rejoin
 const DEFAULT_OPTS: GameOpts = { cryptoTimeoutMs: 10_000, actionTimeoutMs: 45_000 };
@@ -85,7 +86,8 @@ export function attachHub(
     const protos = protoHeader.split(',').map((s) => s.trim());
     const fromProto = protos[0] === 'bearer' ? (protos[1] ?? null) : null;
     const token = fromProto ?? url.searchParams.get('token') ?? '';
-    const userId = userForToken(db, token);
+    const grant = resolveAgentGrant(db, token);
+    const userId = grant?.user_id ?? userForToken(db, token);
     if (userId === null) {
       deny(401, 'Unauthorized');
       return;
@@ -94,7 +96,17 @@ export function attachHub(
       deny(429, 'Too Many Requests');
       return;
     }
-    wss.handleUpgrade(req, socket, head, (ws) => handleConnection(ws, userId));
+    if (grant && (grant.scope_kind !== 'room' || !grant.can_play)) {
+      deny(403, 'Forbidden');
+      return;
+    }
+    const account = db.prepare('SELECT disabled FROM users WHERE id = ?').get(userId) as
+      { disabled: number } | undefined;
+    if (!account || account.disabled) {
+      deny(401, 'Unauthorized');
+      return;
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => handleConnection(ws, userId, token));
   });
 
   const onRoomChanged = (roomId: string, options?: { restartAutoDeal?: boolean }) =>
@@ -110,10 +122,17 @@ export function attachHub(
     wss.close();
   });
 
-  function handleConnection(ws: WebSocket, userId: number): void {
+  function handleConnection(ws: WebSocket, userId: number, token: string): void {
     let current: GameRoom | null = null;
     socketsPerUser.set(userId, (socketsPerUser.get(userId) ?? 0) + 1);
     ws.send(JSON.stringify({ t: 'hello', serverPublicKey: serverIdentity.publicKey }));
+    const delegated = token.startsWith('4am_agent_');
+    const revokeTimer = delegated
+      ? setInterval(() => {
+          if (!db.open || !resolveAgentGrant(db, token)) ws.close(1008, 'agent access ended');
+        }, 1000)
+      : null;
+    revokeTimer?.unref();
 
     // Two buckets, because the two kinds of message have nothing in common.
     //
@@ -174,6 +193,19 @@ export function attachHub(
         return;
       }
       const msg = parsed.data;
+      if (delegated) {
+        const grant = resolveAgentGrant(db, token);
+        if (!grant) {
+          ws.close(1008, 'agent access ended');
+          return;
+        }
+        if (!agentMaySend(grant, msg)) {
+          ws.send(
+            JSON.stringify({ t: 'error', message: 'Agent token does not permit this command.' }),
+          );
+          return;
+        }
+      }
       if (!PROTOCOL_TYPES.has(msg.t) && !takeChatty()) {
         ws.send(JSON.stringify({ t: 'error', message: 'slow down' }));
         return;
@@ -201,6 +233,7 @@ export function attachHub(
     });
 
     ws.on('close', () => {
+      if (revokeTimer) clearInterval(revokeTimer);
       // Late close events can follow the database's onClose hook. Shutdown already
       // clears the room timers; there is no hand or presence left to reconcile.
       if (db.open) current?.leave(userId, ws);

@@ -14,6 +14,7 @@ import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
 import { cardFromName } from '@4am/shared';
 import { AppearanceToggle } from '../../shared/ui/AppearanceToggle.tsx';
 import { adminDestination, isAdminSite } from '../../shared/adminSite.ts';
+import { authDestination } from '../../shared/authDestination.ts';
 
 type Mode = 'login' | 'register' | 'recover';
 
@@ -62,7 +63,7 @@ export function LoginPage() {
         return;
       }
     }
-    nav('/lobby');
+    nav(authDestination(window.location.search) ?? '/lobby');
   }
 
   async function submit(e: React.FormEvent) {

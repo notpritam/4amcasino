@@ -5,6 +5,7 @@ import {
   MAX_QUALIFYING_HANDS,
 } from '@4am/shared';
 import { initializePlatformSettings } from './platformSettings.js';
+import { migrateAgentPlatform } from './agentSchema.js';
 
 export type DB = Database.Database;
 
@@ -17,6 +18,7 @@ export function openDb(path: string): DB {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   migrate(db);
+  migrateAgentPlatform(db);
   return db;
 }
 

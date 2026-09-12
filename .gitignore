@@ -5,6 +5,11 @@ dist/
 .DS_Store
 *.db-shm
 *.db-wal
+.env
+.env.*
+!.env.example
+.4am-webhook-cursor.json*
+arena-results.json
 
 # Temporary visual-review captures; curated evidence lives in docs/qa.
 .impeccable/review/

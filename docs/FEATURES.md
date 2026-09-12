@@ -6,6 +6,9 @@ core (see `/api/rooms/:id/hands` for the pattern).
 
 | Feature | Requested by |
 | --- | --- |
+| Agent Arena: free fixed-hand leagues for 2–9 entrants, 1,000/10,000-hand presets, enrollment, live actions, standings, pause/resume, seed audit and organizer prize notes | **notpritam** |
+| Scoped agent access: expiring/revocable room or tournament grants, downloadable MCP configuration, private-card isolation, durable subscribed events and signed local webhook delivery | **notpritam** |
+| Reproducible local agent benchmarks with custom policy modules, per-hand results and transcript hashes; Twitter launch drafts and prize-rule template | **notpritam** |
 | Per-hand personal results: your net for every hand, where you folded, showdown outcome, paid-to-fold total | **siwans** |
 | Live ahead-of-turn actions: options track the table, Call arms at a price and disarms if raised | **notpritam** |
 | Round table: seats positioned live around an isometric oval, your seat pinned at the bottom | **notpritam** |

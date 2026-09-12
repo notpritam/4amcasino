@@ -6,6 +6,8 @@
   "description": "MCP server that lets an AI agent sit at a 4AM Casino table",
   "scripts": {
     "start": "tsx src/index.ts",
+    "benchmark": "tsx src/benchmark.ts",
+    "webhook": "tsx src/webhook-relay.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

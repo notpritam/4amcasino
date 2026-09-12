@@ -17,8 +17,7 @@ export function mergeAccounts(db: DB, fromUser: number, intoUser: number): void 
   }
 
   const from = db.prepare('SELECT id, disabled FROM users WHERE id = ?').get(fromUser) as
-    | { id: number; disabled: number }
-    | undefined;
+    { id: number; disabled: number } | undefined;
   if (!from) throw new Error(`no such user: ${fromUser}`);
   if (from.disabled) throw new Error(`user ${fromUser} is already disabled`);
   // The platform account is the only non-disabled account every admin route
@@ -32,10 +31,27 @@ export function mergeAccounts(db: DB, fromUser: number, intoUser: number): void 
   }
 
   const into = db.prepare('SELECT id, disabled FROM users WHERE id = ?').get(intoUser) as
-    | { id: number; disabled: number }
-    | undefined;
+    { id: number; disabled: number } | undefined;
   if (!into) throw new Error(`no such user: ${intoUser}`);
   if (into.disabled) throw new Error(`user ${intoUser} is already disabled`);
+
+  // Preserve the fixed entrant identities used by tournament deals and audits.
+  const activeTournament = db
+    .prepare(
+      `
+    SELECT 1 FROM tournaments t
+    WHERE t.status IN ('registration', 'running', 'paused')
+      AND (t.owner_id IN (?, ?) OR EXISTS (
+        SELECT 1 FROM tournament_entries e
+        WHERE e.tournament_id = t.id AND e.user_id IN (?, ?)
+      )) LIMIT 1
+  `,
+    )
+    .get(fromUser, intoUser, fromUser, intoUser);
+  if (activeTournament)
+    throw new Error(
+      'cannot merge: finish or cancel owned tournaments and withdraw active tournament entries first',
+    );
 
   // Re-keying/merging while either side is seated in a hand that is actually
   // in progress would desync a live game (see account.ts's identical guard
@@ -253,9 +269,11 @@ export function mergeAccounts(db: DB, fromUser: number, intoUser: number): void 
       if (!keep) continue;
       const confirmedLow = dupes.some((d) => d.confirmed_low) ? 1 : 0;
       const confirmedHigh = dupes.some((d) => d.confirmed_high) ? 1 : 0;
-      db.prepare(
-        'UPDATE settlements SET confirmed_low = ?, confirmed_high = ? WHERE id = ?',
-      ).run(confirmedLow, confirmedHigh, keep.id);
+      db.prepare('UPDATE settlements SET confirmed_low = ?, confirmed_high = ? WHERE id = ?').run(
+        confirmedLow,
+        confirmedHigh,
+        keep.id,
+      );
       for (const dupe of dupes.slice(1)) {
         db.prepare('DELETE FROM settlements WHERE id = ?').run(dupe.id);
       }

@@ -1,0 +1,73 @@
+{
+  "scope": "Local deterministic policies; not live AI competition results",
+  "runs": [
+    {
+      "hands": 1000,
+      "seed": "arena-qa-2026-09-13",
+      "seedCommitment": "fd2af0339d6af573a77dca76f70ebe434e603aca6285d75756a4e400c0c187f9",
+      "transcriptHash": "8632ba185184cd59f4bde1f4dde39c860023de95650d3573b5814f66634a7025",
+      "standings": [
+        {
+          "name": "Pressure baseline",
+          "userId": 3,
+          "net": 14835,
+          "hands": 1000,
+          "wins": 462,
+          "bbPer100": 74.175
+        },
+        {
+          "name": "Check / fold",
+          "userId": 2,
+          "net": -5500,
+          "hands": 1000,
+          "wins": 75,
+          "bbPer100": -27.500000000000004
+        },
+        {
+          "name": "Check / call",
+          "userId": 1,
+          "net": -9335,
+          "hands": 1000,
+          "wins": 471,
+          "bbPer100": -46.675
+        }
+      ],
+      "totalNet": 0,
+      "perHandConservation": true
+    },
+    {
+      "hands": 10000,
+      "seed": "arena-qa-2026-09-13",
+      "seedCommitment": "fd2af0339d6af573a77dca76f70ebe434e603aca6285d75756a4e400c0c187f9",
+      "transcriptHash": "56767c14ad7a700f1cd320ec9e3b8a835cfac9eecfb843814b90cc0189b1b9b6",
+      "standings": [
+        {
+          "name": "Pressure baseline",
+          "userId": 3,
+          "net": 148040,
+          "hands": 10000,
+          "wins": 4638,
+          "bbPer100": 74.02
+        },
+        {
+          "name": "Check / fold",
+          "userId": 2,
+          "net": -53310,
+          "hands": 10000,
+          "wins": 808,
+          "bbPer100": -26.655
+        },
+        {
+          "name": "Check / call",
+          "userId": 1,
+          "net": -94730,
+          "hands": 10000,
+          "wins": 4654,
+          "bbPer100": -47.365
+        }
+      ],
+      "totalNet": 0,
+      "perHandConservation": true
+    }
+  ]
+}

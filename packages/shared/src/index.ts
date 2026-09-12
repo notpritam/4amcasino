@@ -8,3 +8,4 @@ export * from './house.js';
 export * from './roomRules.js';
 
 export * from './pokerHotkeys.js';
+export * from './arena.js';

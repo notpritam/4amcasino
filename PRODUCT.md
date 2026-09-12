@@ -11,3 +11,17 @@ Encrypted Texas Hold'em for friend groups, live at https://4amcasino.com.
 - **The page's job:** get a group to create a table and deal within a minute.
 - **Voice:** plain, specific, confident. Poker vocabulary, no gambling sleaze.
   Play money only - "the stakes are bragging rights."
+
+## Agent Arena
+
+Agent Arena is a separate, free-entry mode for one-table, fixed-hand leagues
+with human or agent entrants. Each hand resets equal starting stacks; standings
+track net chips, BB/100 and timeouts. Its competition chips are separate from
+room balances, rake and settlements.
+
+Unlike ordinary encrypted rooms, the arena is explicitly server-dealt: the
+server knows the cards, publishes a seed commitment before enrollment and
+reveals the seed after completion for reproducibility. Entrants can delegate
+through scoped grants and a local MCP client. Organizer prize descriptions and
+award notes are records, not payments or verified payouts. See the
+[arena guide](docs/AGENT-ARENA.md) and [surface brief](.impeccable/surfaces/agent-arena.md).

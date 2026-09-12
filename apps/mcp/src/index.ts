@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { HeadlessClient } from './client.js';
+import { registerArenaTools } from './arenaTools.js';
 
 /**
  * MCP server for 4AM Casino: gives an AI agent a real seat at the table.
@@ -12,6 +13,8 @@ import { HeadlessClient } from './client.js';
  *
  * Configuration (environment):
  *   FOURAM_URL       server, default https://4amcasino.com
+ *   FOURAM_TOKEN     preferred scoped room/tournament grant
+ *   FOURAM_SIGNING_KEY local signing seed, needed only for room play grants
  *   FOURAM_USERNAME  account name (registered automatically if missing)
  *   FOURAM_PASSWORD  account password (derives the signing keys locally;
  *                    it is never sent to the game server)
@@ -20,16 +23,26 @@ import { HeadlessClient } from './client.js';
 const baseUrl = (process.env.FOURAM_URL ?? 'https://4amcasino.com').replace(/\/$/, '');
 const username = process.env.FOURAM_USERNAME;
 const password = process.env.FOURAM_PASSWORD;
-if (!username || !password) {
-  console.error('Set FOURAM_USERNAME and FOURAM_PASSWORD in the MCP server env.');
+const agentToken = process.env.FOURAM_TOKEN;
+if (!agentToken && (!username || !password)) {
+  console.error('Set FOURAM_TOKEN, or FOURAM_USERNAME and FOURAM_PASSWORD.');
   process.exit(1);
 }
 
-const client = new HeadlessClient(baseUrl, username, password);
+const client = new HeadlessClient(baseUrl, username ?? '', password ?? '');
 let loggedIn = false;
+let loggingIn: Promise<void> | null = null;
 async function ready(): Promise<HeadlessClient> {
   if (!loggedIn) {
-    await client.login();
+    loggingIn ??= agentToken
+      ? client.loginWithGrant(agentToken, process.env.FOURAM_SIGNING_KEY)
+      : client.login();
+    try {
+      await loggingIn;
+    } catch (err) {
+      loggingIn = null;
+      throw err;
+    }
     loggedIn = true;
   }
   return client;
@@ -40,11 +53,23 @@ const run = async (fn: () => Promise<string> | string) => {
   try {
     return text(await fn());
   } catch (err) {
-    return text(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    return { ...text(`Error: ${err instanceof Error ? err.message : String(err)}`), isError: true };
   }
 };
 
-const server = new McpServer({ name: '4am-casino', version: '1.0.0' });
+const server = new McpServer({ name: '4am-casino', version: '1.1.0' });
+registerArenaTools(server, async (path, body) => {
+  if (!agentToken) return (await ready()).api(path, body);
+  const response = await fetch(baseUrl + path, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: { authorization: `Bearer ${agentToken}`, 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(35_000),
+  });
+  const result = (await response.json()) as { error?: string };
+  if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`);
+  return result;
+});
 
 server.tool(
   'casino_state',
@@ -53,17 +78,27 @@ server.tool(
   async () => run(async () => (await ready()).stateSummary()),
 );
 
-server.tool(
-  'my_rooms',
-  'List the rooms this account belongs to.',
-  {},
-  async () =>
-    run(async () => {
-      const c = await ready();
-      const r = (await c.api('/api/my-rooms')) as { rooms: { id: string; name: string; joinCode: string; sb: number; bb: number; playerCount: number }[] };
-      if (r.rooms.length === 0) return 'No rooms yet. Ask the host for a 6-letter join code and use join_room.';
-      return r.rooms.map((x) => `${x.name} - code ${x.joinCode}, blinds ${x.sb}/${x.bb}, ${x.playerCount} players`).join('\n');
-    }),
+server.tool('my_rooms', 'List the rooms this account belongs to.', {}, async () =>
+  run(async () => {
+    const c = await ready();
+    const r = (await c.api('/api/my-rooms')) as {
+      rooms: {
+        id: string;
+        name: string;
+        joinCode: string;
+        sb: number;
+        bb: number;
+        playerCount: number;
+      }[];
+    };
+    if (r.rooms.length === 0)
+      return 'No rooms yet. Ask the host for a 6-letter join code and use join_room.';
+    return r.rooms
+      .map(
+        (x) => `${x.name} - code ${x.joinCode}, blinds ${x.sb}/${x.bb}, ${x.playerCount} players`,
+      )
+      .join('\n');
+  }),
 );
 
 server.tool(
@@ -138,13 +173,17 @@ server.tool(
     }),
 );
 
-server.tool('start_hand', 'Deal the next hand (host only; hands also auto-deal while the host is online).', {}, async () =>
-  run(async () => {
-    const c = await ready();
-    c.send({ t: 'start_hand' });
-    await new Promise((r) => setTimeout(r, 500));
-    return 'deal requested';
-  }),
+server.tool(
+  'start_hand',
+  'Deal the next hand (host only; hands also auto-deal while the host is online).',
+  {},
+  async () =>
+    run(async () => {
+      const c = await ready();
+      c.send({ t: 'start_hand' });
+      await new Promise((r) => setTimeout(r, 500));
+      return 'deal requested';
+    }),
 );
 
 server.tool(
@@ -195,15 +234,23 @@ server.tool(
     }),
 );
 
-server.tool('bank_requests', 'List purchases waiting for banker approval (bankers only).', {}, async () =>
-  run(async () => {
-    const c = await ready();
-    const roomId = c.room?.room.id;
-    if (!roomId) return 'Join a room first.';
-    const r = (await c.api(`/api/rooms/${roomId}/requests`)) as { requests: { id: number; username: string; amount: number; note: string | null }[] };
-    if (r.requests.length === 0) return 'Nothing waiting.';
-    return r.requests.map((q) => `#${q.id}: ${q.username} wants ${q.amount}${q.note ? ` (${q.note})` : ''}`).join('\n');
-  }),
+server.tool(
+  'bank_requests',
+  'List purchases waiting for banker approval (bankers only).',
+  {},
+  async () =>
+    run(async () => {
+      const c = await ready();
+      const roomId = c.room?.room.id;
+      if (!roomId) return 'Join a room first.';
+      const r = (await c.api(`/api/rooms/${roomId}/requests`)) as {
+        requests: { id: number; username: string; amount: number; note: string | null }[];
+      };
+      if (r.requests.length === 0) return 'Nothing waiting.';
+      return r.requests
+        .map((q) => `#${q.id}: ${q.username} wants ${q.amount}${q.note ? ` (${q.note})` : ''}`)
+        .join('\n');
+    }),
 );
 
 server.tool(
@@ -220,31 +267,49 @@ server.tool(
     }),
 );
 
-server.tool('session_report', 'The session so far: time played, hands, biggest pot, per-player results.', {}, async () =>
-  run(async () => {
-    const c = await ready();
-    const roomId = c.room?.room.id;
-    if (!roomId) return 'Join a room first.';
-    const s = (await c.api(`/api/rooms/${roomId}/session`)) as {
-      hands: number;
-      firstTs: number | null;
-      lastTs: number | null;
-      biggestPot: number;
-      players: { displayName: string; handsPlayed: number; wins: number; net: number; stack: number; bought: number; hidden: boolean }[];
-    };
-    const mins = s.firstTs && s.lastTs ? Math.max(1, Math.round((s.lastTs - s.firstTs) / 60000)) : 0;
-    const lines = [`${s.hands} hands over ~${mins} minutes; biggest pot ${s.biggestPot}.`];
-    for (const p of s.players) {
-      lines.push(
-        p.hidden
-          ? `  ${p.displayName}: private (stack ${p.stack})`
-          : `  ${p.displayName}: net ${p.net >= 0 ? '+' : ''}${p.net}, ${p.wins}/${p.handsPlayed} hands won, bought ${p.bought}, stack ${p.stack}`,
-      );
-    }
-    return lines.join('\n');
-  }),
+server.tool(
+  'session_report',
+  'The session so far: time played, hands, biggest pot, per-player results.',
+  {},
+  async () =>
+    run(async () => {
+      const c = await ready();
+      const roomId = c.room?.room.id;
+      if (!roomId) return 'Join a room first.';
+      const s = (await c.api(`/api/rooms/${roomId}/session`)) as {
+        hands: number;
+        firstTs: number | null;
+        lastTs: number | null;
+        biggestPot: number;
+        players: {
+          displayName: string;
+          handsPlayed: number;
+          wins: number;
+          net: number;
+          stack: number;
+          bought: number;
+          hidden: boolean;
+        }[];
+      };
+      const mins =
+        s.firstTs && s.lastTs ? Math.max(1, Math.round((s.lastTs - s.firstTs) / 60000)) : 0;
+      const lines = [`${s.hands} hands over ~${mins} minutes; biggest pot ${s.biggestPot}.`];
+      for (const p of s.players) {
+        lines.push(
+          p.hidden
+            ? `  ${p.displayName}: private (stack ${p.stack})`
+            : `  ${p.displayName}: net ${p.net >= 0 ? '+' : ''}${p.net}, ${p.wins}/${p.handsPlayed} hands won, bought ${p.bought}, stack ${p.stack}`,
+        );
+      }
+      return lines.join('\n');
+    }),
 );
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-console.error(`4AM Casino MCP ready as ${username} against ${baseUrl}`);
+console.error(`4AM Casino MCP ready against ${baseUrl}`);
+for (const signal of ['SIGINT', 'SIGTERM'] as const)
+  process.once(signal, () => {
+    client.close();
+    void server.close().finally(() => process.exit(0));
+  });

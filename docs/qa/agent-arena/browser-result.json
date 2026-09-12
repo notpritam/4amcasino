@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "tournamentId": "6a521f042db86ddd431c",
+  "completedHands": 10,
+  "pageErrors": [],
+  "checks": [
+    "login return route",
+    "create league",
+    "two enrollments",
+    "download scoped MCP configuration",
+    "revoke token",
+    "pause/resume",
+    "ten hands using browser controls",
+    "private cards isolated",
+    "award note",
+    "desktop/mobile layout",
+    "dark appearance"
+  ]
+}
