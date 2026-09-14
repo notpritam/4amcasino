@@ -9,3 +9,4 @@ export * from './roomRules.js';
 
 export * from './pokerHotkeys.js';
 export * from './arena.js';
+export * from './tournamentPolicy.js';

@@ -1,4 +1,5 @@
 import { PlatformDues, HouseRooms } from '../../features/house/PlatformDues.tsx';
+import { TournamentEarnings } from '../tournaments/TournamentEarnings.tsx';
 import type { HouseDues, PlatformDuesReport } from '@4am/shared';
 import { commissionRateLabel } from '@4am/shared';
 import { useCommissionSettings } from '../../shared/useCommissionSettings.ts';
@@ -157,7 +158,7 @@ export function SettlePage() {
           Every room you have played, netted down to one number per person.
         </p>
       </header>
-
+      <TournamentEarnings />
       <div className="mb-6 grid gap-3 sm:grid-cols-3">
         <Panel className="p-4">
           <div className="text-xs uppercase tracking-wide text-slate-400">Players owe you</div>

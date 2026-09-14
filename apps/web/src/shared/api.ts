@@ -1,6 +1,13 @@
 import { useStore } from './store.ts';
 import type { AdminOverview, CommissionScope, CommissionSettings } from '@4am/shared';
-import type { TournamentState, TournamentSummary, PlayerAction } from '@4am/shared';
+import type {
+  TournamentState,
+  TournamentSummary,
+  PlayerAction,
+  TournamentEarning,
+  SponsorCampaign,
+  SponsorPlacement,
+} from '@4am/shared';
 import { isAdminSite } from './adminSite.ts';
 
 /** Fetch with retries on 502/503/504 and network failure, GETs only. Redeploys
@@ -49,7 +56,10 @@ async function req(path: string, body?: unknown, method?: string): Promise<any> 
       );
     throw new Error('session expired');
   }
-  if (!res.ok) throw new Error(json.error ?? `request failed (${res.status})`);
+  if (!res.ok)
+    throw Object.assign(new Error(json.error ?? `request failed (${res.status})`), {
+      status: res.status,
+    });
   return json;
 }
 
@@ -59,8 +69,47 @@ export const api = {
     req(`/api/tournaments/${encodeURIComponent(id)}`) as Promise<TournamentState>,
   createTournament: (body: Record<string, unknown>) =>
     req('/api/tournaments', body) as Promise<{ id: string }>,
-  enrollTournament: (id: string, agentName: string, kind: 'human' | 'agent') =>
-    req(`/api/tournaments/${id}/enroll`, { agentName, kind }),
+  enrollTournament: (
+    id: string,
+    agentName: string,
+    kind: 'human' | 'agent',
+    acceptedRevision?: number,
+  ) => req(`/api/tournaments/${id}/enroll`, { agentName, kind, acceptedRevision }),
+  tournamentTerms: (id: string, body: Record<string, unknown>) =>
+    req(`/api/tournaments/${id}/terms`, body, 'PUT'),
+  tournamentMedia: (id: string, body: Record<string, unknown>) =>
+    req(`/api/tournaments/${id}/media`, body, 'PUT'),
+  reviewTournament: (id: string, revision: number, approve: boolean, note: string) =>
+    req(`/api/admin/tournaments/${id}/review`, { revision, approve, note }),
+  adminTournaments: () =>
+    req('/api/admin/tournaments') as Promise<{
+      tournaments: TournamentSummary[];
+      earnings: TournamentEarning[];
+      totals: { house: number; banker: number; pool: number; prizes: number; recordedPaid: number };
+    }>,
+  tournamentEarnings: () =>
+    req('/api/me/tournament-earnings') as Promise<{ earnings: TournamentEarning[] }>,
+  recordTournamentSettlement: (
+    id: string,
+    body: { userId: number; amount: number; requestId: string; note: string },
+  ) => req(`/api/admin/tournaments/${id}/settlements`, body),
+  adminSponsors: () =>
+    req('/api/admin/sponsors') as Promise<{
+      campaigns: SponsorCampaign[];
+      totals: { booked: number; received: number; prizeContributions: number };
+    }>,
+  saveSponsor: (body: Record<string, unknown>, id?: string) =>
+    req(
+      `/api/admin/sponsors${id ? `/${id}` : ''}`,
+      body,
+      id ? 'PUT' : 'POST',
+    ) as Promise<SponsorCampaign>,
+  sponsorReceipt: (id: string, body: Record<string, unknown>) =>
+    req(`/api/admin/sponsors/${id}/receipts`, body),
+  sponsorPlacements: (placement: SponsorPlacement['placement'], tournamentId?: string) =>
+    req(
+      `/api/sponsors?${new URLSearchParams({ placement, ...(tournamentId ? { tournamentId } : {}) })}`,
+    ) as Promise<{ placements: SponsorPlacement[] }>,
   withdrawTournament: (id: string) => req(`/api/tournaments/${id}/withdraw`, {}),
   controlTournament: (id: string, action: string) =>
     req(`/api/tournaments/${id}/control`, { action }),

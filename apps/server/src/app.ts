@@ -17,6 +17,8 @@ import { isPlatform } from './platform.js';
 import { AgentError, registerAgentAccess } from './agentAccess.js';
 import { registerAgentEvents } from './agentEvents.js';
 import { registerTournaments } from './tournaments.js';
+import { registerSponsors } from './sponsors.js';
+import { fundTournament } from './tournamentEconomy.js';
 
 const registerSchema = z.object({
   username: z
@@ -58,6 +60,7 @@ export function createApp(
   registerAgentAccess(app, db);
   registerAgentEvents(app, db);
   registerTournaments(app, db);
+  registerSponsors(app, db, (id, amount, ref) => fundTournament(db, id, amount, ref, 'sponsor'));
   // Keep existing bookmarks and room invites working after the domain move.
   // Match the actual Host, not a caller-controlled X-Forwarded-Host. Prefixing
   // the raw path with a fixed origin also keeps // paths on our destination.

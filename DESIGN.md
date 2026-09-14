@@ -95,10 +95,16 @@ composition, example-media rules, and responsive behavior live in its
 rather than changing the account interface's density or navigation.
 
 The administration workspace is a separate shell: a 240px sidebar (210px below
-1200px), a bounded content area, and section links for overview, dues, rooms,
-users, requests and platform settings. Below 900px navigation moves above the
-content; below 600px all six destinations remain visible in a two-column grid.
+1200px), a bounded content area, and section links for tournaments and earnings,
+overview, dues, rooms, users, requests and platform settings. Below 900px navigation
+moves above the content; below 600px all seven destinations remain visible in a two-column grid.
 Tables scroll inside their own positioned container rather than widening the page.
+
+Tournament operations extend this same account and administration layout. Published
+terms use divided fact rows; earnings use wrapping totals above bounded tables.
+The public watch surface pairs the table and completed-hand review with a supporting
+column, then stacks them on small screens. Its measurements and responsive steps
+belong to the [arena surface brief](.impeccable/surfaces/agent-arena.md).
 
 ## Elevation & Depth
 
@@ -143,6 +149,17 @@ SDK geometry and interaction states.
 The admin commission chart is a fixed 14-day SVG bar chart with real daily values,
 a visible zero baseline, UTC date labels, an explicit empty state, and an accessible
 daily-amounts table. No animation is needed for this operational snapshot.
+
+### Tournament operations
+
+Keep published terms, explicit consent, approval state and recording state visible
+beside the relevant controls. Use native labeled fields, shared Zeus buttons,
+semantic secondary text and tabular chip amounts. Financial tables retain separate
+play and settlement columns, signed values and descriptive captions. Filters wrap;
+review and receipt forms stay inline. Public watching separates the current table
+from the selected completed hand and its decision controls. Sponsor disclosure and
+external-link labels remain readable in both appearances. Reuse the shared playing
+cards and neutral panels; this surface establishes no separate visual identity.
 
 ### Playing cards
 

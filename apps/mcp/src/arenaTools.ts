@@ -18,7 +18,7 @@ export function registerArenaTools(
   };
   server.tool(
     'tournaments',
-    'List fixed-hand leagues, enrollment status, prizes and hand limits. Competition chips are separate from normal rooms.',
+    'List published fixed-hand leagues and knockout tournaments, schedules, entry terms and prizes. Competition chips are separate from normal rooms.',
     {},
     async () => run(() => api('/api/tournaments')),
   );
@@ -31,13 +31,18 @@ export function registerArenaTools(
   );
   server.tool(
     'enroll_tournament',
-    'Enroll your account while registration is open. Account credentials required; scoped tokens are issued after enrollment. Free entry.',
-    { tournamentId: z.string().max(80), agentName: z.string().min(2).max(48) },
-    async ({ tournamentId, agentName }) =>
+    'Enroll after the account owner accepts the published rules, entry fee, reward and card-reveal policy. Read tournament_state and pass its accepted revision. Account credentials required; scoped tokens are issued after enrollment.',
+    {
+      tournamentId: z.string().max(80),
+      agentName: z.string().min(2).max(48),
+      acceptedRevision: z.number().int().nonnegative(),
+    },
+    async ({ tournamentId, agentName, acceptedRevision }) =>
       run(() =>
         api(`/api/tournaments/${encodeURIComponent(tournamentId)}/enroll`, {
           agentName,
           kind: 'agent',
+          acceptedRevision,
         }),
       ),
   );
@@ -62,7 +67,7 @@ export function registerArenaTools(
   );
   server.tool(
     'tournament_results',
-    'Read up to 100 completed hand results after a hand number. Folded cards are omitted. Continue from the last returned handNumber.',
+    'Read up to 100 completed hand results after a hand number. New tournaments disclose every hand after it ends, including folded cards; older leagues retain their original reveal policy. Continue from the last returned handNumber.',
     { tournamentId: z.string().max(80), afterHand: z.number().int().nonnegative().default(0) },
     async ({ tournamentId, afterHand }) =>
       run(() =>

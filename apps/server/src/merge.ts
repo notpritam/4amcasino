@@ -2,6 +2,7 @@ import type { DB } from './db.js';
 import { rechainRoom, verifyLedger } from './ledger.js';
 import { activeHands } from './liveHands.js';
 import { isPlatform } from './platform.js';
+import { earningsRows } from './tournamentEconomy.js';
 
 /** Folds `fromUser`'s entire identity into `intoUser`: every table that
  *  references a user_id is repointed, `fromUser` is left disabled with
@@ -40,7 +41,7 @@ export function mergeAccounts(db: DB, fromUser: number, intoUser: number): void 
     .prepare(
       `
     SELECT 1 FROM tournaments t
-    WHERE t.status IN ('registration', 'running', 'paused')
+    WHERE t.status IN ('registration', 'running', 'paused', 'pending', 'rejected')
       AND (t.owner_id IN (?, ?) OR EXISTS (
         SELECT 1 FROM tournament_entries e
         WHERE e.tournament_id = t.id AND e.user_id IN (?, ?)
@@ -52,6 +53,8 @@ export function mergeAccounts(db: DB, fromUser: number, intoUser: number): void 
     throw new Error(
       'cannot merge: finish or cancel owned tournaments and withdraw active tournament entries first',
     );
+  if ([fromUser, intoUser].some((id) => earningsRows(db, id).some((e) => e.outstanding !== 0)))
+    throw new Error('cannot merge: settle outstanding tournament entries and prizes first');
 
   // Re-keying/merging while either side is seated in a hand that is actually
   // in progress would desync a live game (see account.ts's identical guard

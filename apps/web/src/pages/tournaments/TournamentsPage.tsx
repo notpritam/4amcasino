@@ -7,6 +7,16 @@ import { useStore } from '../../shared/store.ts';
 import { Button, Spinner } from '../../shared/ui/index.tsx';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
 import './arena.css';
+import { SponsorPlacements } from './SponsorPlacements.tsx';
+import {
+  ApprovalStatus,
+  TournamentTerms,
+  TournamentTermsForm,
+  TournamentMediaForm,
+  eventDate,
+  formatName,
+  safeExternalUrl,
+} from './TournamentTerms.tsx';
 
 const number = (n: number) => n.toLocaleString();
 const signed = (n: number) => `${n > 0 ? '+' : ''}${number(n)}`;
@@ -25,9 +35,11 @@ export function TournamentsPage() {
   return id ? <TournamentDetail key={id} id={id} /> : <TournamentList />;
 }
 function TournamentList() {
+  const auth = useStore((s) => s.auth);
   const [rows, setRows] = useState<TournamentSummary[] | null>(null);
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
+  const [filter, setFilter] = useState('Upcoming');
   const nav = useNavigate();
   const load = useCallback(() => {
     setError('');
@@ -37,67 +49,137 @@ function TournamentList() {
       .catch((e) => setError(errorText(e)));
   }, []);
   useEffect(load, [load]);
+  const visible = rows?.filter((t) =>
+    filter === 'My proposals'
+      ? t.ownerId === auth.userId
+      : t.approvalStatus === 'approved' &&
+        (filter === 'Upcoming'
+          ? t.status === 'registration'
+          : filter === 'Live'
+            ? ['running', 'paused'].includes(t.status)
+            : ['completed', 'cancelled'].includes(t.status)),
+  );
   return (
     <main className="arena-page">
       <header className="arena-header">
         <div>
           <h1>Tournaments</h1>
           <p className="arena-muted">
-            Bring your agent. Take a seat. Compare decisions over a thousand hands.
+            Find your next table. Read the terms, bring your agent, and play for the published
+            prizes.
           </p>
         </div>
         <div className="arena-controls">
-          <Link className="arena-link" to="/agents">
-            Connect an agent
-          </Link>
-          <Button type="button" onClick={() => setCreating((v) => !v)}>
-            <RiAddLine size={18} />
-            {creating ? 'Close form' : 'Create tournament'}
-          </Button>
+          {auth.token ? (
+            <>
+              <Link className="arena-link" to="/agents">
+                Connect an agent
+              </Link>
+              <Button
+                type="button"
+                variant={creating ? 'secondary' : 'primary'}
+                onClick={() => setCreating((v) => !v)}
+              >
+                <RiAddLine size={18} />
+                {creating
+                  ? 'Close form'
+                  : auth.isPlatform
+                    ? 'Create tournament'
+                    : 'Propose a tournament'}
+              </Button>
+            </>
+          ) : (
+            <Link className="arena-link" to="/login?next=%2Ftournaments">
+              Sign in to propose a tournament
+            </Link>
+          )}
         </div>
       </header>
       {error && (
         <div role="alert" className="arena-error">
-          {error} <button onClick={load}>Retry</button>
+          {error}{' '}
+          <Button variant="ghost" onClick={load}>
+            Retry
+          </Button>
         </div>
       )}
-      {creating && (
-        <div className="arena-panel" style={{ marginBottom: 24 }}>
-          <h2>Create a fixed-hand league</h2>
-          <CreateForm onCreated={(id) => nav(`/tournaments/${id}`)} />
-        </div>
+      {creating && auth.token && (
+        <section className="arena-panel tournament-create">
+          <h2>{auth.isPlatform ? 'Publish a tournament' : 'Propose a tournament'}</h2>
+          <TournamentTermsForm
+            platform={!!auth.isPlatform}
+            onSave={async (body) => {
+              const result = await api.createTournament(body);
+              nav(`/tournaments/${result.id}`);
+            }}
+          />
+        </section>
       )}
       <div className="arena-grid">
         <section className="arena-panel" aria-label="Tournaments">
+          <div className="arena-tabs tournament-filter" aria-label="Filter tournaments">
+            {['Upcoming', 'Live', 'Past', ...(auth.token ? ['My proposals'] : [])].map((name) => (
+              <button
+                key={name}
+                type="button"
+                aria-pressed={filter === name}
+                onClick={() => setFilter(name)}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
           {rows === null && !error ? (
             <Spinner label="Loading tournaments…" />
-          ) : !rows?.length ? (
+          ) : !visible?.length ? (
             <div className="arena-empty">
-              <h2>The first seat is yours.</h2>
+              <h2>
+                {filter === 'My proposals'
+                  ? 'Your next tournament starts here.'
+                  : `No ${filter.toLowerCase()} tournaments yet.`}
+              </h2>
               <p className="arena-muted">
-                Create a free league for friends or agents. Every player starts each hand with the
-                same stack; the leaderboard tracks results across the full run.
+                {filter === 'My proposals'
+                  ? 'Set the format, schedule, entry terms and prizes, then submit your proposal for platform review.'
+                  : filter === 'Upcoming'
+                    ? 'Propose a fixed-hand league or a knockout tournament to bring players together.'
+                    : filter === 'Live'
+                      ? 'Events appear here when play begins. Check upcoming tournaments for your next seat.'
+                      : 'Completed and cancelled tournaments stay here with their saved standings and prizes.'}
               </p>
-              <Button type="button" className="mt-5" onClick={() => setCreating(true)}>
-                Create the first tournament
-              </Button>
             </div>
           ) : (
-            rows.map((t) => (
+            visible.map((t) => (
               <Link key={t.id} to={`/tournaments/${t.id}`} className="arena-row">
                 <div>
                   <div className="arena-name">{t.name}</div>
                   <div className="arena-row-meta">
+                    <span>{formatName(t.format)}</span>
                     <span>
-                      {t.entrantCount}/{t.capacity} entrants
+                      {t.entrantCount ?? 0}/{t.capacity} entrants
                     </span>
-                    <span>{number(t.handLimit)} hands</span>
-                    <span>Free entry</span>
+                    <span>{t.entryFee ? `${number(t.entryFee)} chips entry` : 'Free entry'}</span>
                   </div>
                   <div className="arena-row-meta">
                     <Status status={t.status} />
-                    {t.prizeDescription && <span>Prizes announced</span>}
+                    {t.approvalStatus !== 'approved' && <ApprovalStatus tournament={t} />}
+                    <span>
+                      {t.status === 'completed'
+                        ? 'Final standings available'
+                        : t.status === 'cancelled'
+                          ? 'Event closed'
+                          : t.status === 'running'
+                            ? 'Play in progress'
+                            : t.status === 'paused'
+                              ? 'Play paused'
+                              : eventDate(t.policy.startsAt)}
+                    </span>
                   </div>
+                  {t.policy.guaranteedPool > 0 && (
+                    <div className="arena-row-meta">
+                      Organizer guarantee · {number(t.policy.guaranteedPool)} chips
+                    </div>
+                  )}
                 </div>
                 <RiArrowRightLine size={20} aria-hidden />
               </Link>
@@ -105,161 +187,33 @@ function TournamentList() {
           )}
         </section>
         <aside className="arena-stack">
+          <SponsorPlacements placement="directory" />
           <section className="arena-panel">
-            <h2>One league. Equal stacks.</h2>
-            <ol className="arena-help-list arena-muted">
-              <li>Enroll yourself or your agent.</li>
-              <li>Connect through MCP or the action API.</li>
-              <li>Play the scheduled hands. Positions rotate and stacks reset.</li>
-              <li>Compare net chips, BB/100 and timeouts.</li>
-            </ol>
+            <h2>Choose your format</h2>
+            <h3>Fixed-hand league</h3>
+            <p className="arena-muted">
+              Stacks reset each hand. Compare net chips and BB/100 over a fixed run.
+            </p>
+            <h3 className="mt-5">Knockout</h3>
+            <p className="arena-muted">
+              Keep your stack between hands. Blinds rise on schedule and eliminated players leave
+              play.
+            </p>
           </section>
           <section className="arena-panel">
-            <h2>Know the format</h2>
+            <h2>Read before you enroll</h2>
             <p className="arena-muted">
-              Arena games are server-dealt with competition chips. They do not affect your room
-              balances or settlement dues.
+              Entry fees, rewards, pot cuts and payout places are published before enrollment. Your
+              accepted rule revision locks the terms.
             </p>
             <p className="arena-muted mt-3">
-              Your ordinary poker rooms keep their encrypted dealing. A benchmark score describes
-              this run, not a guarantee of future performance.
+              All accounting uses competition chips and manual settlement, separate from cash and
+              ordinary poker room balances.
             </p>
           </section>
         </aside>
       </div>
     </main>
-  );
-}
-function CreateForm({ onCreated }: { onCreated: (id: string) => void }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  return (
-    <form
-      className="arena-form"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        if (busy) return;
-        setBusy(true);
-        setError('');
-        const f = new FormData(e.currentTarget);
-        try {
-          const r = await api.createTournament({
-            name: f.get('name'),
-            description: f.get('description'),
-            capacity: Number(f.get('capacity')),
-            handLimit: Number(f.get('handLimit')),
-            startingStack: Number(f.get('stack')),
-            sb: 10,
-            bb: 20,
-            actionSeconds: Number(f.get('seconds')),
-            prizeDescription: f.get('prizes'),
-            rules: f.get('rules'),
-          });
-          onCreated(r.id);
-        } catch (err) {
-          setError(errorText(err));
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      <label className="arena-field wide">
-        Tournament name
-        <input
-          className="arena-input"
-          name="name"
-          required
-          minLength={3}
-          maxLength={80}
-          placeholder="e.g. Friday Agent League"
-        />
-      </label>
-      <label className="arena-field wide">
-        Description
-        <textarea
-          className="arena-input"
-          name="description"
-          rows={2}
-          maxLength={2000}
-          placeholder="Who is playing and what are you testing?"
-        />
-      </label>
-      <label className="arena-field">
-        Hands per entrant
-        <select className="arena-input" name="handLimit" defaultValue="1000">
-          <option value="1000">1,000 hands</option>
-          <option value="10000">10,000 hands</option>
-          <option value="100">100 hands · short league</option>
-          <option value="10">10 hands · test run</option>
-        </select>
-      </label>
-      <label className="arena-field">
-        Seats
-        <input
-          className="arena-input"
-          type="number"
-          name="capacity"
-          min={2}
-          max={9}
-          defaultValue={6}
-          required
-        />
-      </label>
-      <label className="arena-field">
-        Stack at the start of every hand
-        <input
-          className="arena-input"
-          type="number"
-          name="stack"
-          min={100}
-          max={1000000}
-          defaultValue={2000}
-          required
-        />
-      </label>
-      <label className="arena-field">
-        Seconds per decision
-        <input
-          className="arena-input"
-          type="number"
-          name="seconds"
-          min={10}
-          max={300}
-          defaultValue={60}
-          required
-        />
-      </label>
-      <label className="arena-field wide">
-        Prizes (optional)
-        <textarea
-          className="arena-input"
-          name="prizes"
-          maxLength={1000}
-          rows={2}
-          placeholder="Describe confirmed rewards and which places receive them."
-        />
-      </label>
-      <label className="arena-field wide">
-        Entry and award rules (optional)
-        <textarea
-          className="arena-input"
-          name="rules"
-          maxLength={4000}
-          rows={3}
-          placeholder="Eligibility, agent restrictions, tie handling and how winners receive prizes."
-        />
-      </label>
-      <p className="arena-muted wide" style={{ gridColumn: '1/-1' }}>
-        Free entry · 10/20 blinds · No rebuys · No rake. Prize descriptions are published as
-        organizer announcements; this app does not collect fees or send payouts.
-      </p>
-      {error && (
-        <p role="alert" className="arena-error wide">
-          {error}
-        </p>
-      )}
-      <Button disabled={busy}>{busy ? 'Creating…' : 'Create and open enrollment'}</Button>
-    </form>
   );
 }
 function TournamentDetail({ id }: { id: string }) {
@@ -272,6 +226,8 @@ function TournamentDetail({ id }: { id: string }) {
   const [tab, setTab] = useState('Standings');
   const [amount, setAmount] = useState('');
   const [notice, setNotice] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [acceptedRevision, setAcceptedRevision] = useState<number | null>(null);
   const refresh = useCallback(async () => {
     const s = await api.tournament(id);
     setState(s);
@@ -335,6 +291,7 @@ function TournamentDetail({ id }: { id: string }) {
     );
   const me = state.entries.find((e) => e.userId === auth.userId);
   const organizer = state.ownerId === auth.userId || auth.isPlatform;
+  const preStart = ['registration', 'pending', 'rejected'].includes(state.status);
   const round = state.round;
   const legal = state.status === 'running' ? round?.legalActions : null;
   const act = (action: PlayerAction) => {
@@ -352,17 +309,26 @@ function TournamentDetail({ id }: { id: string }) {
         <div>
           <h1>{state.name}</h1>
           <p className="arena-muted">
-            {state.description || 'A fixed-hand league for people and their agents.'}
+            {state.description || `${formatName(state.format)} for people and their agents.`}
           </p>
           <div className="arena-row-meta">
             <Status status={state.status} />
             <span>
               {state.entries.length}/{state.capacity} entrants
             </span>
-            <span>Server-dealt · Free entry</span>
+            <span>
+              {formatName(state.format)} ·{' '}
+              {state.entryFee ? `${number(state.entryFee)} chips entry` : 'Free entry'}
+            </span>
+            <ApprovalStatus tournament={state} />
           </div>
         </div>
         <div className="arena-controls">
+          {state.policy.publicWatch && state.approvalStatus === 'approved' && (
+            <Link className="arena-link" to={`/tournaments/${id}/watch`}>
+              Public watch page
+            </Link>
+          )}
           <Button
             variant="secondary"
             onClick={() =>
@@ -397,16 +363,56 @@ function TournamentDetail({ id }: { id: string }) {
           {notice}
         </p>
       )}
+      {state.approvalStatus !== 'approved' && state.status !== 'cancelled' && (
+        <section className="arena-panel tournament-create">
+          <h2>
+            {state.approvalStatus === 'pending'
+              ? 'Proposal awaiting approval'
+              : 'Changes requested'}
+          </h2>
+          <p className="arena-muted">
+            This proposal is private. Enrollment opens after platform approval.
+          </p>
+          {state.reviewNote && (
+            <p className="arena-note mt-3">
+              <strong>Platform review:</strong> {state.reviewNote}
+            </p>
+          )}
+        </section>
+      )}
+      {editing && organizer && !state.termsLocked && (
+        <section className="arena-panel tournament-create">
+          <h2>Edit tournament terms</h2>
+          <TournamentTermsForm
+            key={state.revision}
+            tournament={state}
+            platform={!!auth.isPlatform}
+            onCancel={() => setEditing(false)}
+            onSave={async (body) => {
+              await api.tournamentTerms(id, body);
+              setEditing(false);
+              await refresh();
+              setNotice(
+                auth.isPlatform ? 'Published terms updated.' : 'Proposal submitted for review.',
+              );
+            }}
+          />
+        </section>
+      )}
       <div className="arena-grid">
         <div className="arena-stack">
           <section className="arena-panel">
             <div className="arena-controls" style={{ justifyContent: 'space-between' }}>
               <h2 style={{ marginBottom: 0 }}>
-                {state.status === 'registration'
-                  ? 'Take your place'
+                {preStart
+                  ? state.approvalStatus === 'approved'
+                    ? 'Take your place'
+                    : 'Enrollment pending approval'
                   : state.status === 'completed'
-                    ? 'League complete'
-                    : `Hand ${round?.handNumber ?? 0}`}
+                    ? 'Tournament complete'
+                    : state.status === 'cancelled'
+                      ? 'Tournament cancelled'
+                      : `Hand ${round?.handNumber ?? 0}`}
               </h2>
               <span className="arena-muted">
                 {number(state.completedHands)} / {number(state.handLimit)} hands
@@ -418,13 +424,17 @@ function TournamentDetail({ id }: { id: string }) {
               max={state.handLimit}
               aria-label="Tournament hand progress"
             />
-            {state.status === 'registration' ? (
-              me ? (
+            {preStart ? (
+              state.approvalStatus !== 'approved' ? (
+                <p className="arena-muted mt-4">
+                  The platform must approve this revision before entrants can accept the terms.
+                </p>
+              ) : me ? (
                 <div className="arena-empty">
                   <h3>You’re enrolled as {me.agentName}.</h3>
                   <p className="arena-muted">
                     {me.kind === 'agent'
-                      ? 'Connect your agent before the organizer starts the league.'
+                      ? 'Connect your agent before the tournament starts.'
                       : 'Keep this page open to take your turns.'}
                   </p>
                   <Button
@@ -437,46 +447,86 @@ function TournamentDetail({ id }: { id: string }) {
                   </Button>
                 </div>
               ) : (
-                <form
-                  className="arena-form mt-5"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const f = new FormData(e.currentTarget);
-                    void mutate(() =>
-                      api.enrollTournament(
-                        id,
-                        String(f.get('name')),
-                        f.get('kind') as 'human' | 'agent',
-                      ),
-                    );
-                  }}
-                >
-                  <label className="arena-field">
-                    Participant name
-                    <input
-                      name="name"
-                      className="arena-input"
-                      required
-                      minLength={2}
-                      maxLength={48}
-                      defaultValue={auth.username ?? ''}
-                    />
-                  </label>
-                  <label className="arena-field">
-                    Who will play?
-                    <select name="kind" className="arena-input">
-                      <option value="agent">My agent</option>
-                      <option value="human">I will play</option>
-                    </select>
-                  </label>
-                  <Button disabled={busy || state.entries.length >= state.capacity}>
-                    {state.entries.length >= state.capacity
-                      ? 'Tournament full'
-                      : busy
-                        ? 'Enrolling…'
-                        : 'Enroll for free'}
-                  </Button>
-                </form>
+                <>
+                  <div className="mt-5">
+                    <TournamentTerms tournament={state} />
+                  </div>
+                  {auth.isPlatform ? (
+                    <p className="arena-muted mt-5">
+                      Platform accounts manage tournaments. Use a player account to enroll.
+                    </p>
+                  ) : !auth.token ? (
+                    <Link
+                      className="arena-link inline-block mt-5"
+                      to={`/login?next=${encodeURIComponent(`/tournaments/${id}`)}`}
+                    >
+                      Sign in to enroll
+                    </Link>
+                  ) : (
+                    <form
+                      className="arena-form mt-5"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!auth.token || acceptedRevision !== state.revision) return;
+                        const f = new FormData(e.currentTarget);
+                        void mutate(() =>
+                          api.enrollTournament(
+                            id,
+                            String(f.get('name')),
+                            f.get('kind') as 'human' | 'agent',
+                            state.revision,
+                          ),
+                        );
+                      }}
+                    >
+                      <label className="arena-field">
+                        Participant name
+                        <input
+                          name="name"
+                          className="arena-input"
+                          required
+                          minLength={2}
+                          maxLength={48}
+                          defaultValue={auth.username ?? ''}
+                        />
+                      </label>
+                      <label className="arena-field">
+                        Who will play?
+                        <select name="kind" className="arena-input">
+                          <option value="agent">My agent</option>
+                          <option value="human">I will play</option>
+                        </select>
+                      </label>
+                      <label className="tournament-checkbox tournament-wide">
+                        <input
+                          type="checkbox"
+                          required
+                          checked={acceptedRevision === state.revision}
+                          onChange={(e) =>
+                            setAcceptedRevision(e.target.checked ? state.revision : null)
+                          }
+                        />
+                        I accept revision {state.revision}, including the entry fee, payouts,
+                        deductions and card disclosure.
+                      </label>
+                      <Button
+                        disabled={
+                          busy ||
+                          acceptedRevision !== state.revision ||
+                          state.entries.length >= state.capacity
+                        }
+                      >
+                        {state.entries.length >= state.capacity
+                          ? 'Tournament full'
+                          : busy
+                            ? 'Enrolling…'
+                            : state.entryFee
+                              ? `Accept & enroll · ${number(state.entryFee)} chips`
+                              : 'Accept & enroll for free'}
+                      </Button>
+                    </form>
+                  )}
+                </>
               )
             ) : (
               round && (
@@ -504,7 +554,15 @@ function TournamentDetail({ id }: { id: string }) {
                           {p.folded ? ' · Folded' : p.allIn ? ' · All-in' : ''}
                         </span>
                         <span>
-                          {number(p.stack)} chips{p.committed ? ` · ${number(p.committed)} in` : ''}
+                          {number(
+                            round.result
+                              ? (round.result.net.find((e) => e.userId === p.userId)?.endStack ??
+                                  p.stack +
+                                    (round.result.net.find((e) => e.userId === p.userId)?.won ?? 0))
+                              : p.stack,
+                          )}{' '}
+                          chips
+                          {!round.result && p.committed ? ` · ${number(p.committed)} in` : ''}
                         </span>
                       </div>
                     ))}
@@ -586,7 +644,7 @@ function TournamentDetail({ id }: { id: string }) {
           </section>
           <div id="arena-results" tabIndex={-1} aria-label="Tournament results">
             <div className="arena-tabs" aria-label="Tournament sections">
-              {['Standings', 'Last hand', 'Rules & prizes'].map((t) => (
+              {['Standings', 'Winnings', 'Last hand', 'Rules & prizes'].map((t) => (
                 <button key={t} aria-pressed={tab === t} onClick={() => setTab(t)}>
                   {t}
                 </button>
@@ -607,7 +665,8 @@ function TournamentDetail({ id }: { id: string }) {
                           <tr>
                             <th>Place</th>
                             <th>Entrant</th>
-                            <th>Net chips</th>
+                            <th>{state.format === 'knockout' ? 'Stack' : 'Play net'}</th>
+                            <th>Prize chips</th>
                             <th>BB / 100</th>
                             <th>Hands</th>
                             <th>Timeouts</th>
@@ -629,8 +688,9 @@ function TournamentDetail({ id }: { id: string }) {
                                   e.net > 0 ? 'arena-positive' : e.net < 0 ? 'arena-negative' : ''
                                 }
                               >
-                                {signed(e.net)}
+                                {state.format === 'knockout' ? number(e.stack) : signed(e.net)}
                               </td>
+                              <td>{number(e.prize)}</td>
                               <td>{e.bbPer100.toFixed(2)}</td>
                               <td>{number(e.hands)}</td>
                               <td>{e.timeouts}</td>
@@ -641,8 +701,10 @@ function TournamentDetail({ id }: { id: string }) {
                     </div>
                   )}
                   <p className="arena-muted mt-4">
-                    Ranked by net chips. Equal scores share a place. BB/100 is net big blinds per
-                    100 hands.
+                    {state.format === 'knockout'
+                      ? 'Ranked by elimination order, then remaining stack. Eliminated entrants keep their final place.'
+                      : 'Ranked by play net. Equal scores share a place. BB/100 is net big blinds per 100 hands.'}{' '}
+                    Play net measures performance and is separate from settlement dues.
                   </p>
                 </>
               )}
@@ -671,22 +733,70 @@ function TournamentDetail({ id }: { id: string }) {
                   )}
                 </>
               )}
+              {tab === 'Winnings' && (
+                <>
+                  <h2>
+                    {['completed', 'cancelled'].includes(state.status)
+                      ? 'Final chip allocation'
+                      : 'Entry accounting'}
+                  </h2>
+                  <p className="arena-muted">
+                    Settlement net = joining reward + prize + banker commission − entry fee.
+                    Positive outstanding means chips due to the entrant; negative means chips due
+                    from the entrant. Play net is shown separately.
+                  </p>
+                  {!state.entries.length ? (
+                    <p className="arena-muted mt-4">
+                      Entry accounting appears when the first player enrolls.
+                    </p>
+                  ) : (
+                    <div className="arena-table-wrap mt-4">
+                      <table className="arena-table">
+                        <thead>
+                          <tr>
+                            <th>Entrant</th>
+                            <th>Entry fee</th>
+                            <th>Joining reward</th>
+                            <th>Prize</th>
+                            <th>Banker commission</th>
+                            <th>Play net</th>
+                            <th>Settlement net</th>
+                            <th>Recorded paid</th>
+                            <th>Outstanding</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {state.entries.map((e) => (
+                            <tr key={e.userId}>
+                              <td className="name">{e.agentName}</td>
+                              <td>{number(e.entryFee)}</td>
+                              <td>{number(e.joiningReward)}</td>
+                              <td>{number(e.prize)}</td>
+                              <td>{number(e.bankerCommission)}</td>
+                              <td>{signed(e.net)}</td>
+                              <td>
+                                {signed(
+                                  e.joiningReward + e.prize + e.bankerCommission - e.entryFee,
+                                )}
+                              </td>
+                              <td>{signed(e.recordedPaid)}</td>
+                              <td>{signed(e.outstanding)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <p className="arena-muted mt-4">
+                    All values are competition chips. Payments are recorded by the platform after
+                    manual settlement. Prizes become final when the event ends.
+                  </p>
+                </>
+              )}
               {tab === 'Rules & prizes' && (
                 <>
                   <h2>Rules & prizes</h2>
-                  <p className="arena-note">{state.prizeDescription || 'No prizes announced.'}</p>
-                  <p className="arena-note mt-4">
-                    {state.rules || 'No additional organizer rules.'}
-                  </p>
-                  <p className="arena-muted mt-4">
-                    {number(state.startingStack)} chips reset every hand. {state.sb}/{state.bb}{' '}
-                    blinds. {state.actionSeconds} seconds per decision. Timed-out turns check when
-                    free, otherwise fold. Enrollment locks at start.
-                  </p>
-                  <p className="arena-muted mt-3">
-                    Server-dealt competition chips are separate from your room balance. Prize
-                    fulfillment is handled by the organizer.
-                  </p>
+                  <TournamentTerms tournament={state} />
                   {state.entries
                     .filter((e) => e.awardNote)
                     .map((e) => (
@@ -734,16 +844,27 @@ function TournamentDetail({ id }: { id: string }) {
           </div>
         </div>
         <aside className="arena-stack">
+          <SponsorPlacements placement="tournament" tournamentId={id} />
           {organizer && (
             <section className="arena-panel">
               <h2>
                 {state.status === 'completed'
                   ? 'Review awards'
                   : state.status === 'cancelled'
-                    ? 'League cancelled'
+                    ? 'Tournament cancelled'
                     : 'Organizer controls'}
               </h2>
               <div className="arena-controls">
+                {preStart && !state.termsLocked && (
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setEditing((v) => !v)}
+                  >
+                    {editing ? 'Close editor' : 'Edit terms'}
+                  </Button>
+                )}
                 {state.status === 'completed' && (
                   <Button
                     onClick={() => {
@@ -758,12 +879,12 @@ function TournamentDetail({ id }: { id: string }) {
                     Open rules & prizes
                   </Button>
                 )}
-                {state.status === 'registration' && (
+                {state.status === 'registration' && state.approvalStatus === 'approved' && (
                   <Button
                     disabled={busy || state.entries.length < 2}
                     onClick={() => void mutate(() => api.controlTournament(id, 'start'))}
                   >
-                    Start league
+                    Start tournament
                   </Button>
                 )}
                 {state.status === 'running' && (
@@ -772,7 +893,7 @@ function TournamentDetail({ id }: { id: string }) {
                     variant="secondary"
                     onClick={() => void mutate(() => api.controlTournament(id, 'pause'))}
                   >
-                    Pause league
+                    Pause tournament
                   </Button>
                 )}
                 {state.status === 'paused' && (
@@ -780,17 +901,17 @@ function TournamentDetail({ id }: { id: string }) {
                     disabled={busy}
                     onClick={() => void mutate(() => api.controlTournament(id, 'resume'))}
                   >
-                    Resume league
+                    Resume tournament
                   </Button>
                 )}
-                {['registration', 'paused'].includes(state.status) && (
+                {['registration', 'paused', 'pending', 'rejected'].includes(state.status) && (
                   <Button
                     variant="ghost"
                     disabled={busy}
                     onClick={() => {
                       if (
                         window.confirm(
-                          'Cancel this league? Saved results remain, but play cannot resume.',
+                          'Cancel this tournament? Before play, entry obligations reverse. After play, the earned pool is allocated by standings. Saved results remain and play cannot resume.',
                         )
                       )
                         void mutate(() => api.controlTournament(id, 'cancel'));
@@ -804,32 +925,113 @@ function TournamentDetail({ id }: { id: string }) {
                 {state.status === 'completed'
                   ? 'Review the final standings, then record award notes for your entrants. Notes do not send payouts.'
                   : state.status === 'cancelled'
-                    ? 'Saved hands and standings remain available. This league cannot resume.'
-                    : state.status === 'registration'
-                      ? 'Connect at least two entrants before starting. Enrollment locks when play begins.'
+                    ? 'Saved hands and standings remain available. This tournament cannot resume.'
+                    : preStart
+                      ? state.approvalStatus !== 'approved'
+                        ? 'Approval is required before enrollment and play.'
+                        : 'At least two entrants are required. Scheduled approved events start automatically; the organizer may also start them here.'
                       : 'Pausing saves the current hand. Resume when entrants are ready to continue.'}
               </p>
-            </section>
-          )}
-          {(state.status === 'registration' ||
-            (me && ['running', 'paused'].includes(state.status))) && (
-            <section className="arena-panel">
-              <h2>
-                {state.status === 'registration' ? 'Bring your own agent' : 'Your agent connection'}
-              </h2>
-              <p className="arena-muted">
-                {state.status === 'registration'
-                  ? 'Enroll, create a token for this tournament, then connect your MCP client. Your agent receives your cards and legal actions.'
-                  : 'Your seat is enrolled. Connect your MCP client with a token for this tournament. Keep it running to respond when your turn arrives.'}
+              {state.scheduleNote && <p className="arena-note mt-3">{state.scheduleNote}</p>}
+              <p className="arena-muted mt-3">
+                {state.termsLocked
+                  ? 'Entry terms are permanently locked because an entrant accepted them.'
+                  : 'Terms can be edited until the first enrollment.'}
               </p>
-              <Link
-                className="arena-link inline-block mt-4"
-                to={`/agents?kind=tournament&id=${id}`}
-              >
-                Set up agent access
-              </Link>
             </section>
           )}
+          {auth.isPlatform && (
+            <section className="arena-panel">
+              <h2>Broadcast links</h2>
+              <TournamentMediaForm
+                key={`${state.policy.streamUrl}:${state.policy.meetUrl}`}
+                tournament={state}
+                onSave={async (body) => {
+                  await api.tournamentMedia(id, body);
+                  await refresh();
+                  setNotice('Broadcast links updated.');
+                }}
+              />
+            </section>
+          )}
+          <section className="arena-panel">
+            <h2>Tournament funds</h2>
+            <dl className="tournament-facts tournament-facts-single">
+              <div>
+                <dt>Available prize pool</dt>
+                <dd>{number(state.finance.pool)} chips</dd>
+              </div>
+              <div>
+                <dt>Prizes allocated</dt>
+                <dd>{number(state.finance.prizes)} chips</dd>
+              </div>
+              <div>
+                <dt>Banker accrued</dt>
+                <dd>{number(state.finance.banker)} chips</dd>
+              </div>
+              <div>
+                <dt>House accrued</dt>
+                <dd>{number(state.finance.house)} chips</dd>
+              </div>
+              <div>
+                <dt>Sponsor contributions</dt>
+                <dd>{number(state.finance.sponsorContributions)} chips</dd>
+              </div>
+            </dl>
+            <p className="arena-muted">
+              Competition-chip accounting. Recorded separately from cash and room balances.
+            </p>
+          </section>
+          {(state.policy.streamUrl || state.policy.meetUrl) && (
+            <section className="arena-panel">
+              <h2>Join the broadcast</h2>
+              <div className="arena-controls">
+                {safeExternalUrl(state.policy.streamUrl) && (
+                  <a
+                    className="arena-link"
+                    href={safeExternalUrl(state.policy.streamUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open stream
+                  </a>
+                )}
+                {safeExternalUrl(state.policy.meetUrl) && (
+                  <a
+                    className="arena-link"
+                    href={safeExternalUrl(state.policy.meetUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open Google Meet
+                  </a>
+                )}
+              </div>
+              <p className="arena-muted mt-3">Links open in a new tab.</p>
+            </section>
+          )}
+          {auth.token &&
+            (state.status === 'registration' ||
+              (me && ['running', 'paused'].includes(state.status))) && (
+              <section className="arena-panel">
+                <h2>
+                  {state.status === 'registration'
+                    ? 'Bring your own agent'
+                    : 'Your agent connection'}
+                </h2>
+                <p className="arena-muted">
+                  {state.status === 'registration'
+                    ? 'Enroll, create a token for this tournament, then connect your MCP client. Your agent receives your cards and legal actions.'
+                    : 'Your seat is enrolled. Connect your MCP client with a token for this tournament. Keep it running to respond when your turn arrives.'}
+                </p>
+                <Link
+                  className="arena-link inline-block mt-4"
+                  to={`/agents?kind=tournament&id=${id}`}
+                >
+                  Set up agent access
+                </Link>
+              </section>
+            )}
           <section className="arena-panel">
             <h2>Deal commitment</h2>
             <p className="arena-muted">

@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import { createApp } from '../../../server/src/app.js';
 import { attachHub } from '../../../server/src/hub.js';
 import { createUser, createSession } from '../../../server/src/auth.js';
+import { setPlatformUserId } from '../../../server/src/platform.js';
 import { identityFromSeed } from '@4am/mental-poker';
 import { scrypt } from '@noble/hashes/scrypt';
 import { bytesToHex } from '@noble/hashes/utils';
@@ -19,6 +20,7 @@ const users = ['arena_host', 'arena_alice', 'arena_bob'].map((username) => {
   );
   return { username, userId, token: createSession(db, userId), identity };
 });
+setPlatformUserId(db, users[0]!.userId);
 await writeFile('/tmp/4am-arena-fixture.json', JSON.stringify({ users }), { mode: 0o600 });
 await app.listen({ port: Number(process.env.PORT ?? 58599), host: '127.0.0.1' });
 console.log('Local arena fixture ready; synthetic credentials are in /tmp/4am-arena-fixture.json.');

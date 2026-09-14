@@ -1,0 +1,155 @@
+import { z } from 'zod';
+import { DEFAULT_TOURNAMENT_POLICY, type TournamentPolicy } from '@4am/shared';
+import type { DB } from './db.js';
+import { AgentError } from './agentAccess.js';
+
+export interface Tournament {
+  id: string;
+  owner_id: number;
+  name: string;
+  description: string;
+  status: string;
+  capacity: number;
+  hand_limit: number;
+  starting_stack: number;
+  sb: number;
+  bb: number;
+  action_seconds: number;
+  prize_description: string;
+  rules: string;
+  seed: string;
+  completed_hands: number;
+  round_json: string | null;
+  deadline: number | null;
+  last_result: string | null;
+  created_at: number;
+  updated_at: number;
+  approval_status: 'approved' | 'pending' | 'rejected';
+  policy_json: string;
+  revision: number;
+  terms_locked: number;
+  review_note: string;
+  schedule_note: string;
+}
+export const tournamentInput = z.object({
+  name: z.string().trim().min(3).max(80),
+  description: z.string().max(2000).default(''),
+  capacity: z.number().int().min(2).max(9).default(6),
+  handLimit: z.number().int().min(10).max(10000).default(1000),
+  startingStack: z.number().int().min(100).max(1000000).default(2000),
+  sb: z.number().int().min(1).max(10000).default(10),
+  bb: z.number().int().min(2).max(20000).default(20),
+  actionSeconds: z.number().int().min(10).max(300).default(60),
+  prizeDescription: z.string().max(1000).default(''),
+  rules: z.string().max(4000).default(''),
+});
+const amount = z.number().int().min(0).max(1_000_000_000);
+export function safeBroadcastUrl(value: string, meet = false): boolean {
+  if (!value) return true;
+  try {
+    const u = new URL(value);
+    if (u.protocol !== 'https:' || u.username || u.password || u.port) return false;
+    return meet
+      ? u.hostname === 'meet.google.com'
+      : ['youtube.com', 'www.youtube.com', 'youtu.be', 'twitch.tv', 'www.twitch.tv'].includes(
+          u.hostname,
+        );
+  } catch {
+    return false;
+  }
+}
+export const tournamentPolicyInput = z.object({
+  format: z.enum(['fixed-hand-league', 'knockout']),
+  startsAt: z.number().int().safe().nonnegative().nullable(),
+  entryFee: amount,
+  joiningReward: amount,
+  guaranteedPool: amount,
+  bankerBps: z.number().int().min(0).max(1000),
+  houseBps: z.number().int().min(0).max(1000),
+  prizeBps: z.number().int().min(0).max(1000),
+  bankerUserId: z.number().int().positive().nullable(),
+  payoutBps: z.array(z.number().int().positive().max(10000)).min(1).max(9),
+  blindEveryHands: z.number().int().min(1).max(10000),
+  publicWatch: z.boolean(),
+  revealAllAfterHand: z.literal(true),
+  streamUrl: z
+    .string()
+    .max(1000)
+    .refine((v) => safeBroadcastUrl(v)),
+  meetUrl: z
+    .string()
+    .max(1000)
+    .refine((v) => safeBroadcastUrl(v, true)),
+});
+export function parsePolicy(value: unknown, capacity: number): TournamentPolicy {
+  if (value !== undefined && (value === null || typeof value !== 'object' || Array.isArray(value)))
+    throw new AgentError(400, 'Invalid tournament policy.');
+  const p = tournamentPolicyInput.safeParse({
+    ...DEFAULT_TOURNAMENT_POLICY,
+    ...((value as object) ?? {}),
+  });
+  if (!p.success)
+    throw new AgentError(
+      400,
+      'Check tournament fees, payout percentages, schedule and broadcast links.',
+    );
+  if (p.data.payoutBps.reduce((a, b) => a + b, 0) !== 10000)
+    throw new AgentError(400, 'Prize percentages must total 100%.');
+  if (p.data.guaranteedPool < capacity * p.data.joiningReward)
+    throw new AgentError(
+      400,
+      'The organizer guarantee must cover the joining reward for every seat.',
+    );
+  return p.data;
+}
+export function policyOf(t: Pick<Tournament, 'policy_json'>): TournamentPolicy {
+  return t.policy_json
+    ? (JSON.parse(t.policy_json) as TournamentPolicy)
+    : {
+        ...DEFAULT_TOURNAMENT_POLICY,
+        bankerBps: 0,
+        houseBps: 0,
+        prizeBps: 0,
+        revealAllAfterHand: false,
+      };
+}
+export function getTournament(db: DB, id: string): Tournament {
+  const t = db.prepare('SELECT * FROM tournaments WHERE id=?').get(id) as Tournament | undefined;
+  if (!t) throw new AgentError(404, 'Tournament not found.');
+  return t;
+}
+export function initializeTournamentOperations(db: DB): void {
+  const cols = new Set(
+    (db.prepare('PRAGMA table_info(tournaments)').all() as { name: string }[]).map((c) => c.name),
+  );
+  for (const [name, type] of Object.entries({
+    approval_status: "TEXT NOT NULL DEFAULT 'approved'",
+    policy_json: "TEXT NOT NULL DEFAULT ''",
+    revision: 'INTEGER NOT NULL DEFAULT 0',
+    terms_locked: 'INTEGER NOT NULL DEFAULT 0',
+    review_note: "TEXT NOT NULL DEFAULT ''",
+    schedule_note: "TEXT NOT NULL DEFAULT ''",
+  }))
+    if (!cols.has(name)) db.exec(`ALTER TABLE tournaments ADD COLUMN ${name} ${type}`);
+  const entryCols = new Set(
+    (db.prepare('PRAGMA table_info(tournament_entries)').all() as { name: string }[]).map(
+      (c) => c.name,
+    ),
+  );
+  if (!entryCols.has('stack')) {
+    db.exec('ALTER TABLE tournament_entries ADD COLUMN stack INTEGER NOT NULL DEFAULT 0');
+    db.exec(
+      'UPDATE tournament_entries SET stack=(SELECT starting_stack FROM tournaments WHERE id=tournament_id)',
+    );
+  }
+  if (!entryCols.has('eliminated_hand'))
+    db.exec('ALTER TABLE tournament_entries ADD COLUMN eliminated_hand INTEGER');
+  if (!entryCols.has('accepted_revision'))
+    db.exec(
+      'ALTER TABLE tournament_entries ADD COLUMN accepted_revision INTEGER NOT NULL DEFAULT 0',
+    );
+  db.exec(`UPDATE tournaments SET terms_locked=1 WHERE EXISTS(SELECT 1 FROM tournament_entries WHERE tournament_id=tournaments.id);
+    CREATE TABLE IF NOT EXISTS tournament_reviews(id INTEGER PRIMARY KEY, tournament_id TEXT NOT NULL REFERENCES tournaments(id), revision INTEGER NOT NULL, action TEXT NOT NULL, note TEXT NOT NULL, actor_id INTEGER NOT NULL, ts INTEGER NOT NULL);
+    CREATE TRIGGER IF NOT EXISTS tournament_reviews_no_update BEFORE UPDATE ON tournament_reviews BEGIN SELECT RAISE(ABORT,'Tournament reviews are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS tournament_reviews_no_delete BEFORE DELETE ON tournament_reviews BEGIN SELECT RAISE(ABORT,'Tournament reviews are immutable'); END;`);
+}

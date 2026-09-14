@@ -61,6 +61,11 @@ const AppShell = lazy(() =>
 const TournamentsPage = lazy(() =>
   import('../pages/tournaments/TournamentsPage.tsx').then((m) => ({ default: m.TournamentsPage })),
 );
+const TournamentWatchPage = lazy(() =>
+  import('../pages/tournaments/TournamentWatchPage.tsx').then((m) => ({
+    default: m.TournamentWatchPage,
+  })),
+);
 const AgentsPage = lazy(() =>
   import('../pages/agents/AgentsPage.tsx').then((m) => ({ default: m.AgentsPage })),
 );
@@ -84,6 +89,10 @@ function RequireAuth({ children }: { children: ReactNode }) {
     );
   }
   return children;
+}
+function TournamentShell({ children }: { children: ReactNode }) {
+  const token = useStore((s) => s.auth.token);
+  return token ? <AppShell>{children}</AppShell> : children;
 }
 
 /** The mirror of RequireAuth: someone already signed in has no business looking
@@ -260,23 +269,20 @@ export function App() {
             <Route
               path="/tournaments"
               element={
-                <RequireAuth>
-                  <AppShell>
-                    <TournamentsPage />
-                  </AppShell>
-                </RequireAuth>
+                <TournamentShell>
+                  <TournamentsPage />
+                </TournamentShell>
               }
             />
             <Route
               path="/tournaments/:id"
               element={
-                <RequireAuth>
-                  <AppShell>
-                    <TournamentsPage />
-                  </AppShell>
-                </RequireAuth>
+                <TournamentShell>
+                  <TournamentsPage />
+                </TournamentShell>
               }
             />
+            <Route path="/tournaments/:id/watch" element={<TournamentWatchPage />} />
             <Route
               path="/agents"
               element={

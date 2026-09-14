@@ -5,9 +5,11 @@ export const isAdminSite = () => window.location.hostname === ADMIN_HOST;
 export function adminDestination(search = window.location.search): string {
   const next = new URLSearchParams(search).get('next');
   if (isAdminSite()) {
-    return next && /^\/(?:settings|revenue|rooms|users|requests)?$/.test(next) ? next : '/';
+    return next && /^\/(?:settings|revenue|rooms|users|requests|tournaments)?$/.test(next)
+      ? next
+      : '/';
   }
-  return next && /^\/admin(?:\/(?:settings|revenue|rooms|users|requests))?$/.test(next)
+  return next && /^\/admin(?:\/(?:settings|revenue|rooms|users|requests|tournaments))?$/.test(next)
     ? next
     : '/admin';
 }

@@ -21,6 +21,7 @@ import { Button, Input } from '../../shared/ui/index.tsx';
 import { AppearanceToggle } from '../../shared/ui/AppearanceToggle.tsx';
 import { PlatformDues } from '../../features/house/PlatformDues.tsx';
 import { CommissionControl } from './CommissionControl.tsx';
+import { TournamentAdmin } from './TournamentAdmin.tsx';
 import {
   LifecycleSection,
   MergeSection,
@@ -33,6 +34,13 @@ import './admin.css';
 // Operate surface: a dedicated Zeus control center. Persistent navigation leads
 // to real account, room, receivables and rate controls; no player-game chrome.
 const sections = [
+  {
+    id: 'tournaments',
+    name: 'Tournaments & earnings',
+    icon: RiPokerClubsLine,
+    description:
+      'Approve tournaments, manage sponsors, and review tournament earnings and recorded settlements.',
+  },
   {
     id: '',
     name: 'Overview',
@@ -576,6 +584,7 @@ export function AdminPage() {
               )
             ))}
           {sectionId === 'revenue' && <PlatformDues key={refresh} />}
+          {sectionId === 'tournaments' && <TournamentAdmin key={refresh} />}
           {sectionId === 'rooms' && <RoomsSection key={refresh} />}
           {sectionId === 'users' && <UsersDirectory key={refresh} />}
           {sectionId === 'requests' && (

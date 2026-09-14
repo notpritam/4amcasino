@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "capturePicker": "stubbed with generated canvas stream; no real screen or microphone captured",
+  "mediaRecorder": "real Chromium MediaRecorder",
+  "checks": [
+    "picker cancellation recovery",
+    "WebM recording and download",
+    "non-tab audio removed",
+    "video/audio tracks stopped",
+    "unmount while picker pending cleans returned stream"
+  ],
+  "pageErrors": []
+}

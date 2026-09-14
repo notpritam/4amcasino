@@ -5,18 +5,23 @@ import { tickTournaments } from '../src/tournaments.js';
 import { mergeAccounts } from '../src/merge.js';
 import { actArena, createArenaRound } from '@4am/shared';
 import { arenaDeck, seedCommitment } from '../src/arenaRandom.js';
+import { setPlatformUserId } from '../src/platform.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 let ctx: ReturnType<typeof createApp>;
 let directory: string | undefined;
 let users: { id: number; token: string }[];
+let platformToken: string;
 beforeEach(() => {
   ctx = createApp(':memory:');
   users = ['host', 'alice', 'bob'].map((username) => {
     const { userId } = createUser(ctx.db, username, 'a'.repeat(64), 'b'.repeat(64));
     return { id: userId, token: createSession(ctx.db, userId) };
   });
+  const platformId = createUser(ctx.db, 'platform', 'c'.repeat(64), 'd'.repeat(64)).userId;
+  setPlatformUserId(ctx.db, platformId);
+  platformToken = createSession(ctx.db, platformId);
 });
 afterEach(async () => {
   await ctx.app.close();
@@ -30,7 +35,7 @@ const request = (path: string, user = 0, body?: any, method?: 'GET' | 'POST' | '
     method: method ?? (body === undefined ? 'GET' : 'POST'),
     url: path,
     headers: { authorization: `Bearer ${users[user]!.token}` },
-    payload: body,
+    payload: path.endsWith('/enroll') && body ? { ...body, acceptedRevision: 1 } : body,
   });
 async function tournament() {
   const res = await request('/api/tournaments', 0, {
@@ -41,8 +46,16 @@ async function tournament() {
     sb: 10,
     bb: 20,
     actionSeconds: 60,
+    policy: { bankerBps: 0, houseBps: 0, prizeBps: 0 },
   });
   expect(res.statusCode).toBe(200);
+  const review = await ctx.app.inject({
+    method: 'POST',
+    url: `/api/admin/tournaments/${res.json().id}/review`,
+    headers: { authorization: `Bearer ${platformToken}` },
+    payload: { approve: true, revision: 1, note: 'Test event' },
+  });
+  expect(review.statusCode).toBe(200);
   return res.json().id as string;
 }
 describe('tournaments', () => {
@@ -189,6 +202,8 @@ describe('tournaments', () => {
           sb: done.sb,
           bb: done.bb,
           handNumber: hand,
+          commission: { bankerBps: 0, houseBps: 0, prizeBps: 0 },
+          revealAllAfterHand: true,
         },
         arenaDeck(audit.seed, hand),
       );

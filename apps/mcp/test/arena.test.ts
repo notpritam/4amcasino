@@ -5,6 +5,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createApp } from '../../server/src/app.js';
 import { createSession, createUser } from '../../server/src/auth.js';
+import { setPlatformUserId } from '../../server/src/platform.js';
 import { registerArenaTools } from '../src/arenaTools.js';
 import { runBenchmark, baselineAgents } from '../src/benchmark.js';
 import { assertContinuousHistory, webhookHeaders } from '../src/webhook-relay.js';
@@ -50,6 +51,14 @@ it('exposes a real MCP tournament flow and reports rejected tool calls as errors
       payload: { name: 'MCP protocol test', handLimit: 10 },
     })
   ).json();
+  const platformId = createUser(db, 'mcp_platform', 'c'.repeat(64), 'd'.repeat(64)).userId;
+  setPlatformUserId(db, platformId);
+  await app.inject({
+    method: 'POST',
+    url: `/api/admin/tournaments/${tournament.id}/review`,
+    headers: { authorization: `Bearer ${createSession(db, platformId)}` },
+    payload: { approve: true, revision: 1, note: 'Approved' },
+  });
   const server = new McpServer({ name: 'test-arena', version: '1.0.0' });
   registerArenaTools(server, async (path, body) => {
     const r = await app.inject({
@@ -69,7 +78,7 @@ it('exposes a real MCP tournament flow and reports rejected tool calls as errors
     expect((await client.listTools()).tools.some((t) => t.name === 'subscribe_events')).toBe(true);
     const enrolled = await client.callTool({
       name: 'enroll_tournament',
-      arguments: { tournamentId: tournament.id, agentName: 'MCP Entry' },
+      arguments: { tournamentId: tournament.id, agentName: 'MCP Entry', acceptedRevision: 1 },
     });
     expect(enrolled.isError).not.toBe(true);
     const state = await client.callTool({

@@ -1,4 +1,7 @@
 import type { DB } from './db.js';
+import { initializeTournamentOperations } from './tournamentConfig.js';
+import { initializeTournamentEconomy } from './tournamentEconomy.js';
+import { initializeSponsors } from './sponsors.js';
 export function migrateAgentPlatform(db: DB): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS tournaments (
@@ -48,4 +51,7 @@ export function migrateAgentPlatform(db: DB): void {
       UPDATE agent_grants SET revoked_at = COALESCE(revoked_at, CAST(strftime('%s','now') AS INTEGER)*1000) WHERE user_id = NEW.id;
     END;
   `);
+  initializeTournamentOperations(db);
+  initializeTournamentEconomy(db);
+  initializeSponsors(db);
 }
