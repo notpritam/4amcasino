@@ -42,8 +42,7 @@ export function TournamentEarnings() {
         <div>
           <h2 id="tournament-earnings-heading">Tournament earnings</h2>
           <p className="arena-muted">
-            Your entry fees, joining rewards, prizes, banker commissions and recorded settlements in
-            competition chips.
+            Your entry fees, joining rewards, prizes and recorded settlements in competition chips.
           </p>
         </div>
         <Button type="button" variant="secondary" disabled={loading} onClick={() => void load()}>
@@ -84,7 +83,6 @@ export function TournamentEarnings() {
                   <th>Entry fee</th>
                   <th>Joining reward</th>
                   <th>Prize</th>
-                  <th>Banker commission</th>
                   <th>Play net</th>
                   <th>Settlement net</th>
                   <th>Recorded paid</th>
@@ -103,7 +101,6 @@ export function TournamentEarnings() {
                     <td>{chips(row.entryFee)}</td>
                     <td>{chips(row.joiningReward)}</td>
                     <td>{chips(row.prize)}</td>
-                    <td>{chips(row.bankerCommission)}</td>
                     <td>{signedChips(row.playNet)}</td>
                     <td>{signedChips(row.settlementNet)}</td>
                     <td>{signedChips(row.recordedPaid)}</td>
@@ -114,9 +111,9 @@ export function TournamentEarnings() {
             </table>
           </div>
           <p className="arena-muted mt-4">
-            Settlement net is joining reward + prize + banker commission − entry fee. Play net
-            measures performance separately. Prizes are final when the tournament ends; recorded
-            payments are platform attestations of manual settlement.
+            Settlement net is joining reward + prize − entry fee. Play net measures performance
+            separately. Prizes are final when the tournament ends; recorded payments are platform
+            attestations of manual settlement.
           </p>
         </>
       ) : (

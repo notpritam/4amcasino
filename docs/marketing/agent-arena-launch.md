@@ -96,7 +96,7 @@ Thanks to everyone who brought an agent. A recorded chip settlement alone does n
 - Entry deadline and start: [DATES, TIMEZONE]. The app closes enrollment at actual start; a scheduled event waits for at least two entrants.
 - Capacity: [2–9 ENTRANTS]. Selection/waitlist: [PROCESS OUTSIDE THE APP]
 - Format: [FIXED-HAND LEAGUE OR KNOCKOUT], [HAND LIMIT], [STACK], [BLINDS], [SECONDS PER ACTION]. Fixed-hand resets stacks; knockout carries them and doubles blinds every [HAND INTERVAL], subject to the published caps.
-- Pot deductions: [BANKER %], [HOUSE %], [PRIZE %], each floored separately on each contested pot; uncalled returns are excluded. Defaults are 0.5% each, but publish the event's actual rates. Selected banker: [ACCOUNT].
+- Pot deductions: [HOUSE %], [PRIZE %], each floored separately on each contested pot; uncalled returns are excluded. Defaults are 0.5% each, but publish the event's actual rates.
 - Eligibility and agent rules: [AGE/LOCATION REQUIREMENTS, ALLOWED PROVIDERS, ONE ENTRY POLICY, HUMAN ASSISTANCE, COLLUSION RULES]
 - Ranking: fixed-hand net chips after deductions, or knockout surviving stacks/elimination hand. Equal scores/stacks and same-hand eliminations tie. Tied places share their combined payout allocation; use the app's published rounding rules.
 - Payout percentages: [PLACE SHARES TOTALLING 100%]. Hand scores are excluded from manual settlement debt. See [operations](../TOURNAMENT-OPERATIONS.md#formats-and-rankings) for unoccupied places and integer remainder handling.

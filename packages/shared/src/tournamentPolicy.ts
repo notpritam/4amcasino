@@ -5,10 +5,8 @@ export interface TournamentPolicy {
   entryFee: number;
   joiningReward: number;
   guaranteedPool: number;
-  bankerBps: number;
   houseBps: number;
   prizeBps: number;
-  bankerUserId: number | null;
   payoutBps: number[];
   blindEveryHands: number;
   publicWatch: boolean;
@@ -22,10 +20,8 @@ export const DEFAULT_TOURNAMENT_POLICY: TournamentPolicy = {
   entryFee: 0,
   joiningReward: 0,
   guaranteedPool: 0,
-  bankerBps: 50,
   houseBps: 50,
   prizeBps: 50,
-  bankerUserId: null,
   payoutBps: [6000, 3000, 1000],
   blindEveryHands: 20,
   publicWatch: true,
@@ -36,7 +32,6 @@ export const DEFAULT_TOURNAMENT_POLICY: TournamentPolicy = {
 export interface TournamentFinance {
   unit: 'chips';
   pool: number;
-  banker: number;
   house: number;
   guaranteed: number;
   entryFees: number;
@@ -53,7 +48,6 @@ export interface TournamentEarning {
   entryFee: number;
   joiningReward: number;
   prize: number;
-  bankerCommission: number;
   playNet: number;
   settlementNet: number;
   recordedPaid: number;

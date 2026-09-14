@@ -17,7 +17,7 @@ export interface ArenaConfig {
   /** Persistent stacks in playerIds order; omit for the original equal-stack mode. */
   stacks?: number[];
   buttonUserId?: number;
-  commission?: { bankerBps: number; houseBps: number; prizeBps: number };
+  commission?: { houseBps: number; prizeBps: number };
   revealAllAfterHand?: boolean;
   sb: number;
   bb: number;
@@ -30,7 +30,7 @@ export interface ArenaResult {
   net: { userId: number; net: number; won: number; endStack?: number; grossWon?: number }[];
   revealed: { userId: number; cards: number[] }[];
   /** Commission totals and their pre-fee chip basis, excluding uncalled returns. */
-  fees?: { banker: number; house: number; prize: number; contested: number };
+  fees?: { house: number; prize: number; contested: number };
 }
 /** Server-private state. Only arenaView may cross an API boundary. Requested by notpritam. */
 export interface ArenaRound extends ArenaConfig {
@@ -60,10 +60,10 @@ export function createArenaRound(config: ArenaConfig, deck: readonly number[]): 
     (buttonUserId !== undefined && !playerIds.includes(buttonUserId)) ||
     (commission !== undefined &&
       (!commission ||
-        ![commission.bankerBps, commission.houseBps, commission.prizeBps].every(
+        ![commission.houseBps, commission.prizeBps].every(
           (bps) => Number.isSafeInteger(bps) && bps >= 0 && bps <= 1000,
         ) ||
-        commission.bankerBps + commission.houseBps + commission.prizeBps > 3000)) ||
+        commission.houseBps + commission.prizeBps > 2000)) ||
     (config.revealAllAfterHand !== undefined && typeof config.revealAllAfterHand !== 'boolean')
   )
     throw new Error('invalid arena configuration');
@@ -165,7 +165,7 @@ function advanceArena(round: ArenaRound): ArenaRound {
     let won = grossWon;
     let fees: ArenaResult['fees'];
     if (round.commission !== undefined) {
-      fees = { banker: 0, house: 0, prize: 0, contested: 0 };
+      fees = { house: 0, prize: 0, contested: 0 };
       // computePots merges equal-eligibility layers. Remove the unique largest
       // contribution's uncalled excess first so it can never enter the fee base.
       const totals = round.betting.seats.map((s) => s.total).sort((a, b) => b - a);
@@ -174,14 +174,12 @@ function advanceArena(round: ArenaRound): ArenaRound {
         round.betting.seats.map((s) => ({ ...s, total: Math.min(s.total, matched) })),
       );
       const netPots = pots.map((pot) => {
-        const banker = Math.floor((pot.amount * round.commission!.bankerBps) / 10_000);
         const house = Math.floor((pot.amount * round.commission!.houseBps) / 10_000);
         const prize = Math.floor((pot.amount * round.commission!.prizeBps) / 10_000);
-        fees!.banker += banker;
         fees!.house += house;
         fees!.prize += prize;
         fees!.contested += pot.amount;
-        return { ...pot, amount: pot.amount - banker - house - prize };
+        return { ...pot, amount: pot.amount - house - prize };
       });
       won = awardPots(netPots, scores, order);
       for (const s of round.betting.seats) {
@@ -278,7 +276,6 @@ export interface TournamentEntry {
   prize: number;
   recordedPaid: number;
   outstanding: number;
-  bankerCommission: number;
 }
 export interface TournamentState extends TournamentSummary {
   finance: import('./tournamentPolicy.js').TournamentFinance;

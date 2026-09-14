@@ -356,7 +356,6 @@ function EarningsAdmin({
         {(
           [
             ['House accrued', data.totals.house],
-            ['Banker accrued', data.totals.banker],
             ['Available pools', data.totals.pool],
             ['Prizes allocated', data.totals.prizes],
             ['Recorded paid', data.totals.recordedPaid],
@@ -393,7 +392,6 @@ function EarningsAdmin({
                 <th>Entry</th>
                 <th>Reward</th>
                 <th>Prize</th>
-                <th>Banker commission</th>
                 <th>Play net</th>
                 <th>Settlement net</th>
                 <th>Recorded paid</th>
@@ -415,7 +413,6 @@ function EarningsAdmin({
                   <td>{chips(r.entryFee)}</td>
                   <td>{chips(r.joiningReward)}</td>
                   <td>{chips(r.prize)}</td>
-                  <td>{chips(r.bankerCommission)}</td>
                   <td>{signedChips(r.playNet)}</td>
                   <td>{signedChips(r.settlementNet)}</td>
                   <td>{signedChips(r.recordedPaid)}</td>

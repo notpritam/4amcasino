@@ -46,7 +46,7 @@ async function tournament() {
     sb: 10,
     bb: 20,
     actionSeconds: 60,
-    policy: { bankerBps: 0, houseBps: 0, prizeBps: 0 },
+    policy: { houseBps: 0, prizeBps: 0 },
   });
   expect(res.statusCode).toBe(200);
   const review = await ctx.app.inject({
@@ -202,7 +202,7 @@ describe('tournaments', () => {
           sb: done.sb,
           bb: done.bb,
           handNumber: hand,
-          commission: { bankerBps: 0, houseBps: 0, prizeBps: 0 },
+          commission: { houseBps: 0, prizeBps: 0 },
           revealAllAfterHand: true,
         },
         arenaDeck(audit.seed, hand),

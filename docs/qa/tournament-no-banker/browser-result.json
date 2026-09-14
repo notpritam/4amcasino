@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "tournamentId": "9d293f54bab673ae06b8",
+  "checks": [
+    "anonymous directory",
+    "member proposal private",
+    "platform approval",
+    "enrollment consent and locked terms",
+    "scoped MCP configuration and token revocation",
+    "sponsor creation and idempotent receipt retry",
+    "anonymous sponsor projection",
+    "start pause resume",
+    "ten browser hands and complete conserved payout",
+    "finished hand replay and all-card reveal",
+    "idempotent manual settlement and personal earnings",
+    "desktop mobile dark and zero page errors"
+  ],
+  "pageErrors": []
+}

@@ -30,7 +30,7 @@ at least two entrants and show a waiting reason when they cannot start.
 
 All amounts are whole competition chips, separate from room balances, rake and
 settlement dues. Entry obligations, organizer guarantees, joining rewards,
-banker/house/prize deductions and sponsor prize contributions feed a balanced
+house/prize deductions and sponsor prize contributions feed a balanced
 tournament journal. Personal earnings and platform administration distinguish
 play net, settlement net, recorded paid and outstanding amounts. Only the platform
 records manual settlements and sponsor receipts; these are attestations, not
@@ -55,5 +55,5 @@ and automatic prize fulfillment are outside the implemented product.
 See the [arena guide](docs/AGENT-ARENA.md),
 [operations runbook](docs/TOURNAMENT-OPERATIONS.md) and
 [surface brief](.impeccable/surfaces/agent-arena.md). The
-[current verification record](docs/qa/2026-09-14-tournament-operations.md)
+[current verification record](docs/qa/2026-09-14-tournament-no-banker.md)
 documents local implementation and QA; it does not establish deployment.

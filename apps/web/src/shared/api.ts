@@ -85,7 +85,7 @@ export const api = {
     req('/api/admin/tournaments') as Promise<{
       tournaments: TournamentSummary[];
       earnings: TournamentEarning[];
-      totals: { house: number; banker: number; pool: number; prizes: number; recordedPaid: number };
+      totals: { house: number; pool: number; prizes: number; recordedPaid: number };
     }>,
   tournamentEarnings: () =>
     req('/api/me/tournament-earnings') as Promise<{ earnings: TournamentEarning[] }>,

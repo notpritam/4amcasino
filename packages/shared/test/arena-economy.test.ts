@@ -4,7 +4,7 @@ import { cardFromName } from '../src/cards.js';
 
 const config = { playerIds: [10, 20, 30], stack: 2000, sb: 10, bb: 20, handNumber: 1 };
 const deck = Array.from({ length: 52 }, (_, i) => i);
-const commission = { bankerBps: 1000, houseBps: 1000, prizeBps: 1000 };
+const commission = { houseBps: 1000, prizeBps: 1000 };
 function tieDeck(players = 3) {
   const holes = '2c 3d 4c 5d 6c 7d'
     .split(' ')
@@ -35,7 +35,7 @@ function winnings(round: ArenaRound) {
 }
 function expectConservation(round: ArenaRound) {
   const { fees, net } = round.result!;
-  const removed = fees ? fees.banker + fees.house + fees.prize : 0;
+  const removed = fees ? fees.house + fees.prize : 0;
   expect(net.reduce((sum, p) => sum + p.net, 0) + removed).toBe(0);
   const initial = round.stacks ?? round.playerIds.map(() => round.stack);
   expect(net.reduce((sum, p) => sum + p.endStack!, 0) + removed).toBe(
@@ -128,10 +128,10 @@ describe('persistent arena stacks', () => {
 
 describe('arena commission settlement', () => {
   it.each([
-    { bankerBps: -1, houseBps: 0, prizeBps: 0 },
-    { bankerBps: 1001, houseBps: 0, prizeBps: 0 },
-    { bankerBps: 0, houseBps: 0.5, prizeBps: 0 },
-    { bankerBps: 0, houseBps: 0, prizeBps: NaN },
+    { houseBps: -1, prizeBps: 0 },
+    { houseBps: 1001, prizeBps: 0 },
+    { houseBps: 0.5, prizeBps: 0 },
+    { houseBps: 0, prizeBps: NaN },
   ])('rejects invalid rates %j', (commission) => {
     expect(() => createArenaRound({ ...config, commission }, deck)).toThrow(
       'invalid arena configuration',
@@ -146,11 +146,11 @@ describe('arena commission settlement', () => {
       ),
       true,
     );
-    expect(round.result!.fees).toEqual({ banker: 50, house: 50, prize: 50, contested: 505 });
+    expect(round.result!.fees).toEqual({ house: 50, prize: 50, contested: 505 });
     expect(winnings(round)).toEqual([
-      { userId: 10, net: -30, won: 71, grossWon: 101, endStack: 71 },
-      { userId: 20, net: -60, won: 142, grossWon: 202, endStack: 142 },
-      { userId: 30, net: -60, won: 243, grossWon: 303, endStack: 243 },
+      { userId: 10, net: -20, won: 81, grossWon: 101, endStack: 81 },
+      { userId: 20, net: -40, won: 162, grossWon: 202, endStack: 162 },
+      { userId: 30, net: -40, won: 263, grossWon: 303, endStack: 263 },
     ]);
     expectConservation(round);
   });
@@ -162,13 +162,13 @@ describe('arena commission settlement', () => {
           ...config,
           stacks: [101, 202, 303],
           buttonUserId: 30,
-          commission: { bankerBps: 50, houseBps: 0, prizeBps: 0 },
+          commission: { houseBps: 50, prizeBps: 0 },
         },
         tieDeck(),
       ),
       true,
     );
-    expect(round.result!.fees).toEqual({ banker: 2, house: 0, prize: 0, contested: 505 });
+    expect(round.result!.fees).toEqual({ house: 2, prize: 0, contested: 505 });
     expect(winnings(round).map((p) => p.won)).toEqual([101, 202, 301]);
     expectConservation(round);
   });
@@ -180,10 +180,10 @@ describe('arena commission settlement', () => {
       createArenaRound({ ...config, stacks: [100, 200, 300], buttonUserId: 30, commission }, cards),
       true,
     );
-    expect(round.result!.fees).toEqual({ banker: 50, house: 50, prize: 50, contested: 500 });
+    expect(round.result!.fees).toEqual({ house: 50, prize: 50, contested: 500 });
     expect(winnings(round)).toEqual([
-      { userId: 10, net: 110, won: 210, grossWon: 300, endStack: 210 },
-      { userId: 20, net: -60, won: 140, grossWon: 200, endStack: 140 },
+      { userId: 10, net: 140, won: 240, grossWon: 300, endStack: 240 },
+      { userId: 20, net: -40, won: 160, grossWon: 200, endStack: 160 },
       { userId: 30, net: -200, won: 100, grossWon: 100, endStack: 100 },
     ]);
     expectConservation(round);
@@ -194,23 +194,23 @@ describe('arena commission settlement', () => {
     round = actArena(round, 10, { type: 'raise', amount: 1000 });
     round = actArena(round, 20, { type: 'fold' });
     round = actArena(round, 30, { type: 'fold' });
-    expect(round.result!.fees).toEqual({ banker: 5, house: 5, prize: 5, contested: 50 });
+    expect(round.result!.fees).toEqual({ house: 5, prize: 5, contested: 50 });
     expect(winnings(round)[0]).toEqual({
       userId: 10,
-      net: 15,
-      won: 1015,
+      net: 20,
+      won: 1020,
       grossWon: 1030,
-      endStack: 2015,
+      endStack: 2020,
     });
     expectConservation(round);
   });
 
   it('keeps the zero-rate opt-in chip-neutral and snapshots mutable rates', () => {
-    const rates = { bankerBps: 0, houseBps: 0, prizeBps: 0 };
+    const rates = { houseBps: 0, prizeBps: 0 };
     let round = createArenaRound({ ...config, commission: rates }, tieDeck());
-    rates.bankerBps = 1000;
+    rates.houseBps = 1000;
     round = finish(round);
-    expect(round.result!.fees).toEqual({ banker: 0, house: 0, prize: 0, contested: 60 });
+    expect(round.result!.fees).toEqual({ house: 0, prize: 0, contested: 60 });
     expect(winnings(round).map((p) => p.net)).toEqual([0, 0, 0]);
     expectConservation(round);
   });
@@ -244,4 +244,21 @@ describe('completed arena disclosure and compatibility', () => {
       '{"handNumber":1,"board":[],"net":[{"userId":20,"net":-10,"won":0},{"userId":30,"net":10,"won":30},{"userId":10,"net":0,"won":0}],"revealed":[]}',
     );
   });
+});
+
+it('never deducts an obsolete banker rate from a persisted round', () => {
+  const round = createArenaRound(
+    {
+      ...config,
+      stacks: [101, 202, 303],
+      buttonUserId: 30,
+      commission: { houseBps: 50, prizeBps: 50 },
+    },
+    tieDeck(),
+  );
+  const persisted = JSON.parse(JSON.stringify(round));
+  persisted.commission.bankerBps = 1000;
+  const done = finish(persisted, true);
+  expect(done.result!.fees).toEqual({ house: 2, prize: 2, contested: 505 });
+  expectConservation(done);
 });

@@ -9,13 +9,7 @@ import { AgentError } from './agentAccess.js';
 
 /** Whole competition chips. These records never affect the ordinary room ledger. */
 const MAX_INPUT_CHIPS = 1_000_000_000_000;
-// Terms lock before play, so the published banker is also the historical payee.
-// CASE guards malformed or empty legacy JSON; booleans and string IDs are never payees.
-const publishedBankerSql = `CASE WHEN json_valid(event.policy_json) THEN
-  CASE WHEN json_type(event.policy_json, '$.bankerUserId') = 'integer'
-    AND json_extract(event.policy_json, '$.bankerUserId') BETWEEN 1 AND 9007199254740991
-    THEN json_extract(event.policy_json, '$.bankerUserId') END END`;
-type Account = 'pool' | 'house' | 'banker' | 'guarantee' | 'sponsor' | `player:${number}`;
+type Account = 'pool' | 'house' | 'guarantee' | 'sponsor' | `player:${number}`;
 type Line = { account: Account; delta: number };
 type Transaction = { id: number; kind: string; metadata: string; payload: string };
 export type PlayerTournamentEarnings = Pick<
@@ -23,7 +17,6 @@ export type PlayerTournamentEarnings = Pick<
   | 'entryFee'
   | 'joiningReward'
   | 'prize'
-  | 'bankerCommission'
   | 'playNet'
   | 'settlementNet'
   | 'recordedPaid'
@@ -322,7 +315,7 @@ export function recordHandEconomy(db: DB, id: string, result: ArenaResult): void
   atomic(db, () => {
     const ref = `hand:${result.handNumber}`;
     if (!transaction(db, id, ref)) openEconomy(db, id);
-    const fees = result.fees ?? { banker: 0, house: 0, prize: 0 };
+    const fees = result.fees ?? { house: 0, prize: 0 };
     const lines: Line[] = result.net.map((entry) => {
       userId(entry.userId);
       if (
@@ -334,7 +327,6 @@ export function recordHandEconomy(db: DB, id: string, result: ArenaResult): void
       return { account: `player:${entry.userId}`, delta: chips(entry.net, 'Hand result', true) };
     });
     lines.push(
-      { account: 'banker', delta: chips(fees.banker, 'Banker fee') },
       { account: 'house', delta: chips(fees.house, 'House fee') },
       { account: 'pool', delta: chips(fees.prize, 'Prize contribution') },
     );
@@ -495,7 +487,6 @@ export function economyView(db: DB, id: string): TournamentFinance {
   return {
     unit: 'chips',
     pool: sum(db, id, 'pool'),
-    banker: sum(db, id, 'banker'),
     house: sum(db, id, 'house'),
     guaranteed: 0 - sum(db, id, 'guarantee'),
     sponsorContributions: 0 - sum(db, id, 'sponsor'),
@@ -512,13 +503,9 @@ export function playerEarnings(db: DB, id: string, player: number): PlayerTourna
   const joiningReward = sum(db, id, account, ['joining-reward']);
   const prize = sum(db, id, account, ['prize']);
   const playNet = sum(db, id, account, ['hand']);
-  const banker = db
-    .prepare(`SELECT ${publishedBankerSql} AS userId FROM tournaments event WHERE event.id = ?`)
-    .get(id) as { userId: number | null } | undefined;
-  const bankerCommission = banker?.userId === player ? sum(db, id, 'banker') : 0;
   // Fixed-hand leagues reset stacks. Hand net is competition scoring, never a settlement debt.
   const settlementNet = chips(
-    joiningReward + prize + bankerCommission - entryFee,
+    joiningReward + prize - entryFee,
     'Settlement balance',
     true,
     Number.MAX_SAFE_INTEGER,
@@ -540,7 +527,6 @@ export function playerEarnings(db: DB, id: string, player: number): PlayerTourna
     entryFee,
     joiningReward,
     prize,
-    bankerCommission,
     playNet,
     settlementNet,
     recordedPaid,
@@ -557,10 +543,6 @@ export function earningsRows(db: DB, player?: number): TournamentEarning[] {
       UNION SELECT tournament_id, user_id FROM tournament_settlements
       UNION SELECT t.tournament_id, CAST(SUBSTR(l.account, 8) AS INTEGER) FROM tournament_journal_lines l
         JOIN tournament_journal_transactions t ON t.id = l.transaction_id WHERE l.account LIKE 'player:%'
-      UNION SELECT t.tournament_id, ${publishedBankerSql} FROM tournament_journal_lines l
-        JOIN tournament_journal_transactions t ON t.id = l.transaction_id
-        JOIN tournaments event ON event.id = t.tournament_id WHERE l.account = 'banker'
-        GROUP BY t.tournament_id HAVING SUM(l.delta) > 0
     ) SELECT t.id AS tournamentId, t.name AS tournamentName, t.status, p.user_id AS userId,
       COALESCE(e.agent_name, NULLIF(u.display_name, ''), u.username) AS playerName
     FROM participants p JOIN tournaments t ON t.id = p.tournament_id JOIN users u ON u.id = p.user_id

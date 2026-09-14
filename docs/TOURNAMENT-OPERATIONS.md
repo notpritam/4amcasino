@@ -13,7 +13,7 @@ Members can create and revise their own proposals. Only the platform approves/re
 1. A member creation produces `status: pending`, `approvalStatus: pending`, and `revision: 1`. Only the owner and platform can read the proposal. A platform creation publishes immediately as approved registration.
 2. The platform reviews the exact current revision. Approval opens registration; rejection closes enrollment and leaves the proposal available to its owner for revision. A stale or already reviewed request returns 409.
 3. Before any enrollment, the owner/platform can update terms with the current `revision`. The revision increments; a member edit requires approval again, while a platform edit publishes directly. A rejected proposal is resubmitted through this same terms update.
-4. Every new entrant sends `acceptedRevision` equal to the published `revision`. The first successful enrollment permanently locks the game settings, schedule, fees, rewards, guarantee, selected banker, payouts, and watching policy. Withdrawal does not unlock them. Start also locks terms. Create a new tournament to offer different locked rules.
+4. Every new entrant sends `acceptedRevision` equal to the published `revision`. The first successful enrollment permanently locks the game settings, schedule, fees, rewards, guarantee, payouts, and watching policy. Withdrawal does not unlock them. Start also locks terms. Create a new tournament to offer different locked rules.
 5. The owner/platform may start an approved registration with at least two entrants. A non-null `startsAt` is UTC Unix milliseconds. Once due, the server also starts it automatically when at least two entrants exist; with fewer, it remains in registration and reports a `scheduleNote`. This is a start trigger, not an automatic enrollment-close deadline.
 
 The server checks due schedules and decisions every second. Stored schedules, rounds, and deadlines recover from SQLite after restart. Manual start is available before a scheduled time, so communicate any organizer change of start clearly. A scheduled-start error records its reason instead of silently claiming the event started.
@@ -33,8 +33,7 @@ Platform broadcast-link updates are an explicit exception to the terms lock: the
 | `startsAt`                                    | `null` for manual start, or UTC Unix milliseconds                                                                    |
 | `entryFee`, `joiningReward`, `guaranteedPool` | Whole chips, 0–1,000,000,000 each; default 0                                                                         |
 | Guarantee coverage                            | `guaranteedPool >= capacity × joiningReward`, even before all seats fill                                             |
-| `bankerBps`, `houseBps`, `prizeBps`           | Default 50 each: 0.5% per recipient. Each rate permits 0–1,000 basis points (0–10%)                                  |
-| `bankerUserId`                                | Selected active account; `null` resolves to the organizer before publication                                         |
+| `houseBps`, `prizeBps`                        | Default 50 each: 0.5% per recipient. Each rate permits 0–1,000 basis points (0–10%)                                  |
 | `payoutBps`                                   | Default `[6000, 3000, 1000]` (60/30/10); 1–9 positive integer shares totalling 10,000                                |
 | `blindEveryHands`                             | Default 20; 1–10,000; applies to knockout                                                                            |
 | `publicWatch`                                 | Default `true`; controls hand-state/results/replay/audit access                                                      |
@@ -60,7 +59,7 @@ Every amount is **whole competition chips**. The tournament journal is separate 
 | First enrollment               | Records the guarantee once; debits the entrant's entry obligation and credits the pool                           |
 | Withdrawal during registration | Reverses that enrollment's entry obligation; re-entry opens a new cycle                                          |
 | Start                          | Ensures the guarantee exists and pays each enrolled player's joining reward from the pool once                   |
-| Completed hand                 | Records each player's hand net plus banker, house, and pool deductions in one balanced transfer                  |
+| Completed hand                 | Records each player's hand net plus house and pool deductions in one balanced transfer                           |
 | Sponsor prize contribution     | Credits the chosen tournament's pool in the same transaction as its immutable sponsor receipt                    |
 | Completion                     | Allocates the remaining pool by standings and published payout weights once                                      |
 | Cancellation before start      | Reverses entry obligations and recorded guarantee/sponsor pool funding; no joining reward vests                  |
@@ -68,16 +67,16 @@ Every amount is **whole competition chips**. The tournament journal is separate 
 
 Cancellation after start excludes the unfinished hand from scoring and fees. It does not invent a final hand result or release the seed. Funding reversals on pre-start cancellation do not erase sponsor receipts or execute a refund outside the app.
 
-Pot deductions apply once to each **contested settled pot**, including side pots. First remove any unmatched contribution returned to a player. For each remaining pot and each recipient, use `floor(potChips × rateBps / 10000)`, then award the remaining pot. Fold-ended hands still have a contested matched portion. No fee applies to the uncalled return. At the default rates, a 1,001-chip contested pot allocates 5 chips each to banker, house, and pool; 986 go to the winner(s). These floors happen per pot and per recipient, not once on the entire session's volume.
+Pot deductions apply once to each **contested settled pot**, including side pots. First remove any unmatched contribution returned to a player. For each remaining pot and each recipient, use `floor(potChips × rateBps / 10000)`, then award the remaining pot. Fold-ended hands still have a contested matched portion. No fee applies to the uncalled return. At the default rates, a 1,001-chip contested pot allocates 5 chips each to house and pool; 991 go to the winner(s). These floors happen per pot and per recipient, not once on the entire session's volume.
 
 The journal enforces balanced transfers, nonnegative pool balances, and stable transaction references. Retrying an identical operation is idempotent; using the same reference for different accounting data is rejected. Persisted receipts and journal history are not edited to make totals appear reconciled.
 
 ## Earnings and manual settlements
 
-Participants see entry obligations, joining rewards, prizes, hand net, recorded paid, and outstanding balances in the tournament earnings views. The published banker account also receives its commission in earnings even if it never entered; another account's banker commission is not attributed to the entrant.
+Participants see entry obligations, joining rewards, prizes, hand net, recorded paid, and outstanding balances in the tournament earnings views. Bankers and organizers receive no commission.
 
 ```text
-settlementNet = joiningReward + prize + bankerCommission - entryFee
+settlementNet = joiningReward + prize - entryFee
 outstanding   = settlementNet - recordedPaid
 ```
 
@@ -113,7 +112,7 @@ Use the normal account's bearer token; every `/api/admin/...` route below requir
 
 | Route                                                 | Request / response                                                                                                             |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /api/admin/tournaments`                          | Latest 200 tournament summaries, all earnings rows, and house/banker/pool/prize/recorded-paid totals                           |
+| `GET /api/admin/tournaments`                          | Latest 200 tournament summaries, all earnings rows, and house/pool/prize/recorded-paid totals                                  |
 | `POST /api/admin/tournaments/:id/review`              | `{revision, approve, note}`                                                                                                    |
 | `GET /api/admin/tournaments/:id/audit`                | `{reviews, settlements}`; administrative history, not the seed audit                                                           |
 | `POST /api/admin/tournaments/:id/settlements`         | `{userId, amount, requestId, note}`                                                                                            |

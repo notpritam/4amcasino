@@ -86,7 +86,7 @@ export function TournamentTerms({ tournament: t }: { tournament: TournamentSumma
         <div>
           <dt>Pot deductions</dt>
           <dd>
-            Banker {p.bankerBps / 100}% · house {p.houseBps / 100}% · prize pool {p.prizeBps / 100}%
+            House {p.houseBps / 100}% · prize pool {p.prizeBps / 100}%
           </dd>
         </div>
         <div>
@@ -194,10 +194,8 @@ export function TournamentTermsForm({
             entryFee: Number(f.get('entryFee')),
             joiningReward: Number(f.get('joiningReward')),
             guaranteedPool: Number(f.get('guaranteedPool')),
-            bankerBps: Math.round(Number(f.get('bankerRate')) * 100),
             houseBps: Math.round(Number(f.get('houseRate')) * 100),
             prizeBps: Math.round(Number(f.get('prizeRate')) * 100),
-            bankerUserId: f.get('bankerUserId') ? Number(f.get('bankerUserId')) : null,
             payoutBps,
             blindEveryHands: Number(f.get('blindEveryHands')),
             publicWatch: f.get('publicWatch') === 'on',
@@ -420,20 +418,8 @@ export function TournamentTermsForm({
           />
           <span className="arena-muted">Funds joining rewards and any starting prize pool.</span>
         </label>
-        <label className="arena-field">
-          Banker account ID · optional
-          <Input
-            name="bankerUserId"
-            type="number"
-            min={1}
-            step={1}
-            defaultValue={p.bankerUserId ?? ''}
-          />
-          <span className="arena-muted">Leave empty to use the organizer.</span>
-        </label>
         {(
           [
-            ['bankerRate', 'Banker', p.bankerBps],
             ['houseRate', 'House', p.houseBps],
             ['prizeRate', 'Prize pool', p.prizeBps],
           ] as const

@@ -157,7 +157,7 @@ function freshRound(db: DB, t: Tournament, handNumber: number): ArenaRound {
       ...(p.format === 'knockout' ? { stacks: es.map((e) => e.stack), buttonUserId } : {}),
       ...(t.revision > 0
         ? {
-            commission: { bankerBps: p.bankerBps, houseBps: p.houseBps, prizeBps: p.prizeBps },
+            commission: { houseBps: p.houseBps, prizeBps: p.prizeBps },
             revealAllAfterHand: p.revealAllAfterHand,
           }
         : {}),
@@ -425,12 +425,6 @@ export function registerTournaments(app: FastifyInstance, db: DB): void {
           .send({ error: 'Check the tournament settings (2–9 entrants, 10–10,000 hands).' });
       const b = parsed.data;
       const policy = parsePolicy((req.body as { policy?: unknown }).policy, b.capacity);
-      if (
-        policy.bankerUserId !== null &&
-        !db.prepare('SELECT 1 FROM users WHERE id=? AND disabled=0').get(policy.bankerUserId)
-      )
-        throw new AgentError(400, 'Choose an active banker account.');
-      policy.bankerUserId ??= req.userId;
       if (b.bb < b.sb || b.startingStack < 2 * b.bb)
         return reply.code(400).send({
           error: 'Big blind must cover the small blind; stack must cover at least two big blinds.',
@@ -740,12 +734,6 @@ export function registerTournaments(app: FastifyInstance, db: DB): void {
           { ...policyOf(t), ...((body.policy as object) ?? {}), revealAllAfterHand: true },
           b.capacity,
         );
-        policy.bankerUserId ??= t.owner_id;
-        if (
-          policy.bankerUserId !== null &&
-          !db.prepare('SELECT 1 FROM users WHERE id=? AND disabled=0').get(policy.bankerUserId)
-        )
-          throw new AgentError(400, 'Choose an active banker account.');
         const approved = isPlatform(db, req.userId),
           revision = t.revision + 1;
         db.prepare(
@@ -881,7 +869,6 @@ export function registerTournaments(app: FastifyInstance, db: DB): void {
       earnings,
       totals: {
         house: finances.reduce((a, f) => a + f.house, 0),
-        banker: finances.reduce((a, f) => a + f.banker, 0),
         pool: finances.reduce((a, f) => a + f.pool, 0),
         prizes: finances.reduce((a, f) => a + f.prizes, 0),
         recordedPaid: earnings.reduce((a, e) => a + e.recordedPaid, 0),

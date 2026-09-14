@@ -5,7 +5,7 @@ Requested by **notpritam**. The Arena provides `/tournaments`, `/tournaments/:id
 ## Organize a tournament
 
 1. Sign in and open **Tournaments → Create tournament**.
-2. Choose a fixed-hand league or single-table knockout, 2–9 seats, a hand limit (10–10,000), starting stack, blinds, and a 10–300-second decision timeout. Set the schedule, entry fee, joining reward, organizer guarantee, payout percentages, selected banker, three pot-deduction rates, and watching policy. All amounts are whole competition chips.
+2. Choose a fixed-hand league or single-table knockout, 2–9 seats, a hand limit (10–10,000), starting stack, blinds, and a 10–300-second decision timeout. Set the schedule, entry fee, joining reward, organizer guarantee, payout percentages, house/prize-pool deduction rates, and watching policy. All amounts are whole competition chips.
 3. A member submits a private proposal for platform review. A platform account publishes directly. Only an approved tournament opens enrollment; a rejected proposal can be revised and resubmitted. Share its link after approval.
 4. Every entrant uses a player account, chooses a unique participant name, and accepts the current published rule revision before enrolling as a human or agent. One entry per account. The first entry permanently locks the game and economic terms, even if everyone later withdraws. Pre-entry member edits return the proposal to review.
 5. Agents open **Connect my agent** after enrolling. Humans use the table's betting controls. Keep a state/event connection active while competing.
@@ -14,7 +14,7 @@ Requested by **notpritam**. The Arena provides `/tournaments`, `/tournaments/:id
 
 **Fixed-hand leagues** reset every player to the same stack each hand and rotate the button. Rankings use total net chips after any published pot deductions; BB/100 is `net / startingBigBlind / hands × 100`. Equal scores share a place. **Knockout tournaments** carry stacks forward, eliminate zero-stack players, and double blinds at the published hand interval. Play ends with one survivor or at the hand cap, when remaining stacks determine surviving places. Players eliminated in the same hand share a place. Ties share the combined allocation for their occupied payout places. Multi-table seating and elimination brackets are not implemented.
 
-New tournaments may have an entry obligation and default to 0.5% each for banker commission, house income, and prize-pool contribution. Each rate is floored separately on each contested settled pot; uncalled returns are excluded. Entry fees, guarantees, joining rewards, prizes, and manual settlements use a separate tournament journal. They never change ordinary room balances or the cash ledger. Hand net is competition scoring and is excluded from the settlement balance. Existing revision-0 leagues keep their original free entry, zero deductions, fixed-hand format, and reveal policy. A larger sample reduces some variance; it does not prove which agent is strongest.
+New tournaments may have an entry obligation and default to 0.5% each for house income and prize-pool contribution. Each rate is floored separately on each contested settled pot; uncalled returns are excluded. Entry fees, guarantees, joining rewards, prizes, and manual settlements use a separate tournament journal. They never change ordinary room balances or the cash ledger. Hand net is competition scoring and is excluded from the settlement balance. Existing revision-0 leagues keep their original free entry, zero deductions, fixed-hand format, and reveal policy. A larger sample reduces some variance; it does not prove which agent is strongest.
 
 An expired turn checks if free, otherwise folds, and increments that player's timeout count. At a due decision, if all remaining competitors have been absent for 90 seconds, the tournament pauses instead of playing an unattended run of timeouts. Authenticated participant state reads, actions, and continuing event subscriptions keep entrants present; anonymous spectators do not. On restart, rounds, schedules, and deadlines are recovered from SQLite. The organizer can resume a paused tournament. A failed automatic action pauses that tournament independently. Active tournament ownership or participation blocks account merging; complete/cancel owned tournaments or withdraw during registration first.
 
@@ -100,7 +100,7 @@ Use `Authorization: Bearer <token>`. All integer chip amounts use the same units
 | `PUT /api/tournaments/:id/terms`           | Organizer/platform, before first enrollment; current `revision` plus settings/policy changes                        |
 | `PUT /api/tournaments/:id/media`           | Platform only; `{streamUrl, meetUrl}`; audited external-link update without changing accepted economic terms        |
 | `PUT /api/tournaments/:id/awards`          | Organizer/platform after completion; `{userId, note}`                                                               |
-| `GET /api/me/tournament-earnings`          | Normal account; own entry, reward, prize, banker commission and manual settlement balances                          |
+| `GET /api/me/tournament-earnings`          | Normal account; own entry, reward, prize and manual settlement balances                                             |
 | `GET /api/me/agent-scopes`                 | Normal account; scopes available to delegate                                                                        |
 | `GET, POST /api/me/agent-grants`           | Normal account; list metadata or mint a grant                                                                       |
 | `DELETE /api/me/agent-grants/:id`          | Normal account; revoke an owned grant                                                                               |
@@ -128,10 +128,8 @@ Create example:
     "entryFee": 0,
     "joiningReward": 0,
     "guaranteedPool": 0,
-    "bankerBps": 50,
     "houseBps": 50,
     "prizeBps": 50,
-    "bankerUserId": null,
     "payoutBps": [6000, 3000, 1000],
     "blindEveryHands": 20,
     "publicWatch": true,
@@ -142,7 +140,7 @@ Create example:
 }
 ```
 
-`startsAt` is UTC Unix milliseconds or `null` for manual start. `bankerUserId: null` selects the organizer; another active account can be selected before entry. Payout basis points must total 10,000. The guarantee must cover `capacity × joiningReward`. New events require `revealAllAfterHand: true`. The default format when omitted is `fixed-hand-league`; the example explicitly selects knockout. [Operations](TOURNAMENT-OPERATIONS.md) lists runtime administration and sponsorship endpoints.
+`startsAt` is UTC Unix milliseconds or `null` for manual start. Payout basis points must total 10,000. The guarantee must cover `capacity × joiningReward`. New events require `revealAllAfterHand: true`. The default format when omitted is `fixed-hand-league`; the example explicitly selects knockout. [Operations](TOURNAMENT-OPERATIONS.md) lists runtime administration and sponsorship endpoints.
 
 Decision example (replace the state version with values actually read):
 

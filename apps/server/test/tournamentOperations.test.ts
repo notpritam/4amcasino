@@ -183,10 +183,7 @@ it('knockout stacks carry between hands, bust-outs leave the table, and prizes a
   expect(s.entries.filter((e: any) => e.eliminatedHand !== null)).toHaveLength(1);
   const totalStacks = s.entries.reduce((a: number, e: any) => a + e.stack, 0);
   const handResults = (await request(`/api/tournaments/${id}/results`)).json().results;
-  const fees = handResults.reduce(
-    (a: number, h: any) => a + h.fees.banker + h.fees.house + h.fees.prize,
-    0,
-  );
+  const fees = handResults.reduce((a: number, h: any) => a + h.fees.house + h.fees.prize, 0);
   expect(totalStacks + fees).toBe(4000);
   expect(s.finance.pool).toBe(0);
   expect(s.entries.reduce((a: number, e: any) => a + e.prize, 0)).toBe(
@@ -254,7 +251,7 @@ it('retains old published tournament policy and history through repeat migration
   const s = (await request('/api/tournaments/legacy')).json();
   expect(s.approvalStatus).toBe('approved');
   expect(s.revision).toBe(0);
-  expect(s.policy.bankerBps + s.policy.houseBps + s.policy.prizeBps).toBe(0);
+  expect(s.policy.houseBps + s.policy.prizeBps).toBe(0);
   expect(s.policy.revealAllAfterHand).toBe(false);
   expect(
     (await request('/api/tournaments/legacy/enroll', 2, { agentName: 'Alice', kind: 'human' }))
@@ -291,19 +288,6 @@ it('under-enrolled scheduled events cannot starve an eligible event behind them'
   tickTournaments(ctx.db, startsAt + 1);
   expect((await request(`/api/tournaments/${id}`)).json().status).toBe('running');
 });
-it('clearing an optional banker in a terms edit restores the organizer as recipient', async () => {
-  const id = await create(1, { bankerUserId: users[3]!.id });
-  const r = await request(
-    `/api/tournaments/${id}/terms`,
-    0,
-    { revision: 1, policy: { bankerUserId: null } },
-    'PUT',
-  );
-  expect(r.statusCode).toBe(200);
-  expect((await request(`/api/tournaments/${id}`, 1)).json().policy.bankerUserId).toBe(
-    users[1]!.id,
-  );
-});
 it('an eliminated spectator cannot keep offline knockout players timing out', async () => {
   const created = await request('/api/tournaments', 0, {
     name: 'Knockout presence',
@@ -325,4 +309,48 @@ it('an eliminated spectator cannot keep offline knockout players timing out', as
   expect(
     ctx.db.prepare('SELECT COUNT(*) n FROM tournament_actions WHERE tournament_id=?').get(id),
   ).toEqual({ n: 0 });
+});
+
+it('offers only house and prize deductions and rejects a banker cut in API writes', async () => {
+  const id = await create();
+  const s = (await request(`/api/tournaments/${id}`)).json();
+  expect(s.policy.houseBps).toBe(50);
+  expect(s.policy.prizeBps).toBe(50);
+  expect(s.policy).not.toHaveProperty('bankerBps');
+  expect(s.policy).not.toHaveProperty('bankerUserId');
+  expect(s.finance).not.toHaveProperty('banker');
+  expect(
+    (
+      await request('/api/tournaments', 0, {
+        name: 'Forbidden commission',
+        policy: { bankerBps: 50 },
+      })
+    ).statusCode,
+  ).toBe(400);
+  expect(
+    (
+      await request(
+        `/api/tournaments/${id}/terms`,
+        0,
+        {
+          revision: 1,
+          policy: { bankerBps: 50 },
+        },
+        'PUT',
+      )
+    ).statusCode,
+  ).toBe(400);
+});
+
+it('strips obsolete banker fields when reading persisted tournament terms', async () => {
+  const id = await create();
+  const s = (await request(`/api/tournaments/${id}`)).json();
+  ctx.db
+    .prepare('UPDATE tournaments SET policy_json=? WHERE id=?')
+    .run(JSON.stringify({ ...s.policy, bankerBps: 50, bankerUserId: users[1]!.id }), id);
+  const policy = (await request(`/api/tournaments/${id}`)).json().policy;
+  expect(policy.houseBps).toBe(50);
+  expect(policy.prizeBps).toBe(50);
+  expect(policy).not.toHaveProperty('bankerBps');
+  expect(policy).not.toHaveProperty('bankerUserId');
 });

@@ -5,7 +5,7 @@ const { chromium } = await import(
 );
 const { users } = JSON.parse(await readFile('/tmp/4am-arena-fixture.json', 'utf8'));
 const origin = process.env.ARENA_WEB_URL ?? 'http://127.0.0.1:5181';
-const artifacts = '.impeccable/review/tournament-operations';
+const artifacts = process.env.ARENA_QA_ARTIFACTS ?? '.impeccable/review/tournament-operations';
 await mkdir(artifacts, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const errors = [],
@@ -76,6 +76,7 @@ try {
     .fill('Local verification of approval, enrollment, prizes and public watching.');
   await alice.getByLabel('Hands per entrant', { exact: true }).fill('10');
   await alice.getByLabel('Seats', { exact: true }).fill('2');
+  assert.equal(await alice.getByLabel(/Banker/).count(), 0);
   await alice.getByLabel('Small blind', { exact: true }).fill('100');
   await alice.getByLabel('Big blind', { exact: true }).fill('200');
   await alice.getByLabel('Entry fee · chips', { exact: true }).fill('100');
@@ -209,9 +210,12 @@ try {
   assert.equal(done.status, 'completed');
   assert.equal(done.completedHands, 10);
   assert.equal(done.finance.pool, 0);
-  assert.equal(done.finance.banker, 10);
+  assert.equal(done.finance.banker, undefined);
+  assert.equal(done.policy.bankerBps, undefined);
+  assert.equal(done.entries[0].bankerCommission, undefined);
   assert.equal(done.finance.house, 10);
   assert.equal(done.finance.prizes, 1440);
+  assert(done.entries.every((entry) => entry.outstanding === 630));
   checks.push('ten browser hands and complete conserved payout');
   await watch.bringToFront();
   await watch.getByText('Tournament complete', { exact: true }).waitFor();

@@ -43,9 +43,9 @@ function result(handNumber = 1): ArenaResult {
     revealed: [],
     net: [
       { userId: 1, net: -100, won: 0 },
-      { userId: 2, net: 85, won: 185 },
+      { userId: 2, net: 90, won: 190 },
     ],
-    fees: { banker: 5, house: 5, prize: 5, contested: 200 },
+    fees: { house: 5, prize: 5, contested: 200 },
   } as ArenaResult;
 }
 function assertBalanced() {
@@ -74,7 +74,6 @@ describe('tournament chip journal', () => {
       entryFee: 0,
       joiningReward: 0,
       prize: 0,
-      bankerCommission: 0,
       playNet: 0,
       settlementNet: 0,
       recordedPaid: 0,
@@ -86,7 +85,6 @@ describe('tournament chip journal', () => {
     expect(economy.economyView(db, id)).toEqual({
       unit: 'chips',
       pool: 0,
-      banker: 0,
       house: 0,
       guaranteed: 0,
       entryFees: 0,
@@ -154,16 +152,16 @@ describe('tournament chip journal', () => {
     economy.recordHandEconomy(db, id, result());
     economy.recordHandEconomy(db, id, result());
     expect(economy.playerEarnings(db, id, 1).playNet).toBe(-100);
-    expect(economy.playerEarnings(db, id, 2).playNet).toBe(85);
-    expect(economy.economyView(db, id)).toMatchObject({ pool: 25, banker: 5, house: 5 });
+    expect(economy.playerEarnings(db, id, 2).playNet).toBe(90);
+    expect(economy.economyView(db, id)).toMatchObject({ pool: 25, house: 5 });
     const changed = result();
     changed.net[0]!.net = -101;
-    changed.net[1]!.net = 86;
+    changed.net[1]!.net = 91;
     expect(() => economy.recordHandEconomy(db, id, changed)).toThrow(/different|conflict/i);
     const invalid = result(2);
-    invalid.net[1]!.net = 86;
+    invalid.net[1]!.net = 91;
     expect(() => economy.recordHandEconomy(db, id, invalid)).toThrow(/balance|conserv/i);
-    expect(economy.playerEarnings(db, id, 2).playNet).toBe(85);
+    expect(economy.playerEarnings(db, id, 2).playNet).toBe(90);
     assertBalanced();
   });
 
@@ -189,7 +187,7 @@ describe('tournament chip journal', () => {
       outstanding: 0,
     });
     expect(economy.playerEarnings(db, id, 2)).toMatchObject({
-      playNet: 85,
+      playNet: 90,
       prize: 5,
       settlementNet: 5,
     });
@@ -416,17 +414,12 @@ describe('tournament chip journal', () => {
   });
 });
 
-describe('published tournament banker commissions', () => {
-  function setBanker(tournamentId: string, bankerUserId: number) {
-    db.prepare('UPDATE tournaments SET policy_json = ? WHERE id = ?').run(
-      JSON.stringify({ ...DEFAULT_TOURNAMENT_POLICY, bankerUserId }),
-      tournamentId,
+describe('no organizer commission', () => {
+  it('does not add an organizer payment from obsolete policy metadata', () => {
+    db.prepare('UPDATE tournaments SET owner_id=3, policy_json=? WHERE id=?').run(
+      JSON.stringify({ ...DEFAULT_TOURNAMENT_POLICY, bankerUserId: 3, bankerBps: 50 }),
+      id,
     );
-  }
-
-  it('pays the non-entrant banker only their earned commission and caps recorded settlements', () => {
-    setBanker(id, 3);
-    expect(economy.earningsRows(db, 3)).toEqual([]);
     enter(1);
     enter(2);
     start();
@@ -441,79 +434,19 @@ describe('published tournament banker commissions', () => {
       [10000],
     );
     terminal();
-    expect(economy.playerEarnings(db, id, 3)).toEqual({
-      entryFee: 0,
-      joiningReward: 0,
-      prize: 0,
-      bankerCommission: 5,
-      playNet: 0,
-      settlementNet: 5,
-      recordedPaid: 0,
-      outstanding: 5,
-    });
-    expect(economy.earningsRows(db, 3)).toEqual([
-      expect.objectContaining({
-        tournamentId: id,
-        userId: 3,
-        playerName: 'player3',
-        bankerCommission: 5,
-        settlementNet: 5,
-      }),
-    ]);
-    expect(() => economy.recordTournamentSettlement(db, id, 3, 6, 'too-much', '', 4)).toThrow(
-      /overpay/i,
-    );
-    economy.recordTournamentSettlement(db, id, 3, 2, 'banker-payment', 'Partial commission', 4);
-    economy.recordTournamentSettlement(db, id, 3, 2, 'banker-payment', 'Partial commission', 4);
-    expect(economy.playerEarnings(db, id, 3)).toMatchObject({ recordedPaid: 2, outstanding: 3 });
-    expect(() => economy.recordTournamentSettlement(db, id, 3, 4, 'too-much-again', '', 4)).toThrow(
-      /overpay/i,
-    );
-    economy.recordTournamentSettlement(db, id, 3, 3, 'banker-final', '', 4);
-    expect(economy.playerEarnings(db, id, 3).outstanding).toBe(0);
-    expect(economy.playerEarnings(db, id, 1)).toMatchObject({
-      bankerCommission: 0,
-      settlementNet: 0,
-      playNet: -100,
-    });
-    expect(economy.economyView(db, id)).toMatchObject({ banker: 5, house: 5 });
+    expect(economy.earningsRows(db, 3)).toEqual([]);
+    expect(economy.playerEarnings(db, id, 3).settlementNet).toBe(0);
+    expect(() =>
+      economy.recordTournamentSettlement(db, id, 3, 1, 'no-commission', '', 4),
+    ).toThrow();
+    expect(economy.economyView(db, id)).toMatchObject({ house: 5, pool: 0, prizes: 5 });
+    expect(
+      db.prepare("SELECT COUNT(*) n FROM tournament_journal_lines WHERE account='banker'").get(),
+    ).toEqual({ n: 0 });
     assertBalanced();
   });
 
-  it('keeps commissions attributed independently when tournaments publish different bankers', () => {
-    const other = 'another-banker-cup';
-    db.prepare(
-      `INSERT INTO tournaments
-      (id,owner_id,name,capacity,hand_limit,starting_stack,sb,bb,action_seconds,seed,created_at,updated_at)
-      VALUES (?,1,'Another Banker Cup',4,10,1000,5,10,30,'seed',0,0)`,
-    ).run(other);
-    setBanker(id, 3);
-    setBanker(other, 4);
-    for (const player of [1, 2]) {
-      enter(player);
-      db.prepare(
-        `INSERT INTO tournament_entries
-        (tournament_id,user_id,agent_name,kind,joined_at,last_seen) VALUES (?,?,?,'human',0,0)`,
-      ).run(other, player, `Player ${player}`);
-      economy.recordEntry(db, other, player, 0);
-    }
-    start();
-    economy.startRewards(db, other, DEFAULT_TOURNAMENT_POLICY);
-    economy.recordHandEconomy(db, id, result());
-    economy.recordHandEconomy(db, other, result());
-    economy.recordHandEconomy(db, other, result(2));
-    expect(economy.playerEarnings(db, id, 3).bankerCommission).toBe(5);
-    expect(economy.playerEarnings(db, id, 4).bankerCommission).toBe(0);
-    expect(economy.playerEarnings(db, other, 3).bankerCommission).toBe(0);
-    expect(economy.playerEarnings(db, other, 4).bankerCommission).toBe(10);
-    expect(economy.earningsRows(db, 3).map((row) => row.tournamentId)).toEqual([id]);
-    expect(economy.earningsRows(db, 4).map((row) => row.tournamentId)).toEqual([other]);
-    expect(economy.earningsRows(db)).toHaveLength(6);
-    assertBalanced();
-  });
-
-  it('includes an entrant banker once and adds commission without adding play scoring to dues', () => {
-    setBanker(id, 1);
+  it('keeps the entrant organizer score separate without a commission payout', () => {
     enter(1, 10);
     enter(2, 10);
     start();
@@ -521,31 +454,11 @@ describe('published tournament banker commissions', () => {
     expect(economy.earningsRows(db, 1)).toHaveLength(1);
     expect(economy.playerEarnings(db, id, 1)).toMatchObject({
       entryFee: 10,
-      bankerCommission: 5,
       playNet: -100,
-      settlementNet: -5,
+      settlementNet: -10,
     });
+    expect(economy.playerEarnings(db, id, 1)).not.toHaveProperty('bankerCommission');
     assertBalanced();
-  });
-
-  it('does not infer a banker from missing, malformed, or invalid legacy policy values', () => {
-    enter(1);
-    enter(2);
-    start();
-    economy.recordHandEconomy(db, id, result());
-    for (const policy of [
-      '',
-      '{',
-      'null',
-      '{}',
-      '{"bankerUserId":true}',
-      '{"bankerUserId":"3"}',
-      '{"bankerUserId":-1}',
-    ]) {
-      db.prepare('UPDATE tournaments SET policy_json = ? WHERE id = ?').run(policy, id);
-      expect(economy.playerEarnings(db, id, 3).bankerCommission).toBe(0);
-      expect(economy.earningsRows(db, 3)).toEqual([]);
-    }
   });
 });
 

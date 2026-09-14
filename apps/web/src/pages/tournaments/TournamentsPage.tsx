@@ -741,9 +741,9 @@ function TournamentDetail({ id }: { id: string }) {
                       : 'Entry accounting'}
                   </h2>
                   <p className="arena-muted">
-                    Settlement net = joining reward + prize + banker commission − entry fee.
-                    Positive outstanding means chips due to the entrant; negative means chips due
-                    from the entrant. Play net is shown separately.
+                    Settlement net = joining reward + prize − entry fee. Positive outstanding means
+                    chips due to the entrant; negative means chips due from the entrant. Play net is
+                    shown separately.
                   </p>
                   {!state.entries.length ? (
                     <p className="arena-muted mt-4">
@@ -758,7 +758,6 @@ function TournamentDetail({ id }: { id: string }) {
                             <th>Entry fee</th>
                             <th>Joining reward</th>
                             <th>Prize</th>
-                            <th>Banker commission</th>
                             <th>Play net</th>
                             <th>Settlement net</th>
                             <th>Recorded paid</th>
@@ -772,13 +771,8 @@ function TournamentDetail({ id }: { id: string }) {
                               <td>{number(e.entryFee)}</td>
                               <td>{number(e.joiningReward)}</td>
                               <td>{number(e.prize)}</td>
-                              <td>{number(e.bankerCommission)}</td>
                               <td>{signed(e.net)}</td>
-                              <td>
-                                {signed(
-                                  e.joiningReward + e.prize + e.bankerCommission - e.entryFee,
-                                )}
-                              </td>
+                              <td>{signed(e.joiningReward + e.prize - e.entryFee)}</td>
                               <td>{signed(e.recordedPaid)}</td>
                               <td>{signed(e.outstanding)}</td>
                             </tr>
@@ -964,10 +958,6 @@ function TournamentDetail({ id }: { id: string }) {
               <div>
                 <dt>Prizes allocated</dt>
                 <dd>{number(state.finance.prizes)} chips</dd>
-              </div>
-              <div>
-                <dt>Banker accrued</dt>
-                <dd>{number(state.finance.banker)} chips</dd>
               </div>
               <div>
                 <dt>House accrued</dt>

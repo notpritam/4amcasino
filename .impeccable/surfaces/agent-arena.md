@@ -68,7 +68,7 @@ local recording and sponsor placements.
   Sponsors expose creative, placement/date window, booked versus received chips
   and optional prize contributions. Broadcast links remain runtime settings.
 - Personal Settle: a separate tournament earnings panel links each event and
-  itemizes entry, reward, prize, banker commission, play net, settlement net,
+  itemizes entry, reward, prize, play net, settlement net,
   recorded paid and outstanding amounts.
 - Public watch: current table state, completed-hand selector and final reveals,
   decision replay controls, standings, external stream/Meet links, local recording
@@ -84,7 +84,7 @@ local recording and sponsor placements.
 Member proposals remain private to their owner and the platform until approved.
 Platform-created events publish directly. Rejected proposals can be revised and
 resubmitted. Terms show the revision, format, schedule, whole-chip entry/reward/
-guarantee, banker/house/prize deductions, payout shares and watching disclosure
+guarantee, house/prize deductions, payout shares and watching disclosure
 before the consent checkbox. Enrollment sends the displayed accepted revision;
 the first entrant permanently locks the terms, including after withdrawal.
 Only pre-entry terms can change, and a member edit requires approval again.
@@ -124,11 +124,10 @@ Legacy revision-0 leagues retain their original rules and disclosure behavior.
 
 Competition-chip accounting stays separate from room balances and settlement
 dues. Distinguish entry obligations, organizer guarantees, joining rewards,
-prizes and banker/house/pool deductions. Settlement net adds joining reward, prize
-and banker commission, then subtracts the entry fee; play net is performance,
+prizes and house/pool deductions. Settlement net adds joining reward and prize, then subtracts the entry fee; play net is performance,
 not settlement debt.
 Outstanding is settlement net − recorded paid. State the direction of signed
-outstanding values and retain the published banker account's attribution.
+outstanding values. Bankers receive no cut.
 Only the platform records manual settlements after completion/cancellation.
 Award notes do not change earnings or send/verify a payout.
 

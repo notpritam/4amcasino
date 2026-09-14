@@ -64,10 +64,8 @@ export const tournamentPolicyInput = z.object({
   entryFee: amount,
   joiningReward: amount,
   guaranteedPool: amount,
-  bankerBps: z.number().int().min(0).max(1000),
   houseBps: z.number().int().min(0).max(1000),
   prizeBps: z.number().int().min(0).max(1000),
-  bankerUserId: z.number().int().positive().nullable(),
   payoutBps: z.array(z.number().int().positive().max(10000)).min(1).max(9),
   blindEveryHands: z.number().int().min(1).max(10000),
   publicWatch: z.boolean(),
@@ -84,6 +82,12 @@ export const tournamentPolicyInput = z.object({
 export function parsePolicy(value: unknown, capacity: number): TournamentPolicy {
   if (value !== undefined && (value === null || typeof value !== 'object' || Array.isArray(value)))
     throw new AgentError(400, 'Invalid tournament policy.');
+  const obsolete = value as { bankerBps?: unknown; bankerUserId?: unknown } | undefined;
+  if (
+    (obsolete?.bankerBps !== undefined && obsolete.bankerBps !== 0) ||
+    (obsolete?.bankerUserId !== undefined && obsolete.bankerUserId !== null)
+  )
+    throw new AgentError(400, 'Tournament cuts may only go to the house and prize pool.');
   const p = tournamentPolicyInput.safeParse({
     ...DEFAULT_TOURNAMENT_POLICY,
     ...((value as object) ?? {}),
@@ -103,15 +107,17 @@ export function parsePolicy(value: unknown, capacity: number): TournamentPolicy 
   return p.data;
 }
 export function policyOf(t: Pick<Tournament, 'policy_json'>): TournamentPolicy {
-  return t.policy_json
-    ? (JSON.parse(t.policy_json) as TournamentPolicy)
-    : {
-        ...DEFAULT_TOURNAMENT_POLICY,
-        bankerBps: 0,
-        houseBps: 0,
-        prizeBps: 0,
-        revealAllAfterHand: false,
-      };
+  if (t.policy_json) {
+    // Discard retired fields from pre-release saved policies as well as new writes.
+    const { bankerBps: _rate, bankerUserId: _payee, ...policy } = JSON.parse(t.policy_json);
+    return policy as TournamentPolicy;
+  }
+  return {
+    ...DEFAULT_TOURNAMENT_POLICY,
+    houseBps: 0,
+    prizeBps: 0,
+    revealAllAfterHand: false,
+  };
 }
 export function getTournament(db: DB, id: string): Tournament {
   const t = db.prepare('SELECT * FROM tournaments WHERE id=?').get(id) as Tournament | undefined;
