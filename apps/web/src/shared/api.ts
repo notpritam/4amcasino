@@ -111,6 +111,11 @@ export const api = {
       `/api/sponsors?${new URLSearchParams({ placement, ...(tournamentId ? { tournamentId } : {}) })}`,
     ) as Promise<{ placements: SponsorPlacement[] }>,
   withdrawTournament: (id: string) => req(`/api/tournaments/${id}/withdraw`, {}),
+  sitOutTournament: (id: string, hands: number) =>
+    req(`/api/tournaments/${id}/sit-out`, { hands }) as Promise<{
+      ok: boolean;
+      throughHand: number;
+    }>,
   controlTournament: (id: string, action: string) =>
     req(`/api/tournaments/${id}/control`, { action }),
   tournamentAction: (

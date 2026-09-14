@@ -2,11 +2,11 @@
 
 Date: 2026-09-14
 Requested by: **notpritam**
-Status: Rules approved (§2). Implementation impact (§3) and surface scope (§4) are proposed, not yet approved.
+Status: Rules approved (§2) and implemented (§3). Surface unification (§4) remains a separate design pass.
 
 This document defines the competition rules for 4AM Casino tournaments. It supersedes the rule
 statements in [Tournament operations](../../TOURNAMENT-OPERATIONS.md) where the two disagree;
-that runbook describes the checkout as it stands today, before these rules land.
+that runbook has been updated to describe these rules as implemented.
 
 ## 1. Why this exists
 
@@ -30,7 +30,7 @@ Format: **freezeout, entry-fee-as-stack, winner-takes-chips, commission side-poo
 
 ### 2.2 Your entry fee is your stack
 
-Paying entry fee *N* seats a player with exactly *N* tournament chips. There is no separate
+Paying entry fee _N_ seats a player with exactly _N_ tournament chips. There is no separate
 starting-stack setting; the fee **is** the stack.
 
 Every chip on the table therefore originated from an entry fee, and chips in play form a closed,
@@ -54,7 +54,7 @@ compulsory, enforced by a budget rather than by ejection.
 
 - A tournament publishes `sitOutBudget` — total hands a player may sit out, default **10** — and
   `maxSitOutPerRequest`, default **5**.
-- A player declares a sit-out of *N* hands, where *N* is at most `maxSitOutPerRequest` and at most
+- A player declares a sit-out of _N_ hands, where _N_ is at most `maxSitOutPerRequest` and at most
   their remaining budget. They return automatically when it expires.
 - **A sitting-out player is still dealt in, still posts blinds, and auto-folds.** This is what makes
   the rule bite: a coasting player bleeds down at the current blind level.
@@ -92,22 +92,30 @@ of nine funds one. Platform revenue comes entirely from the `houseBps` skim, nev
 This is a deliberate and coherent model, but it is a different business shape than "the house keeps
 the entry fees," and it should not be discovered by surprise later.
 
-## 3. Implementation impact (proposed)
+## 3. Implementation
 
 ### 3.1 Policy surface
 
 `packages/shared/src/tournamentPolicy.ts` changes:
 
-| Field | Today | Under these rules |
-| --- | --- | --- |
-| `payoutBps` | `[6000, 3000, 1000]` | `[5000, 3000, 2000]` |
-| `format` | `fixed-hand-league \| knockout` | freezeout is the knockout path; fixed-hand leagues are unaffected |
-| `sitOutBudget` | absent | new, default 10, range 0–200 |
-| `maxSitOutPerRequest` | absent | new, default 5, at most `sitOutBudget` |
-| entry fee range | 0–1,000,000,000 | clamped to the arena stack range (§2.2) |
+| Field                 | Today                           | Under these rules                                             |
+| --------------------- | ------------------------------- | ------------------------------------------------------------- |
+| `payoutBps`           | `[6000, 3000, 1000]`            | `[5000, 3000, 2000]`                                          |
+| `format`              | `fixed-hand-league \| knockout` | adds a third value, `freezeout`; the other two are unaffected |
+| `sitOutBudget`        | absent                          | new, default 10, range 0–200                                  |
+| `maxSitOutPerRequest` | absent                          | new, default 5, at most `sitOutBudget`                        |
+| entry fee range       | 0–1,000,000,000                 | clamped to the arena stack range (§2.2)                       |
 
 `startingStack` stops being independently settable for freezeout tournaments; it is derived from
 `entryFee`. It remains as-is for fixed-hand leagues, which reset stacks every hand.
+
+**Implementation note — why `freezeout` is a new format value rather than a redefinition of
+`knockout`.** The original §3 proposed treating freezeout as the knockout path. That would have
+changed the published meaning of terms that are already locked: a tournament whose entrants accepted
+knockout terms would silently start behaving differently, which the terms lock exists to prevent.
+Freezeout is therefore a third `format` value. Knockout keeps the behaviour it published, and
+`carriesStacks()` in `packages/shared/src/tournamentPolicy.ts` is the single predicate both formats
+share for stack carry, button advance, blind escalation and stack-based ranking.
 
 ### 3.2 Server
 
@@ -117,7 +125,15 @@ the entry fees," and it should not be discovered by surprise later.
 - `apps/server/src/tournamentEconomy.ts` — the entry fee no longer credits the prize pool. The pool
   is funded by `prizeBps` skim, sponsor contributions, and any guarantee. `completePrizes` keeps its
   largest-remainder allocation and tie handling.
-- Schema: `tournament_entries` gains `sat_out_hands` and `sit_out_until_hand`.
+- Schema: `tournament_entries` gains `sat_out_hands` and `sit_out_until_hand`, added idempotently in
+  `initializeTournamentOperations`.
+- `POST /api/tournaments/:id/sit-out` accepts `{hands}` from an entrant or a scoped seat grant — the
+  same authentication `/actions` uses, because sitting out is a play decision, not administration.
+  When the turn is already on the requester, the deadline moves to now so the existing timer folds
+  them on the next tick instead of stalling the table.
+- `apps/web` — `TournamentTerms` publishes and edits the sit-out fields and the freezeout format,
+  `TournamentsPage` gives an enrolled player a sit-out control showing their remaining budget, and
+  both standings views rank a freezeout by stack. `apps/mcp` gains `tournament_sit_out`.
 
 ### 3.3 Migration
 

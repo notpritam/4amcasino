@@ -271,6 +271,9 @@ export interface TournamentEntry {
   online: boolean;
   stack: number;
   eliminatedHand: number | null;
+  /** Hands this entrant has already sat out, and what is left of the published budget. */
+  satOutHands: number;
+  sitOutRemaining: number;
   entryFee: number;
   joiningReward: number;
   prize: number;

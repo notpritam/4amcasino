@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { RiArrowRightLine, RiAddLine, RiRobot2Line } from '@remixicon/react';
 import type { PlayerAction, TournamentState, TournamentSummary } from '@4am/shared';
+import { carriesStacks } from '@4am/shared';
 import { api } from '../../shared/api.ts';
 import { useStore } from '../../shared/store.ts';
-import { Button, Spinner } from '../../shared/ui/index.tsx';
+import { Button, Input, Spinner } from '../../shared/ui/index.tsx';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
 import './arena.css';
 import { SponsorPlacements } from './SponsorPlacements.tsx';
@@ -142,7 +143,7 @@ function TournamentList() {
                 {filter === 'My proposals'
                   ? 'Set the format, schedule, entry terms and prizes, then submit your proposal for platform review.'
                   : filter === 'Upcoming'
-                    ? 'Propose a fixed-hand league or a knockout tournament to bring players together.'
+                    ? 'Propose a fixed-hand league, knockout or freezeout to bring players together.'
                     : filter === 'Live'
                       ? 'Events appear here when play begins. Check upcoming tournaments for your next seat.'
                       : 'Completed and cancelled tournaments stay here with their saved standings and prizes.'}
@@ -437,14 +438,54 @@ function TournamentDetail({ id }: { id: string }) {
                       ? 'Connect your agent before the tournament starts.'
                       : 'Keep this page open to take your turns.'}
                   </p>
-                  <Button
-                    className="mt-4"
-                    variant="secondary"
-                    disabled={busy}
-                    onClick={() => void mutate(() => api.withdrawTournament(id))}
-                  >
-                    Withdraw
-                  </Button>
+                  {state.status === 'registration' && (
+                    <Button
+                      className="mt-4"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={() => void mutate(() => api.withdrawTournament(id))}
+                    >
+                      Withdraw
+                    </Button>
+                  )}
+                  {state.status === 'running' && me.eliminatedHand === null && (
+                    <form
+                      className="mt-4"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const hands = Number(new FormData(e.currentTarget).get('hands'));
+                        void mutate(() => api.sitOutTournament(id, hands));
+                      }}
+                    >
+                      <label className="arena-field">
+                        Sit out · hands
+                        <Input
+                          name="hands"
+                          type="number"
+                          min={1}
+                          max={Math.max(
+                            1,
+                            Math.min(state.policy.maxSitOutPerRequest, me.sitOutRemaining),
+                          )}
+                          step={1}
+                          defaultValue={1}
+                          disabled={busy || me.sitOutRemaining === 0}
+                        />
+                        <span className="arena-muted">
+                          {me.sitOutRemaining > 0
+                            ? `${number(me.sitOutRemaining)} of ${number(state.policy.sitOutBudget)} sit-out hands left. Blinds keep posting, so sitting out costs chips.`
+                            : 'Your sit-out budget is spent. You must play on.'}
+                        </span>
+                      </label>
+                      <Button
+                        type="submit"
+                        variant="secondary"
+                        disabled={busy || me.sitOutRemaining === 0}
+                      >
+                        Sit out
+                      </Button>
+                    </form>
+                  )}
                 </div>
               ) : (
                 <>
@@ -665,7 +706,7 @@ function TournamentDetail({ id }: { id: string }) {
                           <tr>
                             <th>Place</th>
                             <th>Entrant</th>
-                            <th>{state.format === 'knockout' ? 'Stack' : 'Play net'}</th>
+                            <th>{carriesStacks(state.format) ? 'Stack' : 'Play net'}</th>
                             <th>Prize chips</th>
                             <th>BB / 100</th>
                             <th>Hands</th>
@@ -688,7 +729,7 @@ function TournamentDetail({ id }: { id: string }) {
                                   e.net > 0 ? 'arena-positive' : e.net < 0 ? 'arena-negative' : ''
                                 }
                               >
-                                {state.format === 'knockout' ? number(e.stack) : signed(e.net)}
+                                {carriesStacks(state.format) ? number(e.stack) : signed(e.net)}
                               </td>
                               <td>{number(e.prize)}</td>
                               <td>{e.bbPer100.toFixed(2)}</td>
@@ -701,7 +742,7 @@ function TournamentDetail({ id }: { id: string }) {
                     </div>
                   )}
                   <p className="arena-muted mt-4">
-                    {state.format === 'knockout'
+                    {carriesStacks(state.format)
                       ? 'Ranked by elimination order, then remaining stack. Eliminated entrants keep their final place.'
                       : 'Ranked by play net. Equal scores share a place. BB/100 is net big blinds per 100 hands.'}{' '}
                     Play net measures performance and is separate from settlement dues.

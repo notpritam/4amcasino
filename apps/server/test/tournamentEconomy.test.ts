@@ -196,6 +196,28 @@ describe('tournament chip journal', () => {
     );
   });
 
+  it('splits a commission-funded bonus pool 50/30/20 across the top three', () => {
+    enter(1);
+    enter(2);
+    enter(3);
+    economy.fundTournament(db, id, 1000, 'bonus', 'guarantee');
+    start();
+    economy.completePrizes(
+      db,
+      id,
+      [
+        { userId: 1, rank: 1 },
+        { userId: 2, rank: 2 },
+        { userId: 3, rank: 3 },
+      ],
+      DEFAULT_TOURNAMENT_POLICY.payoutBps,
+    );
+    expect(economy.playerEarnings(db, id, 1).prize).toBe(500);
+    expect(economy.playerEarnings(db, id, 2).prize).toBe(300);
+    expect(economy.playerEarnings(db, id, 3).prize).toBe(200);
+    expect(economy.economyView(db, id).pool).toBe(0);
+  });
+
   it('distributes absent payout places proportionally and allocates the entire pool once', () => {
     enter(1);
     enter(2);

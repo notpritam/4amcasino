@@ -1,6 +1,11 @@
 /** Tournament amounts are whole competition chips, never currency. */
 export interface TournamentPolicy {
-  format: 'fixed-hand-league' | 'knockout';
+  /**
+   * `freezeout` is the current competition format, requested by notpritam: the entry fee is the
+   * stack, a zero stack is final, and play runs to one survivor. `knockout` is retained so
+   * tournaments whose terms locked under the older rules keep the behaviour they published.
+   */
+  format: 'fixed-hand-league' | 'knockout' | 'freezeout';
   startsAt: number | null;
   entryFee: number;
   joiningReward: number;
@@ -9,6 +14,10 @@ export interface TournamentPolicy {
   prizeBps: number;
   payoutBps: number[];
   blindEveryHands: number;
+  /** Total hands one entrant may sit out across the whole tournament. */
+  sitOutBudget: number;
+  /** Longest single sit-out an entrant may declare. */
+  maxSitOutPerRequest: number;
   publicWatch: boolean;
   revealAllAfterHand: boolean;
   streamUrl: string;
@@ -22,13 +31,23 @@ export const DEFAULT_TOURNAMENT_POLICY: TournamentPolicy = {
   guaranteedPool: 0,
   houseBps: 50,
   prizeBps: 50,
-  payoutBps: [6000, 3000, 1000],
+  payoutBps: [5000, 3000, 2000],
   blindEveryHands: 20,
+  sitOutBudget: 10,
+  maxSitOutPerRequest: 5,
   publicWatch: true,
   revealAllAfterHand: true,
   streamUrl: '',
   meetUrl: '',
 };
+/** Freezeout and knockout carry a stack between hands; a fixed-hand league resets it. */
+export function carriesStacks(format: TournamentPolicy['format']): boolean {
+  return format === 'knockout' || format === 'freezeout';
+}
+export function tournamentFormatLabel(format: TournamentPolicy['format']): string {
+  if (format === 'freezeout') return 'Freezeout';
+  return format === 'knockout' ? 'Knockout' : 'Fixed-hand league';
+}
 export interface TournamentFinance {
   unit: 'chips';
   pool: number;

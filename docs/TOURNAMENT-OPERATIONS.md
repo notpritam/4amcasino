@@ -26,16 +26,17 @@ Platform broadcast-link updates are an explicit exception to the terms lock: the
 
 | Field                                         | New-event default and constraints                                                                                    |
 | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `format`                                      | `fixed-hand-league` or `knockout`; default fixed-hand                                                                |
+| `format`                                      | `fixed-hand-league`, `knockout` or `freezeout`; default fixed-hand                                                   |
 | Seats / hand limit                            | 2–9 seats; 10–10,000 hands                                                                                           |
 | Stack / blinds                                | Stack 100–1,000,000; small blind 1–10,000; big blind 2–20,000, at least the small blind; stack covers two big blinds |
 | `actionSeconds`                               | 10–300; default 60                                                                                                   |
 | `startsAt`                                    | `null` for manual start, or UTC Unix milliseconds                                                                    |
-| `entryFee`, `joiningReward`, `guaranteedPool` | Whole chips, 0–1,000,000,000 each; default 0                                                                         |
+| `entryFee`, `joiningReward`, `guaranteedPool` | Whole chips, 0–1,000,000,000 each; default 0. A freezeout `entryFee` is the stack, so it must be 2×bb–1,000,000      |
+| `sitOutBudget`, `maxSitOutPerRequest`         | Hands one entrant may sit out in total and in one request; defaults 10 and 5; 0–200, per-request at most the budget  |
 | Guarantee coverage                            | `guaranteedPool >= capacity × joiningReward`, even before all seats fill                                             |
 | `houseBps`, `prizeBps`                        | Default 50 each: 0.5% per recipient. Each rate permits 0–1,000 basis points (0–10%)                                  |
-| `payoutBps`                                   | Default `[6000, 3000, 1000]` (60/30/10); 1–9 positive integer shares totalling 10,000                                |
-| `blindEveryHands`                             | Default 20; 1–10,000; applies to knockout                                                                            |
+| `payoutBps`                                   | Default `[5000, 3000, 2000]` (50/30/20); 1–9 positive integer shares totalling 10,000                                |
+| `blindEveryHands`                             | Default 20; 1–10,000; applies to knockout and freezeout                                                              |
 | `publicWatch`                                 | Default `true`; controls hand-state/results/replay/audit access                                                      |
 | `revealAllAfterHand`                          | Required `true` for new terms; includes folded hole cards                                                            |
 | `streamUrl`, `meetUrl`                        | Empty or supported HTTPS external links                                                                              |
@@ -45,6 +46,10 @@ Existing revision-0 leagues retain approved status, fixed-hand stack resets, fre
 ## Formats and rankings
 
 Fixed-hand leagues reset every entrant to the starting stack for every hand and rotate the button. Rank uses accumulated hand net after pot deductions. Equal net scores share rank. The displayed BB/100 uses the starting big blind; it is a scoring statistic, not a settlement amount.
+
+Freezeout tournaments are the current competition format. One entry per player, with no re-entry, re-buy or add-on, and registration closes at start. The entry fee **is** the starting stack, so every chip in play originated from an entry fee and the chips form a closed, zero-sum loop among entrants. A zero stack eliminates that entrant permanently. Play runs until one entrant holds every chip; that survivor keeps the whole stack. Second and third place are the last two eliminated and receive only their share of the commission bonus pool. If the hand cap is reached first, play stops, survivors rank by stack, every survivor keeps the stack they hold, and the top three by stack take the bonus. Otherwise freezeouts follow the knockout rules below for stack carry, button advance and blind levels.
+
+Sitting out is bounded so nobody can fold-and-wait for the field to collapse. An entrant declares a sit-out of at most `maxSitOutPerRequest` hands, limited by what remains of `sitOutBudget`, and returns automatically when it expires. A sitting-out entrant is still dealt in, still posts blinds and auto-folds, so coasting costs chips at the current blind level. Once the budget is spent, further sit-out requests are refused with 409 and ordinary action timeouts auto-fold in place. No entrant is ever eliminated for sitting out, so a disconnect costs chips rather than the tournament. Sitting out is a play decision: a scoped seat grant may request it, exactly like acting.
 
 Knockout tournaments carry each ending stack into the next hand, remove zero-stack entrants, and advance the button to the next surviving entrant in original enrollment order. Blinds double every `blindEveryHands`: level multiplier is `2 ** min(16, floor((handNumber - 1) / blindEveryHands))`, and each blind is capped at 9,000,000 chips. Play ends when at most one entrant has chips or the hand cap is reached. Remaining entrants rank by stack; equal stacks tie. Eliminated entrants rank by elimination hand, later first; elimination in the same hand ties.
 
@@ -57,6 +62,7 @@ Every amount is **whole competition chips**. The tournament journal is separate 
 | Event                          | Journal behavior                                                                                                 |
 | ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | First enrollment               | Records the guarantee once; debits the entrant's entry obligation and credits the pool                           |
+| First enrollment (freezeout)   | Records the guarantee and opens the enrollment cycle, but moves no value: the fee buys chips instead of the pool |
 | Withdrawal during registration | Reverses that enrollment's entry obligation; re-entry opens a new cycle                                          |
 | Start                          | Ensures the guarantee exists and pays each enrolled player's joining reward from the pool once                   |
 | Completed hand                 | Records each player's hand net plus house and pool deductions in one balanced transfer                           |
@@ -76,11 +82,12 @@ The journal enforces balanced transfers, nonnegative pool balances, and stable t
 Participants see entry obligations, joining rewards, prizes, hand net, recorded paid, and outstanding balances in the tournament earnings views. Bankers and organizers receive no commission.
 
 ```text
-settlementNet = joiningReward + prize - entryFee
+settlementNet = joiningReward + prize - entryFee   # fixed-hand league and knockout
+settlementNet = joiningReward + prize + playNet    # freezeout
 outstanding   = settlementNet - recordedPaid
 ```
 
-`playNet` is displayed separately and excluded from settlement debt in both formats. A knockout finishing stack is also not automatically cashable. House income and remaining pool are separate administrative totals.
+For fixed-hand leagues and knockouts, `playNet` is displayed separately and excluded from settlement debt, and a knockout finishing stack is not automatically cashable. A freezeout is the exception: the entry fee bought those chips, so the finishing stack is the prize and play net carries the settlement. Because the fee is already paid in chips, a freezeout entry records no pool obligation, and `entryFee` in the earnings rows is zero. House income and remaining pool are separate administrative totals.
 
 Only the platform records settlement receipts, after status is `completed` or `cancelled`. Positive amounts attest to chips paid to the account; negative amounts attest to chips collected from it. The amount must have the outstanding balance's direction and cannot exceed its magnitude. Use a unique `requestId` and a concrete receipt note. Retry an uncertain response with the identical ID and body; changed content returns 409. Records are immutable. An award note is independent commentary and does not change earnings or prove prize delivery.
 
@@ -120,6 +127,7 @@ Use the normal account's bearer token; every `/api/admin/...` route below requir
 | `PUT /api/tournaments/:id/terms`                      | Owner/platform; `{revision, ...changedSettings, policy: {...changedPolicy}}` before terms lock                                 |
 | `PUT /api/tournaments/:id/media`                      | Platform; `{streamUrl, meetUrl}`; audited update, including after terms lock                                                   |
 | `POST /api/tournaments/:id/control`                   | Owner/platform; `{action: "start" \| "pause" \| "resume" \| "cancel"}`                                                         |
+| `POST /api/tournaments/:id/sit-out`                   | Entrant or scoped seat grant; `{hands}`; running events only; 400 over the per-request cap, 409 once the budget is spent       |
 | `GET /api/admin/sponsors`                             | `{campaigns, totals: {booked, received, prizeContributions}}`                                                                  |
 | `POST /api/admin/sponsors`                            | Complete campaign body below; returns campaign and revision                                                                    |
 | `PUT /api/admin/sponsors/:id`                         | Complete campaign body plus current `revision`                                                                                 |

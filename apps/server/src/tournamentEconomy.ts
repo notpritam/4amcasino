@@ -108,6 +108,17 @@ function tournament(db: DB, id: string): { status: string } {
   if (!row) throw new AgentError(404, 'Tournament not found.');
   return row;
 }
+/** A freezeout entry buys chips rather than funding the pool, so its settlement differs. */
+function isFreezeout(db: DB, id: string): boolean {
+  const row = db.prepare('SELECT policy_json FROM tournaments WHERE id = ?').get(id) as
+    { policy_json: string } | undefined;
+  if (!row?.policy_json) return false;
+  try {
+    return (JSON.parse(row.policy_json) as { format?: string }).format === 'freezeout';
+  } catch {
+    return false;
+  }
+}
 function transaction(db: DB, id: string, ref: string): Transaction | undefined {
   return db
     .prepare(
@@ -503,9 +514,10 @@ export function playerEarnings(db: DB, id: string, player: number): PlayerTourna
   const joiningReward = sum(db, id, account, ['joining-reward']);
   const prize = sum(db, id, account, ['prize']);
   const playNet = sum(db, id, account, ['hand']);
-  // Fixed-hand leagues reset stacks. Hand net is competition scoring, never a settlement debt.
+  // Fixed-hand leagues reset stacks, so their hand net is scoring and never a settlement debt.
+  // A freezeout stack IS the money: the fee bought those chips, so play net is the settlement.
   const settlementNet = chips(
-    joiningReward + prize - entryFee,
+    isFreezeout(db, id) ? joiningReward + prize + playNet : joiningReward + prize - entryFee,
     'Settlement balance',
     true,
     Number.MAX_SAFE_INTEGER,

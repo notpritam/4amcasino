@@ -18,7 +18,7 @@ export function registerArenaTools(
   };
   server.tool(
     'tournaments',
-    'List published fixed-hand leagues and knockout tournaments, schedules, entry terms and prizes. Competition chips are separate from normal rooms.',
+    'List published fixed-hand leagues, knockouts and freezeouts, schedules, entry terms and prizes. Competition chips are separate from normal rooms.',
     {},
     async () => run(() => api('/api/tournaments')),
   );
@@ -45,6 +45,16 @@ export function registerArenaTools(
           acceptedRevision,
         }),
       ),
+  );
+  server.tool(
+    'tournament_sit_out',
+    'Sit out a bounded number of hands. You are still dealt in and still post blinds while sitting out, and the published sit-out budget caps the total. Once the budget is spent you must keep playing.',
+    {
+      tournamentId: z.string().max(80),
+      hands: z.number().int().min(1).max(200),
+    },
+    async ({ tournamentId, hands }) =>
+      run(() => api(`/api/tournaments/${encodeURIComponent(tournamentId)}/sit-out`, { hands })),
   );
   server.tool(
     'tournament_act',

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   actArena,
   arenaView,
+  carriesStacks as formatCarriesStacks,
   createArenaRound,
   legalActions,
   type ArenaRound,
@@ -52,11 +53,20 @@ interface Entry {
   awardNote: string;
   stack: number;
   eliminatedHand: number | null;
+  satOutHands: number;
+  sitOutUntilHand: number;
+}
+/** Freezeout derives that carried stack from the entry fee (requested by notpritam). */
+function baseStack(t: Tournament, p: { format: string; entryFee: number }): number {
+  return p.format === 'freezeout' ? p.entryFee : t.starting_stack;
+}
+function sittingOut(e: Pick<Entry, 'sitOutUntilHand'>, handNumber: number): boolean {
+  return e.sitOutUntilHand >= handNumber;
 }
 function entries(db: DB, id: string): Entry[] {
   return db
     .prepare(
-      'SELECT user_id AS userId, agent_name AS agentName, kind, joined_at AS joinedAt, last_seen AS lastSeen, net, hands, wins, timeouts, award_note AS awardNote, stack, eliminated_hand AS eliminatedHand FROM tournament_entries WHERE tournament_id = ? ORDER BY joined_at, user_id',
+      'SELECT user_id AS userId, agent_name AS agentName, kind, joined_at AS joinedAt, last_seen AS lastSeen, net, hands, wins, timeouts, award_note AS awardNote, stack, eliminated_hand AS eliminatedHand, sat_out_hands AS satOutHands, sit_out_until_hand AS sitOutUntilHand FROM tournament_entries WHERE tournament_id = ? ORDER BY joined_at, user_id',
     )
     .all(id) as Entry[];
 }
@@ -95,7 +105,7 @@ export function tournamentView(db: DB, id: string, viewerId: number | null) {
   const t = get(db, id);
   const policy = policyOf(t);
   const score = (e: Entry) =>
-    policy.format === 'knockout'
+    formatCarriesStacks(policy.format)
       ? e.eliminatedHand === null
         ? t.hand_limit + 1 + e.stack
         : e.eliminatedHand
@@ -109,6 +119,7 @@ export function tournamentView(db: DB, id: string, viewerId: number | null) {
     rank: sorted.findIndex((p) => score(p) === score(e)) + 1,
     bbPer100: e.hands ? Math.round((e.net / t.bb / e.hands) * 10000) / 100 : 0,
     online: Date.now() - e.lastSeen < 90_000,
+    sitOutRemaining: Math.max(0, policy.sitOutBudget - e.satOutHands),
   }));
   return {
     ...summary(t),
@@ -133,7 +144,7 @@ function emit(db: DB, id: string, type: string, data: unknown) {
 function freshRound(db: DB, t: Tournament, handNumber: number): ArenaRound {
   const p = policyOf(t),
     all = entries(db, t.id);
-  const es = p.format === 'knockout' ? all.filter((e) => e.stack > 0) : all;
+  const es = formatCarriesStacks(p.format) ? all.filter((e) => e.stack > 0) : all;
   const previous = t.round_json ? (JSON.parse(t.round_json) as ArenaRound) : null;
   const previousButton = previous?.playerIds[previous.betting.buttonSeat];
   const oldIndex = all.findIndex((e) => e.userId === previousButton);
@@ -143,18 +154,17 @@ function freshRound(db: DB, t: Tournament, handNumber: number): ArenaRound {
       : Array.from({ length: all.length }, (_, i) => all[(oldIndex + i + 1) % all.length]!).find(
           (e) => es.some((a) => a.userId === e.userId),
         )?.userId;
-  const multiplier =
-    p.format === 'knockout'
-      ? 2 ** Math.min(16, Math.floor((handNumber - 1) / p.blindEveryHands))
-      : 1;
+  const multiplier = formatCarriesStacks(p.format)
+    ? 2 ** Math.min(16, Math.floor((handNumber - 1) / p.blindEveryHands))
+    : 1;
   return createArenaRound(
     {
       playerIds: es.map((e) => e.userId),
-      stack: t.starting_stack,
+      stack: baseStack(t, p),
       sb: Math.min(9_000_000, t.sb * multiplier),
       bb: Math.min(9_000_000, t.bb * multiplier),
       handNumber,
-      ...(p.format === 'knockout' ? { stacks: es.map((e) => e.stack), buttonUserId } : {}),
+      ...(formatCarriesStacks(p.format) ? { stacks: es.map((e) => e.stack), buttonUserId } : {}),
       ...(t.revision > 0
         ? {
             commission: { houseBps: p.houseBps, prizeBps: p.prizeBps },
@@ -190,14 +200,14 @@ function finishRound(db: DB, t: Tournament, initial: ArenaRound, now = Date.now(
       p = policyOf(t);
     recordHandEconomy(db, t.id, result);
     for (const r of result.net) {
-      const stack = r.endStack ?? t.starting_stack + r.net;
+      const stack = r.endStack ?? baseStack(t, p) + r.net;
       db.prepare(
         'UPDATE tournament_entries SET net=net+?,hands=hands+1,wins=wins+?,stack=?,eliminated_hand=CASE WHEN ?=1 AND ?<=0 THEN ? ELSE eliminated_hand END WHERE tournament_id=? AND user_id=?',
       ).run(
         r.net,
         Number(r.net > 0),
-        p.format === 'knockout' ? stack : t.starting_stack,
-        Number(p.format === 'knockout'),
+        formatCarriesStacks(p.format) ? stack : baseStack(t, p),
+        Number(formatCarriesStacks(p.format)),
         stack,
         round.handNumber,
         t.id,
@@ -210,7 +220,7 @@ function finishRound(db: DB, t: Tournament, initial: ArenaRound, now = Date.now(
     const completed = round.handNumber;
     const done =
       completed >= t.hand_limit ||
-      (p.format === 'knockout' && entries(db, t.id).filter((e) => e.stack > 0).length <= 1);
+      (formatCarriesStacks(p.format) && entries(db, t.id).filter((e) => e.stack > 0).length <= 1);
     db.prepare(
       'UPDATE tournaments SET completed_hands=?,status=?,round_json=?,last_result=?,deadline=NULL,updated_at=? WHERE id=?',
     ).run(
@@ -234,9 +244,14 @@ function finishRound(db: DB, t: Tournament, initial: ArenaRound, now = Date.now(
     t = get(db, t.id);
     round = freshRound(db, t, completed + 1);
   }
+  const toAct = round.result ? null : round.playerIds[round.betting.toAct!];
+  const out =
+    toAct !== undefined &&
+    toAct !== null &&
+    entries(db, t.id).some((e) => e.userId === toAct && sittingOut(e, round.handNumber));
   db.prepare('UPDATE tournaments SET round_json=?,deadline=?,updated_at=? WHERE id=?').run(
     JSON.stringify(round),
-    now + t.action_seconds * 1000,
+    out ? now : now + t.action_seconds * 1000,
     now,
     t.id,
   );
@@ -360,7 +375,7 @@ export function tickTournaments(db: DB, now = Date.now()): void {
   for (const t of due) {
     try {
       const es = entries(db, t.id).filter(
-        (e) => policyOf(t).format !== 'knockout' || e.eliminatedHand === null,
+        (e) => !formatCarriesStacks(policyOf(t).format) || e.eliminatedHand === null,
       );
       if (!es.some((e) => now - e.lastSeen < 90_000)) {
         db.prepare(
@@ -424,7 +439,7 @@ export function registerTournaments(app: FastifyInstance, db: DB): void {
           .code(400)
           .send({ error: 'Check the tournament settings (2–9 entrants, 10–10,000 hands).' });
       const b = parsed.data;
-      const policy = parsePolicy((req.body as { policy?: unknown }).policy, b.capacity);
+      const policy = parsePolicy((req.body as { policy?: unknown }).policy, b.capacity, b.bb);
       if (b.bb < b.sb || b.startingStack < 2 * b.bb)
         return reply.code(400).send({
           error: 'Big blind must cover the small blind; stack must cover at least two big blinds.',
@@ -525,6 +540,7 @@ export function registerTournaments(app: FastifyInstance, db: DB): void {
           throw new AgentError(409, 'That participant name is already taken.');
         if (isPlatform(db, req.userId))
           throw new AgentError(403, 'Use a player account to enter tournaments.');
+        const p = policyOf(t);
         db.prepare(
           'INSERT INTO tournament_entries(tournament_id,user_id,agent_name,kind,joined_at,last_seen,stack,accepted_revision) VALUES(?,?,?,?,?,?,?,?)',
         ).run(
@@ -534,13 +550,13 @@ export function registerTournaments(app: FastifyInstance, db: DB): void {
           parsed.data.kind,
           Date.now(),
           Date.now(),
-          t.starting_stack,
+          baseStack(t, p),
           t.revision,
         );
-        const p = policyOf(t);
         db.prepare('UPDATE tournaments SET terms_locked=1 WHERE id=?').run(id);
         fundTournament(db, id, p.guaranteedPool, 'guarantee', 'guarantee');
-        recordEntry(db, id, req.userId, p.entryFee);
+        // A freezeout fee buys chips instead of funding the pool, so it moves no journal value.
+        recordEntry(db, id, req.userId, p.format === 'freezeout' ? 0 : p.entryFee);
         emit(db, id, 'tournament.enrolled', { userId: req.userId, ...parsed.data });
         return { ok: true };
       })
@@ -560,6 +576,62 @@ export function registerTournaments(app: FastifyInstance, db: DB): void {
     }).immediate();
     emit(db, id, 'tournament.withdrawn', { userId: req.userId });
     return { ok: true };
+  });
+  /**
+   * Sitting out is bounded so nobody can fold-and-wait for the field to collapse
+   * (requested by notpritam). A sitting-out entrant is still dealt in and still posts blinds:
+   * the budget caps how long they may coast, and the blinds make coasting expensive.
+   */
+  app.post('/api/tournaments/:id/sit-out', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    // Sitting out is a play decision, so a scoped seat grant may do it, exactly like acting.
+    const userId = scopeUser(db, req, 'tournament', id, true);
+    const parsed = z.object({ hands: z.number().int().min(1).max(200) }).safeParse(req.body);
+    if (!parsed.success)
+      return reply.code(400).send({ error: 'Choose how many hands to sit out.' });
+    return db
+      .transaction(() => {
+        const t = get(db, id);
+        const p = policyOf(t);
+        if (t.status !== 'running') throw new AgentError(409, 'Tournament is not running.');
+        const me = entries(db, id).find((e) => e.userId === userId);
+        if (!me) throw new AgentError(403, 'Only an entrant can sit out.');
+        if (me.eliminatedHand !== null)
+          throw new AgentError(409, 'You are already out of this tournament.');
+        if (parsed.data.hands > p.maxSitOutPerRequest)
+          throw new AgentError(
+            400,
+            `A single sit-out cannot exceed ${p.maxSitOutPerRequest} hands.`,
+          );
+        const remaining = p.sitOutBudget - me.satOutHands;
+        if (parsed.data.hands > remaining)
+          throw new AgentError(
+            409,
+            remaining > 0
+              ? `Only ${remaining} sit-out hands remain.`
+              : 'Your sit-out budget is spent. You must play on.',
+          );
+        const round = t.round_json ? (JSON.parse(t.round_json) as ArenaRound) : null;
+        const hand = round && !round.result ? round.handNumber : t.completed_hands + 1;
+        db.prepare(
+          'UPDATE tournament_entries SET sat_out_hands=sat_out_hands+?,sit_out_until_hand=? WHERE tournament_id=? AND user_id=?',
+        ).run(parsed.data.hands, hand + parsed.data.hands - 1, id, userId);
+        // If the turn is already on them, hand it straight to the timer instead of stalling.
+        const toAct =
+          round && !round.result && round.betting.toAct !== null
+            ? round.playerIds[round.betting.toAct]
+            : null;
+        if (toAct === userId)
+          db.prepare('UPDATE tournaments SET deadline=? WHERE id=?').run(Date.now(), id);
+        emit(db, id, 'tournament.sit_out', {
+          userId: userId,
+          hands: parsed.data.hands,
+          throughHand: hand + parsed.data.hands - 1,
+          remaining: remaining - parsed.data.hands,
+        });
+        return { ok: true, throughHand: hand + parsed.data.hands - 1 };
+      })
+      .immediate();
   });
   app.post('/api/tournaments/:id/control', { preHandler: requireUser(db) }, async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -733,6 +805,7 @@ export function registerTournaments(app: FastifyInstance, db: DB): void {
         const policy = parsePolicy(
           { ...policyOf(t), ...((body.policy as object) ?? {}), revealAllAfterHand: true },
           b.capacity,
+          b.bb,
         );
         const approved = isPlatform(db, req.userId),
           revision = t.revision + 1;

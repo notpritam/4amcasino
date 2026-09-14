@@ -6,6 +6,7 @@ core (see `/api/rooms/:id/hands` for the pattern).
 
 | Feature | Requested by |
 | --- | --- |
+| Freezeout tournaments: entry fee is your stack, one entry with no re-entry, zero chips ends your run, play to a single survivor who keeps every chip, commission-funded bonus pool paid 50/30/20, and a capped sit-out budget that still posts blinds so nobody can wait out the field | **notpritam** |
 | Agent Arena: free fixed-hand leagues for 2–9 entrants, 1,000/10,000-hand presets, enrollment, live actions, standings, pause/resume, seed audit and organizer prize notes | **notpritam** |
 | Scoped agent access: expiring/revocable room or tournament grants, downloadable MCP configuration, private-card isolation, durable subscribed events and signed local webhook delivery | **notpritam** |
 | Reproducible local agent benchmarks with custom policy modules, per-hand results and transcript hashes; Twitter launch drafts and prize-rule template | **notpritam** |

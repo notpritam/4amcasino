@@ -1,5 +1,11 @@
 import { useRef, useState } from 'react';
-import { DEFAULT_TOURNAMENT_POLICY, type TournamentSummary } from '@4am/shared';
+import {
+  DEFAULT_TOURNAMENT_POLICY,
+  carriesStacks,
+  tournamentFormatLabel,
+  type TournamentPolicy,
+  type TournamentSummary,
+} from '@4am/shared';
 import { Button, Input } from '../../shared/ui/index.tsx';
 import './tournament-operations.css';
 
@@ -8,7 +14,7 @@ export const signedChips = (n: number) => `${n > 0 ? '+' : ''}${chips(n)}`;
 export const tournamentError = (e: unknown) =>
   e instanceof Error ? e.message : 'Request failed. Please try again.';
 export const formatName = (format: string) =>
-  format === 'knockout' ? 'Knockout' : 'Fixed-hand league';
+  tournamentFormatLabel(format as TournamentPolicy['format']);
 export const localDateInput = (value: number | null) =>
   value === null
     ? ''
@@ -93,7 +99,7 @@ export function TournamentTerms({ tournament: t }: { tournament: TournamentSumma
           <dt>Blinds</dt>
           <dd>
             {t.sb}/{t.bb}
-            {p.format === 'knockout'
+            {carriesStacks(p.format)
               ? ` · double every ${p.blindEveryHands} hands`
               : ' · fixed throughout'}
           </dd>
@@ -101,15 +107,28 @@ export function TournamentTerms({ tournament: t }: { tournament: TournamentSumma
         <div>
           <dt>Starting stack</dt>
           <dd>
-            {chips(t.startingStack)} chips
-            {p.format === 'fixed-hand-league' ? ' · reset every hand' : ' · carried between hands'}
+            {p.format === 'freezeout'
+              ? `${chips(p.entryFee)} chips · your entry fee, carried between hands`
+              : `${chips(t.startingStack)} chips${
+                  p.format === 'fixed-hand-league'
+                    ? ' · reset every hand'
+                    : ' · carried between hands'
+                }`}
+          </dd>
+        </div>
+        <div>
+          <dt>Sit-out budget</dt>
+          <dd>
+            {chips(p.sitOutBudget)} hands · up to {chips(p.maxSitOutPerRequest)} at a time
+            <br />
+            <span className="arena-muted">Blinds keep posting while you sit out.</span>
           </dd>
         </div>
         <div>
           <dt>Hand limit</dt>
           <dd>
             {chips(t.handLimit)}
-            {p.format === 'knockout' ? ' · then ranked by remaining stack' : ' hands'}
+            {carriesStacks(p.format) ? ' · then ranked by remaining stack' : ' hands'}
           </dd>
         </div>
         <div>
@@ -198,6 +217,8 @@ export function TournamentTermsForm({
             prizeBps: Math.round(Number(f.get('prizeRate')) * 100),
             payoutBps,
             blindEveryHands: Number(f.get('blindEveryHands')),
+            sitOutBudget: Number(f.get('sitOutBudget')),
+            maxSitOutPerRequest: Number(f.get('maxSitOutPerRequest')),
             publicWatch: f.get('publicWatch') === 'on',
             revealAllAfterHand: true,
             streamUrl: String(f.get('streamUrl')).trim(),
@@ -279,6 +300,7 @@ export function TournamentTermsForm({
           >
             <option value="fixed-hand-league">Fixed-hand league · equal stacks</option>
             <option value="knockout">Knockout · last player standing</option>
+            <option value="freezeout">Freezeout · entry fee is your stack</option>
           </select>
         </label>
         <label className="arena-field">
@@ -302,7 +324,7 @@ export function TournamentTermsForm({
             />
           </label>
           <label className="arena-field">
-            {format === 'knockout' ? 'Maximum hands' : 'Hands per entrant'}
+            {carriesStacks(format) ? 'Maximum hands' : 'Hands per entrant'}
             <Input
               name="handLimit"
               type="number"
@@ -314,7 +336,11 @@ export function TournamentTermsForm({
             />
           </label>
           <label className="arena-field">
-            {format === 'knockout' ? 'Starting stack' : 'Stack reset every hand'}
+            {format === 'freezeout'
+              ? 'Starting stack · set by the entry fee'
+              : carriesStacks(format)
+                ? 'Starting stack'
+                : 'Stack reset every hand'}
             <Input
               name="startingStack"
               type="number"
@@ -373,7 +399,37 @@ export function TournamentTermsForm({
             defaultValue={p.blindEveryHands}
             required
           />
-          <span className="arena-muted">Blinds double at this interval in knockout events.</span>
+          <span className="arena-muted">
+            Blinds double at this interval in knockout and freezeout events.
+          </span>
+        </label>
+        <label className="arena-field">
+          Sit-out budget · hands
+          <Input
+            name="sitOutBudget"
+            type="number"
+            min={0}
+            max={200}
+            step={1}
+            defaultValue={p.sitOutBudget}
+            required
+          />
+          <span className="arena-muted">
+            Total hands one entrant may sit out. Blinds still post, so sitting out costs chips.
+          </span>
+        </label>
+        <label className="arena-field">
+          Longest single sit-out · hands
+          <Input
+            name="maxSitOutPerRequest"
+            type="number"
+            min={0}
+            max={200}
+            step={1}
+            defaultValue={p.maxSitOutPerRequest}
+            required
+          />
+          <span className="arena-muted">Cannot exceed the whole sit-out budget.</span>
         </label>
       </fieldset>
       <fieldset disabled={busy} className="tournament-fieldset arena-form">

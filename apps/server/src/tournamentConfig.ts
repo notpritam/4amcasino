@@ -44,6 +44,8 @@ export const tournamentInput = z.object({
   rules: z.string().max(4000).default(''),
 });
 const amount = z.number().int().min(0).max(1_000_000_000);
+/** Mirrors the arena stack ceiling in packages/shared/src/arena.ts. */
+export const MAX_FREEZEOUT_STACK = 1_000_000;
 export function safeBroadcastUrl(value: string, meet = false): boolean {
   if (!value) return true;
   try {
@@ -59,7 +61,7 @@ export function safeBroadcastUrl(value: string, meet = false): boolean {
   }
 }
 export const tournamentPolicyInput = z.object({
-  format: z.enum(['fixed-hand-league', 'knockout']),
+  format: z.enum(['fixed-hand-league', 'knockout', 'freezeout']),
   startsAt: z.number().int().safe().nonnegative().nullable(),
   entryFee: amount,
   joiningReward: amount,
@@ -68,6 +70,8 @@ export const tournamentPolicyInput = z.object({
   prizeBps: z.number().int().min(0).max(1000),
   payoutBps: z.array(z.number().int().positive().max(10000)).min(1).max(9),
   blindEveryHands: z.number().int().min(1).max(10000),
+  sitOutBudget: z.number().int().min(0).max(200),
+  maxSitOutPerRequest: z.number().int().min(0).max(200),
   publicWatch: z.boolean(),
   revealAllAfterHand: z.literal(true),
   streamUrl: z
@@ -79,7 +83,7 @@ export const tournamentPolicyInput = z.object({
     .max(1000)
     .refine((v) => safeBroadcastUrl(v, true)),
 });
-export function parsePolicy(value: unknown, capacity: number): TournamentPolicy {
+export function parsePolicy(value: unknown, capacity: number, bb: number): TournamentPolicy {
   if (value !== undefined && (value === null || typeof value !== 'object' || Array.isArray(value)))
     throw new AgentError(400, 'Invalid tournament policy.');
   const obsolete = value as { bankerBps?: unknown; bankerUserId?: unknown } | undefined;
@@ -104,6 +108,18 @@ export function parsePolicy(value: unknown, capacity: number): TournamentPolicy 
       400,
       'The organizer guarantee must cover the joining reward for every seat.',
     );
+  if (p.data.maxSitOutPerRequest > p.data.sitOutBudget)
+    throw new AgentError(400, 'A single sit-out cannot exceed the whole sit-out budget.');
+  // Freezeout seats an entrant with their entry fee, so the fee must be a stack the engine accepts.
+  if (p.data.format === 'freezeout') {
+    if (p.data.entryFee > MAX_FREEZEOUT_STACK)
+      throw new AgentError(
+        400,
+        `A freezeout entry fee is the starting stack and cannot exceed ${MAX_FREEZEOUT_STACK} chips.`,
+      );
+    if (p.data.entryFee < 2 * bb)
+      throw new AgentError(400, 'A freezeout entry fee must cover two big blinds.');
+  }
   return p.data;
 }
 export function policyOf(t: Pick<Tournament, 'policy_json'>): TournamentPolicy {
@@ -153,6 +169,12 @@ export function initializeTournamentOperations(db: DB): void {
   if (!entryCols.has('accepted_revision'))
     db.exec(
       'ALTER TABLE tournament_entries ADD COLUMN accepted_revision INTEGER NOT NULL DEFAULT 0',
+    );
+  if (!entryCols.has('sat_out_hands'))
+    db.exec('ALTER TABLE tournament_entries ADD COLUMN sat_out_hands INTEGER NOT NULL DEFAULT 0');
+  if (!entryCols.has('sit_out_until_hand'))
+    db.exec(
+      'ALTER TABLE tournament_entries ADD COLUMN sit_out_until_hand INTEGER NOT NULL DEFAULT 0',
     );
   db.exec(`UPDATE tournaments SET terms_locked=1 WHERE EXISTS(SELECT 1 FROM tournament_entries WHERE tournament_id=tournaments.id);
     CREATE TABLE IF NOT EXISTS tournament_reviews(id INTEGER PRIMARY KEY, tournament_id TEXT NOT NULL REFERENCES tournaments(id), revision INTEGER NOT NULL, action TEXT NOT NULL, note TEXT NOT NULL, actor_id INTEGER NOT NULL, ts INTEGER NOT NULL);

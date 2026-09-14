@@ -8,6 +8,7 @@ import {
   RiStopCircleLine,
 } from '@remixicon/react';
 import type { ArenaResult, PlayerAction, TournamentState } from '@4am/shared';
+import { carriesStacks, tournamentFormatLabel } from '@4am/shared';
 import { PlayingCard } from '../../entities/card/PlayingCard.tsx';
 import { Button, Spinner } from '../../shared/ui/index.tsx';
 import { AppearanceToggle } from '../../shared/ui/AppearanceToggle.tsx';
@@ -391,13 +392,13 @@ function LiveTable({ state }: { state: TournamentState }) {
 }
 
 function Standings({ state }: { state: TournamentState }) {
-  const knockout = state.policy.format === 'knockout';
+  const knockout = carriesStacks(state.policy.format);
   return (
     <section className="broadcast-panel">
       <div className="broadcast-section-heading">
         <h2>{state.status === 'completed' ? 'Final standings' : 'Standings'}</h2>
         <span className="broadcast-muted broadcast-small">
-          {knockout ? 'Knockout' : 'Fixed-hand league'}
+          {tournamentFormatLabel(state.policy.format)}
         </span>
       </div>
       {state.entries.length ? (
